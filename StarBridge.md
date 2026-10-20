@@ -1,5 +1,7 @@
 # StarBridge
 
+[项目入口](docs/README.cn.md) · [当前工作](TODO.md) · [路线图](docs/roadmap.md) · [参考项目](docs/references.md)
+
 ## 项目定位
 
 **StarBridge** 是一个面向 AI Agent 的 **STAR-CCM+ 交互插件**，通过 Skills、MCP、自动化接口和持久化工作记忆，使 Agent 能够读取、理解、修改、运行 STAR-CCM+ 算例，并验证操作结果。
@@ -474,106 +476,7 @@ Diff 与回读验证用于确认修改是否符合预期，不构成 CFD 结果�
 
 ## 开发阶段
 
-以下保留 Inspector → Modifier → MCP → Skills 的初步推进顺序。常驻会话和持久化工作记忆是贯穿各阶段的设计要求，不另行假定为已经完成的基础设施：
-
-* Inspector 阶段需验证后台和 GUI 会话的读取路径，明确会话身份及实时状态来源。
-* Modifier 阶段需考虑共享状态协调、修改前检查、回读验证和操作记录。
-* MCP 阶段需统一暴露会话管理、算例操作与记忆访问能力。
-* Skills 阶段需明确通用流程如何使用用户、项目及算例记忆。
-
-具体实现里程碑在技术验证后细化。
-
-### Phase 1 — Inspector
-
-首先实现只读能力。
-
-支持：
-
-* Simulation metadata
-* Global Parameters
-* Field Functions
-* Tags
-* Continua
-* Physics Models
-* Regions
-* Boundaries
-* Interfaces
-* Mesh Operations
-* Reports
-* Monitors
-* Stopping Criteria
-* Simulation Operations
-
-目标：
-
-```bash
-starbridge inspect case.sim > case.json
-```
-
-为 Agent 理解已有 STAR-CCM+ 算例提供结构化事实，并结合技术文本和工作记忆补充设置背景。
-
----
-
-### Phase 2 — Modifier
-
-增加有限、明确、安全的修改能力。
-
-优先支持：
-
-```text
-Global Parameters
-Field Functions
-Tags
-Mesh Controls
-Boundary Parameters
-Selected Physics Settings
-Simulation Operations
-```
-
-修改后自动重新读取对应对象并验证。
-
----
-
-### Phase 3 — MCP
-
-将 Core API 暴露为 MCP Tools 和 Resources。
-
-形成：
-
-```text
-AI Agent
-    ↓
-StarBridge MCP
-    ↓
-StarBridge Core
-    ↓
-STAR-CCM+
-```
-
----
-
-### Phase 4 — Skills
-
-逐步积累 STAR-CCM+ 工作流 Skills。
-
-例如：
-
-```text
-mesh-setup
-overset-mesh
-rotor-case
-oge-case
-nwse-case
-vof-setup
-solver-setup
-case-audit
-```
-
-Skill 与底层 MCP Tool 分离：
-
-> **Tool 决定 Agent 能做什么。**
-
-> **Skill 决定 Agent 应该怎么做。**
+阶段顺序、预期交付和跨阶段要求统一维护在[路线图](docs/roadmap.md)。当前规划任务及完成条件见 [TODO](TODO.md)。
 
 ---
 
