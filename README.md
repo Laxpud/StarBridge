@@ -11,18 +11,26 @@
 
 ## What this project is for
 
-StarBridge is in initial planning. This repository currently contains design documents, with no runnable plugin, CLI, or MCP server.
+StarBridge is in early development. A file Bridge prototype can read global parameters and set an existing scalar parameter in a new simulation file, then reload it to verify the saved values. A background-session prototype also reuses one loaded STAR server for successive requests. Each request starts a temporary Java client; a persistent Java adapter, GUI integration, MCP, and working memory remain future work.
 
 The proposed system combines structured simulation access, workflow Skills, persistent working memory, and long-lived background or GUI simulation sessions. See the [design document](StarBridge.md) for scope and boundaries.
 
 ## Getting started
 
-Start with the [design document](StarBridge.md), then read the [current planning tasks](TODO.md). No installation is needed to review the documents. Commands shown in the design and roadmap are proposals, not available commands.
+Start with the [file Bridge guide](docs/bridge-file.md) (Chinese). The prototype requires Python 3.11+ and a usable STAR-CCM+ installation and license; it has been exercised on Linux with STAR-CCM+ 2602. From the repository root:
+
+```bash
+python3 bridge/runner/file_bridge.py inspect 'Base.sim~' --work-dir outputs/read-parameters
+```
+
+Supply your own compatible simulation file and a new work directory. For repeated operations on one loaded simulation, use the [background-session guide](docs/bridge-session.md). See the guides for modification, explicit save, shutdown, results, and current limits. The `starbridge` commands shown in the design and roadmap are still proposals.
 
 ## More documentation
 
 | Document | Purpose |
 |---|---|
+| [File Bridge guide](docs/bridge-file.md) | File operations, requirements, and implementation limits |
+| [Background-session guide](docs/bridge-session.md) | Start, inspect, modify, save, and stop a persistent STAR server |
 | [Design](StarBridge.md) | Product scope, proposed architecture, sessions, and working memory |
 | [Current work](TODO.md) | Current milestone, tasks, and completion criteria |
 | [Roadmap](docs/roadmap.md) | Future stages and expected outcomes |
