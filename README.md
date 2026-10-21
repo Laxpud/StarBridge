@@ -41,3 +41,7 @@ The design and planning documents are maintained in Chinese. Only the project en
 ## Contributing
 
 Contributions can describe concrete simulation workflows, clarify requirements, or improve the documents. Use the [current milestone](TODO.md) to identify open planning questions; implementation choices remain under discussion.
+
+## License
+
+[MIT](LICENSE) © 2026 Laxpud.

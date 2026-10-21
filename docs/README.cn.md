@@ -41,3 +41,7 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' --work-dir outputs/read
 ## 参与贡献
 
 欢迎补充具体算例工作流、澄清需求或改进文档。可从[当前里程碑](../TODO.md)查看待讨论的规划问题；实现方案仍在讨论中。
+
+## 许可证
+
+[MIT](../LICENSE) © 2026 Laxpud。
