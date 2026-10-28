@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from modifier import (ModificationRejected, content_snapshot, java_literal, load_request,
                       same_value, snapshot_diff, verify_modification)
+from core.execution import prepare_legacy
 
 
 def digest(path):
@@ -99,15 +100,40 @@ def catalog_diff(before, after, plan):
                          catalog_content(after, plan, retain_references=same_session))
 
 
+def reload_legacy(star, output, directory, data, plan):
+    """独立加载旧入口的输出，同时核对共享目录属性与原有完整快照。
+
+    旧请求不必提供目录定位；宏已返回唯一解析的 locator，用它建立重载只读
+    请求。原有结果字段由调用方保留，新增目录核对不能弱化旧 expected 契约。
+    """
+    readonly, request = catalog_readback(plan, {'target': data['catalog']['target']['locator']})
+    reopened = execute(star, output, directory, action='catalog-verify',
+                       catalog_plan=readonly, catalog_request=request)
+    if reopened['status'] != 'ok':
+        raise RuntimeError(f'Legacy reload verification was rejected: {reopened.get("error")}')
+    if not same_value(content_snapshot(data['after']), content_snapshot(reopened['after'])):
+        raise RuntimeError('Reopened object snapshot differs from saved session')
+    if not same_value(catalog_content(data['catalog'], plan),
+                      catalog_content(reopened['catalog'], readonly)):
+        raise RuntimeError('Reopened catalog values differ from saved session')
+    return reopened
+
+
 def execute(star, source, directory, output=None, name="", value=0.0, unit="", *,
             action=None, host=None, port=None, expected_session="", timeout=None,
             client_userdir=None, modification=None, catalog_plan=None,
-            catalog_request=None, session_token=None):
+            catalog_request=None, session_token=None, legacy_plan=None):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
     catalog_actions = {'catalog-read': 'read', 'catalog-describe': 'describe',
                        'catalog-verify': 'read', 'catalog-modify': 'modify',
                        'file-catalog-modify': 'modify'}
     catalog_call = catalog_plan is not None or catalog_request is not None or action in catalog_actions
+    actual_action = action or ('file-set' if output else 'inspect')
+    legacy_call = actual_action in {'modify', 'file-modify', 'set-scalar', 'file-set'}
+    if legacy_call != (legacy_plan is not None):
+        raise ValueError('Legacy modification requires its bundled catalog plan')
+    if legacy_call and catalog_call:
+        raise ValueError('Legacy and catalog requests cannot be combined')
     if catalog_call:
         if (catalog_plan is None or not isinstance(catalog_request, dict)
                 or action not in catalog_actions
@@ -122,7 +148,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
     macro = directory / "BridgeFileMacro.java"
     replacements = {
         "__RESULT__": str(result),
-        "__ACTION__": action or ("file-set" if output else "inspect"),
+        "__ACTION__": actual_action,
         "__EXPECTED_SESSION__": str(expected_session),
         "__OUTPUT__": str(output) if output else "",
         "__NAME__": name,
@@ -140,11 +166,14 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
             json.dumps(catalog_plan, ensure_ascii=False, indent=2) + "\n")
         (directory / "catalog-request.json").write_text(
             json.dumps(catalog_request, ensure_ascii=False, indent=2) + "\n")
+    if legacy_plan is not None:
+        (directory / 'legacy-plan.json').write_text(
+            json.dumps(legacy_plan, ensure_ascii=False, indent=2) + '\n')
     containers = {"__MODIFICATION__": modification, "__CATALOG_PLAN__": catalog_plan,
-                  "__CATALOG_REQUEST__": catalog_request}
+                  "__CATALOG_REQUEST__": catalog_request, "__LEGACY_PLAN__": legacy_plan}
     text = template.read_text()
     # 一次替换原模板中的占位符，避免用户文本被后续占位符替换再次解释。
-    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|OUTPUT|NAME|UNIT|VALUE|MODIFICATION|CATALOG_PLAN|CATALOG_REQUEST|SESSION_TOKEN)__",
+    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|OUTPUT|NAME|UNIT|VALUE|MODIFICATION|CATALOG_PLAN|CATALOG_REQUEST|SESSION_TOKEN|LEGACY_PLAN)__",
                   lambda match: java_literal(containers[match.group()]) if match.group() in containers
                   else json.dumps(replacements[match.group()], ensure_ascii=True),
                   text)
@@ -180,7 +209,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
         raise RuntimeError(f"STAR did not complete the macro; see {directory / 'star.log'}")
     data = json.loads(result.read_text())
     if data.get("status") != "ok" and not (
-            (modification is not None or catalog_call) and data.get("status") == "rejected"):
+            (modification is not None or catalog_call or legacy_call) and data.get("status") == "rejected"):
         raise RuntimeError(f"Invalid macro result: {result}")
     return data
 
@@ -206,6 +235,7 @@ def main():
     output = args.output.resolve() if args.output else None
     modification = None
     catalog_plan = catalog_request = None
+    legacy_plan = None
     if args.action in ("describe", "read"):
         if any(item is None for item in (args.catalog, args.execution, args.request)):
             parser.error("describe/read require --catalog, --execution and --request")
@@ -223,6 +253,7 @@ def main():
                 args.catalog, args.execution, args.request)
         else:
             modification = load_request(args.request)
+            legacy_plan = prepare_legacy(modification)
     elif args.catalog is not None or args.execution is not None:
         parser.error("--catalog and --execution are only supported by describe/read/modify")
     elif args.request is not None:
@@ -232,6 +263,7 @@ def main():
             parser.error("set-scalar requires --output, --name, --value and --unit")
         if not math.isfinite(args.value):
             parser.error("--value must be finite")
+        legacy_plan = prepare_legacy()
     if args.action in ("set-scalar", "modify"):
         if output.exists() or output == source or output.suffix != ".sim":
             parser.error("--output must be a new .sim file distinct from the input")
@@ -250,7 +282,7 @@ def main():
                                else "catalog-" + args.action if catalog_plan is not None
                                else "file-modify" if modification else None),
                        modification=modification, catalog_plan=catalog_plan,
-                       catalog_request=catalog_request)
+                       catalog_request=catalog_request, legacy_plan=legacy_plan)
         if data["status"] == "rejected":
             raise ModificationRejected(f'{data["error"]}; see {directory / "apply" / "result.json"}')
         summary = {"input": str(source), "input_sha256": original, "action": args.action}
@@ -275,18 +307,21 @@ def main():
         elif catalog_plan is not None:
             summary["catalog"] = data["catalog"]
         elif modification:
-            # 2. 新入口同时核对目标与全部已覆盖对象，保存前回读由宏完成。
+            # 2. 旧 schema 1 保留目标验证，并通过共享目录核对全部已覆盖对象。
             verify_modification(modification, data["before"], data["after"])
-            reopened = execute(args.star, output, directory / "reopen")["after"]
+            loaded = reload_legacy(args.star, output, directory / 'reopen', data, legacy_plan)
+            reopened = loaded['after']
             verify_modification(modification, data["before"], reopened)
-            if not same_value(content_snapshot(data["after"]), content_snapshot(reopened)):
-                raise RuntimeError("Reopened object snapshot differs from saved session")
             summary.update(output=str(output), modification=modification,
                            reopened_snapshot_match=True, snapshot=reopened,
-                           snapshot_diff=snapshot_diff(data["before"], reopened))
+                           snapshot_diff=snapshot_diff(data["before"], reopened),
+                           catalog_before=data['catalog_before'], catalog=loaded['catalog'],
+                           reopened_catalog_match=True,
+                           catalog_diff=catalog_diff(data['catalog_before'], loaded['catalog'], legacy_plan))
         elif output:
             # 2. 重新启动 STAR 加载输出文件；验证落盘结果，而非只看内存回读。
-            reopened = execute(args.star, output, directory / "reopen")["after"]
+            loaded = reload_legacy(args.star, output, directory / 'reopen', data, legacy_plan)
+            reopened = loaded['after']
             before = {p["name"]: p for p in data["before"]["parameters"]}
             after = {p["name"]: p for p in reopened["parameters"]}
             saved = {p["name"]: p for p in data["after"]["parameters"]}
@@ -298,6 +333,9 @@ def main():
                     or not math.isclose(actual, args.value, rel_tol=1e-12, abs_tol=1e-12)):
                 raise RuntimeError("Reopened target does not match the requested value/unit")
             summary.update(output=str(output), reopened_parameters_match=True,
+                           reopened_snapshot_match=True, reopened_catalog_match=True,
+                           catalog_before=data['catalog_before'], catalog=loaded['catalog'],
+                           catalog_diff=catalog_diff(data['catalog_before'], loaded['catalog'], legacy_plan),
                            parameter_diff=[
                                {"name": name, "before": before.get(name), "after": after.get(name)}
                                for name in sorted(before.keys() | after.keys())

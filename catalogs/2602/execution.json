@@ -408,6 +408,40 @@
           }
         ]
       }
+    },
+    "global_parameter": {
+      "java_class": "star.common.GlobalParameterBase",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.parameters",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "field_function": {
+      "java_class": "star.common.FieldFunction",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.field_functions",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
     }
   },
   "properties": {
@@ -1164,6 +1198,144 @@
           "steps": [
             {
               "member": "report.parts",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "tags": {
+        "adapter": "collection",
+        "read": {
+          "root": "simulation",
+          "steps": [
+            {
+              "member": "root.manager",
+              "arguments": [
+                {
+                  "class": "star.common.TagManager"
+                }
+              ]
+            },
+            {
+              "member": "tags.read",
+              "arguments": [
+                {
+                  "context": "object"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "user_tags",
+          "pipeline": {
+            "root": "simulation",
+            "steps": [
+              {
+                "member": "root.manager",
+                "arguments": [
+                  {
+                    "class": "star.common.TagManager"
+                  }
+                ]
+              },
+              {
+                "member": "tags.write",
+                "arguments": [
+                  {
+                    "context": "object"
+                  },
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "global_parameter": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "tags": {
+        "adapter": "collection",
+        "read": {
+          "root": "simulation",
+          "steps": [
+            {
+              "member": "root.manager",
+              "arguments": [
+                {
+                  "class": "star.common.TagManager"
+                }
+              ]
+            },
+            {
+              "member": "tags.read",
+              "arguments": [
+                {
+                  "context": "object"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "user_tags",
+          "pipeline": {
+            "root": "simulation",
+            "steps": [
+              {
+                "member": "root.manager",
+                "arguments": [
+                  {
+                    "class": "star.common.TagManager"
+                  }
+                ]
+              },
+              {
+                "member": "tags.write",
+                "arguments": [
+                  {
+                    "context": "object"
+                  },
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "field_function": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
               "arguments": []
             }
           ]

@@ -27,7 +27,7 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' \
 
 ## 按预期旧状态修改
 
-表达式和标签修改使用 `modify --request`，请求格式、预检查、全部已覆盖字段的 Diff 和重载核对见 [Modifier 单项修改](modifier.md)。以下 `set-scalar` 保留原有直接设置常量的行为，不包含 `expected` 旧状态检查。
+表达式和标签修改使用 `modify --request`，请求格式、预检查、全部已覆盖字段的 Diff 和重载核对见 [Modifier 单项修改](modifier.md)。兼容 `modify` 和以下 `set-scalar` 自动使用仓库随附目录及统一修改器，无需自行生成目录；精确支持 2602 Build 21.02.007，版本不符在写入前拒绝。`set-scalar` 保留直接设置常量的行为，没有调用者提供的 `expected`，不保护陈旧请求。新 schema 2 用法见[目录修改](catalog-modifier.md)。
 
 ## 修改已有标量并另存
 
@@ -46,14 +46,14 @@ python3 bridge/runner/file_bridge.py set-scalar 'Base.sim~' \
 
 执行步骤：
 
-1. 加载输入文件，读取参数快照。
-2. 找到已有标量参数，检查单位并设置数值。
-3. 另存目标文件，读取保存后的参数快照。
-4. 启动第二次 STAR 批处理，重新加载目标文件。
-5. 比较重新加载与保存后的参数快照，核对请求的目标数值和单位，并输出相对于输入的参数 Diff。
+1. 加载输入文件，精确核对当前 server 版本，读取完整旧快照与目标目录属性。
+2. 核对两种读取的对应字段，检查单位，通过共享修改器设置数值并回读。
+3. 另存目标文件，读取保存后的旧快照。
+4. 启动第二次 STAR 批处理，重新加载目标文件，同时读取旧快照与目录属性。
+5. 比较完整旧快照和目标已配目录属性，核对请求数值与单位，返回参数 Diff 和目录 Diff。
 6. 核对原文件 SHA256 未变化。
 
-`summary.json` 中的 `parameter_diff` 会包含所有已覆盖参数的变化；其他参数的求值结果可能因依赖关系变化，需要结合其表达式解释。该 Diff 不覆盖整个 STAR 对象树，不能证明边界、网格、物理模型等对象完全未变化。
+`summary.json` 中的 `parameter_diff` 会包含所有已覆盖参数的变化；其他参数的求值结果可能因依赖关系变化，需要结合其表达式解释。保留原 `parameter_diff`、`reopened_parameters_match` 字段，新增 `catalog_before`、`catalog`、`catalog_diff`、`reopened_catalog_match` 和 `reopened_snapshot_match`。后两项同时确认目标目录内容及完整旧快照的重载一致。Diff 仍不覆盖整个 STAR 对象树，不能证明所有未读取设置均未变化。
 
 ## 运行产物与失败处理
 
@@ -65,7 +65,8 @@ python3 bridge/runner/file_bridge.py set-scalar 'Base.sim~' \
 | `apply/command.json` | 首次 STAR 调用的参数列表 |
 | `apply/BridgeFileMacro.java` | 本次实际执行的宏 |
 | `apply/star.log` | STAR 加载、编译和执行日志 |
-| `apply/result.json` | 宏返回的修改前后快照 |
+| `apply/result.json` | 宏返回的修改前后快照及目录结果 |
+| `apply/legacy-plan.json` | 兼容 `modify` / `set-scalar` 裁剪后的默认目录执行计划 |
 | `reopen/` | 修改操作第二次启动 STAR 的同类产物 |
 
 Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常退出就判断宏执行成功。失败时检查错误消息指向的日志；输出文件可能已保存但后续核对失败，此时不会生成成功摘要。保留该文件用于排查，再次运行时应选择新的输出路径。
@@ -78,7 +79,7 @@ Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常�
 
 | 文件 | 职责 |
 |---|---|
-| [file_bridge.py](../bridge/runner/file_bridge.py) | 校验路径、生成宏、启动 STAR、记录日志、重新加载并核对参数与输入摘要 |
+| [file_bridge.py](../bridge/runner/file_bridge.py) | 校验路径、生成宏、启动 STAR、记录日志、重新加载并核对旧快照、目录内容与输入摘要 |
 | [BridgeFileMacro.java](../bridge/java/BridgeFileMacro.java) | 调用 STAR Java API 读取对象快照、设置标量、另存文件并序列化结果 |
 
 宏模板中的占位符由 Runner 填入，不能直接作为完整宏执行。输入由 STAR 自身加载，没有解析或修改 `.sim` 二进制格式。
@@ -88,5 +89,7 @@ Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常�
 ## 已确认的范围
 
 实际输入共读取到 32 个标量全局参数，无参数读取错误。将 `_AirfoilPitchAmplitude` 从 `5 deg` 改为 `6 deg` 后，新文件重新加载结果与保存后快照一致；参数 Diff 只有该项，输入文件摘要保持一致。
+
+迁入共享目录后的 `modify` / `set-scalar` 已完成旧字段兼容、完整快照与目录重载核对，具体验收与限制见 [Modifier](modifier.md#已确认的范围)。
 
 没有执行网格生成或求解，也没有验证向量、其他参数类型、异常单位、MCP 或工作记忆功能。扩展对象读取的验证范围见 [Inspector](inspector.md#验证范围)。后台会话的验证范围单独记录在[会话说明](bridge-session.md#已确认的范围)。

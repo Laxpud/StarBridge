@@ -362,3 +362,37 @@ def prepare_modification(catalog_path, execution_path, request_path):
                       if key != 'write' or name == request['property']}
                for name, value in properties.items()}
     return ({**plan, 'types': required, 'properties': {identifier: clipped}}, request)
+
+
+def prepare_legacy(modification=None):
+    """为旧修改入口加载随仓库分发的 2602 目录，保留原请求与结果契约。
+
+    调用方应先用旧请求校验器检查 modification；None 表示 set-scalar。
+    这里只选择调用能力，不读取算例或合成预期状态。Java 在同一次宏中读取
+    目录与旧快照，核对旧 expected 及两种读取的一致性，再交给统一修改器。
+    旧数值入口仍无外部 expected。
+    固定目录不表示其他 STAR 版本兼容，实际 server 必须通过精确版本检查。
+    """
+    root = Path(__file__).resolve().parents[1] / 'catalogs' / '2602'
+    plan = load_execution(root / 'generated' / 'catalog.json', root / 'execution.json')
+    if modification is None:
+        identifier, property_name = 'scalar_parameter', 'quantity_value'
+    elif modification['operation'] == 'set-definition':
+        identifier, property_name = {
+            'parameter': ('scalar_parameter', 'quantity'),
+            'field_function': ('user_field_function', 'definition'),
+        }[modification['target']['kind']]
+    else:
+        identifier = {'parameter': 'global_parameter', 'field_function': 'field_function',
+                      'region': 'region', 'boundary': 'boundary'}[modification['target']['kind']]
+        property_name = 'tags'
+    required = {}
+    current = identifier
+    while current is not None:
+        required[current] = plan['types'][current]
+        current = plan['types'][current]['parent_type']
+    # 只把本次需要的 setter 留给兼容层，其余属性用于完整回读和身份核对。
+    properties = {name: {key: value for key, value in entry.items()
+                         if key != 'write' or name == property_name}
+                  for name, entry in plan['properties'][identifier].items()}
+    return {**plan, 'types': required, 'properties': {identifier: properties}}

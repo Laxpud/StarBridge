@@ -2,11 +2,13 @@
 
 [返回项目入口](README.cn.md) · [目录描述与读取](catalog-runtime.md) · [目录修改](catalog-modifier.md) · [设计文档](../StarBridge.md#版本化对象属性与操作目录) · [当前任务](../TODO.md)
 
-目录工具从本机 STAR Javadoc 生成候选 API，校验和合并人工语义，并比较不同版本的声明变化。本页命令只读取安装材料，不需要许可证，不启动 STAR，也不加载或修改算例。候选目录配合人工 `execution.json` 已可执行[当前算例的描述与读取](catalog-runtime.md)及[首批单属性修改](catalog-modifier.md)；旧 Inspector 快照与旧修改入口迁移仍未完成。
+目录工具从本机 STAR Javadoc 生成候选 API，校验和合并人工语义，并比较不同版本的声明变化。本页命令只读取安装材料，不需要许可证，不启动 STAR，也不加载或修改算例。候选目录配合人工 `execution.json` 已可执行[当前算例的描述与读取](catalog-runtime.md)及[首批单属性修改](catalog-modifier.md)；旧修改入口也通过兼容层复用目录，旧 Inspector 快照迁移仍未完成。
 
 ## 生成与查看
 
-需要 Python 3.11+，无第三方 Python 依赖。在仓库根目录执行，`--install` 指向包含 `star/` 和 `doc/` 的安装根目录：
+仓库随附 [`catalogs/2602/generated/catalog.json`](../catalogs/2602/generated/catalog.json)，供兼容 `modify` 和 `set-scalar` 自动加载，也可显式传给目录 `describe/read/modify`。它保留生成器标识、安装相对来源路径和 SHA256，人工语义与执行映射独立维护；使用现有命令无需自行生成。
+
+需要重新生成或检查来源时，使用 Python 3.11+，无需第三方 Python 依赖。在仓库根目录执行，`--install` 指向包含 `star/` 和 `doc/` 的安装根目录：
 
 ```bash
 python3 tools/catalog/catalog.py generate \
@@ -17,13 +19,15 @@ python3 tools/catalog/catalog.py generate \
 python3 tools/catalog/catalog.py check \
   --catalog outputs/catalog-2602/generated/catalog.json \
   --install '/opt/Siemens/21.02.007-R8/STAR-CCM+21.02.007-R8'
+
+cmp catalogs/2602/generated/catalog.json outputs/catalog-2602/generated/catalog.json
 ```
 
 生成器从同一安装的 `star/RELEASE_NOTES` 和 `star/version_info.properties` 读取产品版本与 Build，并核对两者的 Build 一致。类型清单来自 `type-search-index.js`；类型页提供类声明、成员签名、注解和继承引用。当前解析器面向安装附带的 HTML5 Javadoc，不读取 JAR 字节码，不执行 Java 反射。
 
 `selection.json` 是完整 Java 类型名数组，当前包含 35 个根类型，为已配读写属性、类型适配器及原有修改语义提供声明材料。生成器自动加入继承列表中引用的本地声明类型。需要扫描全部 `star.*` 索引类型时，用 `--all` 替代 `--selection`；输出会明显增大。索引中的类型包括辅助 API，不应将类型总数当作算例可配置对象总数。未命名包与 `com.siemens.*` 类型尚未纳入生成范围。
 
-所有文件输出都要求目标文件不存在，防止覆盖人工规则或此前结果。重复生成使用另一个输出路径。候选文件放在被 Git 忽略的 `outputs/` 中，仓库只维护生成器、选择范围和人工规则。
+所有文件输出都要求目标文件不存在，防止覆盖人工规则或此前结果。重复生成使用另一个输出路径。临时或自行生成的候选文件放在被 Git 忽略的 `outputs/` 中；用于默认运行的 2602 候选文件随仓库版本管理。更新该文件时，从匹配安装重新生成并核对差异，不能手改生成内容代替生成器。
 
 ## 人工语义与合并
 
@@ -99,6 +103,6 @@ python3 tools/catalog/catalog.py diff \
 
 ## 当前验证边界
 
-本机 2602 Build 21.02.007 的全部 23,171 个 `star.*` 索引类型已生成并通过目录结构与继承引用校验，包含 154,743 个声明成员和 9,939 个属性候选。当前 35 个根类型及其继承依赖共生成 98 个类型、1,432 个声明成员和 86 个属性候选。初始选择已核对重复生成结果逐字节一致，并与 2510 Build 20.06.007 的同范围目录比较；这不代表 2510 算例读写获得支持。安装版本不匹配、人工规则版本不匹配以及成员指纹失效均已确认拒绝。
+本机 2602 Build 21.02.007 的全部 23,171 个 `star.*` 索引类型已生成并通过目录结构与继承引用校验，包含 154,743 个声明成员和 9,939 个属性候选。当前 35 个根类型及其继承依赖共生成 98 个类型、1,432 个声明成员和 86 个属性候选，随附候选文件与本机重新生成结果逐字节一致。初始选择也已核对重复生成结果，并与 2510 Build 20.06.007 的同范围目录比较；这不代表 2510 算例读写获得支持。安装版本不匹配、人工规则版本不匹配以及成员指纹失效均已确认拒绝。
 
-实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。通用模型条件、旧快照和旧修改入口迁移仍见 [TODO](../TODO.md)。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。
+实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。旧修改兼容层见 [Modifier](modifier.md)；通用模型条件、旧快照及剩余覆盖仍见 [TODO](../TODO.md)。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。

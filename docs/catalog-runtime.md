@@ -2,11 +2,11 @@
 
 [返回项目入口](README.cn.md) · [离线目录工具](catalog.md) · [目录修改](catalog-modifier.md) · [Inspector 快照](inspector.md) · [当前任务](../TODO.md)
 
-文件和后台会话 Runner 的 `describe`、`read` 已通过同一份候选目录、人工调用映射和类型适配器访问当前算例。执行前精确核对正在运行的 STAR server 版本，再按类型、名称及父对象定位目标。首批[目录修改](catalog-modifier.md)也已复用这些定位与读取管线；旧 `inspect` 快照及旧修改命令迁移仍未完成。
+文件和后台会话 Runner 的 `describe`、`read` 已通过同一份候选目录、人工调用映射和类型适配器访问当前算例。执行前精确核对正在运行的 STAR server 版本，再按类型、名称及父对象定位目标。首批[目录修改](catalog-modifier.md)也已复用这些定位与读取管线；兼容 schema 1 `modify` 和 `set-scalar` 也使用同一目录修改器；旧 `inspect` 快照迁移仍未完成。
 
 ## 使用方式
 
-需要 Python 3.11+、可用的 STAR-CCM+ 2602 Build 21.02.007 安装和许可证。先按[离线目录工具](catalog.md#生成与查看)从该安装生成候选目录，使用仓库当前的 `catalogs/2602/selection.json`。以下命令假定结果位于 `outputs/catalog-2602/generated/catalog.json`；已生成旧选择范围的目录时，应使用新输出路径重新生成。
+需要 Python 3.11+、可用的 STAR-CCM+ 2602 Build 21.02.007 安装和许可证。以下命令直接使用随仓库分发的 `catalogs/2602/generated/catalog.json`；可按[离线目录工具](catalog.md#生成与查看)从该安装及当前 `catalogs/2602/selection.json` 重新生成到新路径进行核对。`describe/read` 仍显式指定候选目录和人工执行映射。
 
 保存 `read-request.json`，将对象名称换成目标算例中的实际名称：
 
@@ -26,7 +26,7 @@
 
 ```bash
 python3 bridge/runner/file_bridge.py read 'Base.sim~' \
-  --catalog outputs/catalog-2602/generated/catalog.json \
+  --catalog catalogs/2602/generated/catalog.json \
   --execution catalogs/2602/execution.json \
   --request read-request.json \
   --work-dir outputs/catalog-read-file
@@ -39,7 +39,7 @@ python3 bridge/runner/file_bridge.py read 'Base.sim~' \
 ```bash
 python3 bridge/runner/session_bridge.py read \
   --session-dir outputs/my-session \
-  --catalog outputs/catalog-2602/generated/catalog.json \
+  --catalog catalogs/2602/generated/catalog.json \
   --execution catalogs/2602/execution.json \
   --request read-request.json
 ```
@@ -48,14 +48,14 @@ python3 bridge/runner/session_bridge.py read \
 
 ```bash
 python3 bridge/runner/file_bridge.py describe 'Base.sim~' \
-  --catalog outputs/catalog-2602/generated/catalog.json \
+  --catalog catalogs/2602/generated/catalog.json \
   --execution catalogs/2602/execution.json \
   --request describe-request.json \
   --work-dir outputs/catalog-describe-file
 
 python3 bridge/runner/session_bridge.py describe \
   --session-dir outputs/my-session \
-  --catalog outputs/catalog-2602/generated/catalog.json \
+  --catalog catalogs/2602/generated/catalog.json \
   --execution catalogs/2602/execution.json \
   --request describe-request.json
 ```
@@ -114,6 +114,8 @@ python3 bridge/runner/session_bridge.py describe \
 
 | 类型 ID | 属性 ID |
 |---|---|
+| `global_parameter` | `name`、`tags` |
+| `field_function` | `name`、`tags` |
 | `scalar_parameter` | `name`、`quantity`、`quantity_value`、`definition`、`unit`、`tags` |
 | `vector_parameter` | `name`、`quantity`、`definition`、`unit`、`tags` |
 | `user_field_function` | `name`、`definition`、`function_name`、`dimensions`、`value_type`、`ignore_boundary_values`、`sync_name`、`tags` |
@@ -156,4 +158,4 @@ Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作�
 
 工作副本另存后独立加载，向量全部已配属性与会话读取一致，新的文件加载 token 与此前会话不同。原始 `Base.sim~` 的摘要保持不变，验证服务已关闭。运行产物位于本地 `outputs/catalog-runtime-20261028/`，不进入源码版本管理。
 
-静态查询分支目前尚未实测；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。旧 `inspect` 仍按固定字段生成快照；不带目录参数的 schema 1 `modify` 和 `set-scalar` 仍执行原有流程。当前能力不完成整个 Inspector/Modifier 迁移，也不改变[当前里程碑](../TODO.md)的全部完成条件。
+静态查询分支目前尚未实测；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。旧 `inspect` 仍按固定字段生成快照；不带目录参数的 schema 1 `modify` 和 `set-scalar` 已通过兼容层复用目录修改器。当前能力不完成整个 Inspector/Modifier 迁移，也不改变[当前里程碑](../TODO.md)的全部完成条件。

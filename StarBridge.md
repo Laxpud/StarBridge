@@ -6,7 +6,7 @@
 
 **StarBridge** 是一个面向 AI Agent 的 **STAR-CCM+ 交互插件**，通过 Skills、MCP、自动化接口和持久化工作记忆，使 Agent 能够读取、理解、修改、运行 STAR-CCM+ 算例，并验证操作结果。
 
-项目已实现文件 Bridge、后台会话原型、[Inspector 对象快照](docs/inspector.md)、[Modifier 单项修改](docs/modifier.md)、[离线候选目录工具](docs/catalog.md)、[目录驱动的描述与读取](docs/catalog-runtime.md)和[首批目录修改](docs/catalog-modifier.md)。接下来继续迁移旧快照和旧修改流程，补齐其他写适配器、模型条件及结构操作。本文描述目标架构，当前可用入口及限制仍以这些使用说明为准。
+项目已实现文件 Bridge、后台会话原型、[Inspector 对象快照](docs/inspector.md)、[Modifier 单项修改](docs/modifier.md)、[离线候选目录工具](docs/catalog.md)、[目录驱动的描述与读取](docs/catalog-runtime.md)和[首批目录修改](docs/catalog-modifier.md)。兼容旧修改命令已接入同一目录修改器；接下来继续迁移旧快照，补齐其他写适配器、模型条件及结构操作。本文描述目标架构，当前可用入口及限制仍以这些使用说明为准。
 
 StarBridge 不将自身限定为单纯的 CLI 或 Java Macro 工具，而是作为 AI Agent 与 STAR-CCM+ 之间的统一桥接层。
 
@@ -124,7 +124,7 @@ GUI 对算例的修改所对应的 Java 宏是建立和核对映射的重要依�
 
 ### 已有能力的迁移
 
-现有文件和后台会话入口、旧状态检查、回读、Diff、原文件保护及失败处理继续复用。先将 Inspector、参数与场函数表达式、标签修改接入共享目录，再将旧 `set-scalar` 收拢到统一修改流程。首批目录 schema 2 修改已实现表达式、标量常量和用户标签写入，并返回目录与旧快照两层 Diff；旧 schema 1 `modify`、`set-scalar` 和旧 Inspector 快照仍未迁移。现有调用保持兼容，契约区别见[目录修改的迁移边界](docs/catalog-modifier.md#验证范围与迁移边界)。
+现有文件和后台会话入口、旧状态检查、回读、Diff、原文件保护及失败处理继续复用。目录读取、参数与场函数表达式、标签修改及 `set-scalar` 已共用目录与类型适配器。首批目录 schema 2 修改已实现表达式、标量常量和用户标签写入，并返回目录与旧快照两层 Diff；旧 schema 1 `modify` 与 `set-scalar` 自动加载随仓库分发的目录，通过兼容层复用同一准备与写入流程；旧请求提供的全部 `expected` 字段仍检查，`set-scalar` 则仍无调用者预期旧值。旧 Inspector 快照尚未迁移，当前仍作为兼容校验和结果输出的一部分。现有调用保持兼容，契约区别见[目录修改的迁移边界](docs/catalog-modifier.md#验证范围与迁移边界)。
 
 迁移后，CLI、MCP 和 Skills 都通过同一 Inspector、Modifier 和版本目录访问算例。后续网格控制、边界参数、物理设置、工作流及其他配置的覆盖按目录和适配器扩展，阶段安排见[路线图](docs/roadmap.md)。
 

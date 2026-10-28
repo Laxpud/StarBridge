@@ -6,7 +6,7 @@
 
 ## 使用方式
 
-需要 Python 3.11+、STAR-CCM+ 2602 Build 21.02.007 安装及许可证。先按[离线目录工具](catalog.md#生成与查看)用当前 `selection.json` 生成候选目录；下文假定输出位于 `outputs/catalog-2602/generated/catalog.json`。人工执行映射使用仓库中的 `catalogs/2602/execution.json`。
+需要 Python 3.11+、STAR-CCM+ 2602 Build 21.02.007 安装及许可证。可直接使用随仓库分发的 `catalogs/2602/generated/catalog.json` 和独立维护的 `catalogs/2602/execution.json`，不需要先生成目录。自行重建和核对来源的方法见[离线目录工具](catalog.md#生成与查看)。schema 2 命令仍要求显式传入两个路径。
 
 先通过 `read` 读取目标属性，将 `catalog.properties.<属性 ID>.value` 原样放入 `expected`，不要复制包含 `status` 的外层对象。保存 `catalog-change.json`，例如：
 
@@ -31,7 +31,7 @@
 
 ```bash
 python3 bridge/runner/file_bridge.py modify 'Base.sim~' \
-  --catalog outputs/catalog-2602/generated/catalog.json \
+  --catalog catalogs/2602/generated/catalog.json \
   --execution catalogs/2602/execution.json \
   --request catalog-change.json \
   --output outputs/Base_catalog_modified.sim \
@@ -45,7 +45,7 @@ python3 bridge/runner/file_bridge.py modify 'Base.sim~' \
 ```bash
 python3 bridge/runner/session_bridge.py modify \
   --session-dir outputs/my-session \
-  --catalog outputs/catalog-2602/generated/catalog.json \
+  --catalog catalogs/2602/generated/catalog.json \
   --execution catalogs/2602/execution.json \
   --request catalog-change.json
 
@@ -64,7 +64,7 @@ python3 bridge/runner/session_bridge.py save \
 | `scalar_parameter` | `quantity` | 完整数量对象：`definition`、`unit`、`si_unit`、`raw_value`、`si_value` | `{"definition":"表达式", "unit":"结果单位对象名"}` |
 | `scalar_parameter` | `quantity_value` | 同上 | `{"value":8, "unit":"deg"}`，数值必须有限 |
 | `user_field_function` | `definition` | 当前定义字符串 | 非空定义字符串 |
-| `scalar_parameter`、`vector_parameter`、`user_field_function`、`region`、`boundary`、`volume_average_report` | `tags` | 当前标签对象数组 | 已存在且不重复的用户标签名称数组 |
+| `global_parameter`、`scalar_parameter`、`vector_parameter`、`field_function`、`user_field_function`、`region`、`boundary`、`volume_average_report` | `tags` | 当前标签对象数组 | 已存在且不重复的用户标签名称数组 |
 
 `quantity` 和 `quantity_value` 读取同一数量对象，分别选择表达式写入和数值常量写入。标量的 `definition`、`unit` 属性仍只读，不能以它们的属性 ID 发起修改。所有数量旧状态字段都参与比较，包括依赖其他参数的求值结果；保留 JSON 数值与字符串类型，不能把 `5.0` 改成 `"5.0"`。读取到的非有限值以 `"NaN"`、`"Infinity"` 或 `"-Infinity"` 保留，不能作为新的数值常量提交。
 
@@ -119,4 +119,6 @@ python3 bridge/runner/session_bridge.py save \
 
 以上没有执行网格或求解，也不代表其他 STAR 版本、其他量纲、所有标签目标、系统标签、模型状态或中断恢复均已验证。其余值类型写入、结构操作、旧 Inspector 快照迁移和完整分项覆盖报告仍见 [TODO](../TODO.md)。
 
-不带 `--catalog/--execution` 的 `modify` 仍使用[旧 schema 1 契约](modifier.md)，`set-scalar` 也保留原流程；两者尚未迁入目录。新 schema 2 由这两个目录参数明确选择，不自动翻译旧请求。读取请求仍是 schema 1；候选目录 schema 1、人工执行映射 schema 2 和修改请求 schema 2 分开版本化。
+不带 `--catalog/--execution` 的 `modify` 保留[兼容 schema 1 契约](modifier.md)，`set-scalar` 保留原 CLI 参数；内部自动加载随仓库分发的 2602 目录并桥接到同一修改器，用户无需生成目录或转换旧请求。旧 `modify` 提供的全部 `expected` 字段仍先按旧快照检查；`set-scalar` 没有调用者提供的预期旧值，因此仍不保护陈旧请求。两者也精确检查 server 为 2602 Build 21.02.007。
+
+新 schema 2 仍由 `--catalog` 和 `--execution` 明确选择；读取请求仍是 schema 1。候选目录 schema 1、人工执行映射 schema 2 和修改请求 schema 2 分开版本化。旧快照仍用于兼容校验和结果输出，尚未完成 Inspector 迁移。

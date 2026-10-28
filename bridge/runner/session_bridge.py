@@ -19,7 +19,7 @@ import time
 import uuid
 
 from file_bridge import (catalog_content, catalog_diff, digest, execute,
-                         prepare_catalog_modification, prepare_catalog_read)
+                         prepare_catalog_modification, prepare_catalog_read, prepare_legacy)
 from modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
 
 
@@ -113,7 +113,7 @@ def terminate_owned(state):
 
 
 def request(directory, state, action, timeout, *, output=None, name='', value=0.0, unit='',
-            modification=None, catalog_plan=None, catalog_request=None):
+            modification=None, catalog_plan=None, catalog_request=None, legacy_plan=None):
     """连接已登记的服务并校验目标文件身份；修改失败不自动重试。"""
     if not alive(state):
         raise RuntimeError('Managed server is not running; refusing to connect to its old port')
@@ -129,7 +129,7 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
                    expected_session=state['current_file'], timeout=timeout,
                    client_userdir=directory / 'client-settings', modification=modification,
                    catalog_plan=catalog_plan, catalog_request=catalog_request,
-                   session_token=state['session_token'])
+                   session_token=state['session_token'], legacy_plan=legacy_plan)
     if not alive(state):
         raise RuntimeError('Server exited or changed identity during request')
     if digest(Path(state['input'])) != state['input_sha256']:
@@ -248,7 +248,8 @@ def operate(args, directory):
                                 name=getattr(args, 'name', ''), value=getattr(args, 'value', 0.0),
                                 unit=getattr(args, 'unit', ''), modification=getattr(args, 'modification', None),
                                 catalog_plan=getattr(args, 'catalog_plan', None),
-                                catalog_request=getattr(args, 'catalog_request', None))
+                                catalog_request=getattr(args, 'catalog_request', None),
+                                legacy_plan=getattr(args, 'legacy_plan', None))
             if data['status'] == 'rejected':
                 raise ModificationRejected(f'{data["error"]}; see {run / "result.json"}')
             if args.action == 'modify' and not catalog_call:
@@ -257,6 +258,10 @@ def operate(args, directory):
                 # 目录回读已由 Java 验证；此处仍要求完整结果，避免成功封套掩盖缺失字段。
                 catalog_content(data['catalog_before'], args.catalog_plan)
                 catalog_content(data['catalog'], args.catalog_plan)
+            legacy_plan = getattr(args, 'legacy_plan', None)
+            if legacy_plan is not None:
+                catalog_content(data['catalog_before'], legacy_plan)
+                catalog_content(data['catalog'], legacy_plan)
             if args.action == 'set-scalar':
                 target = next(p for p in data['after']['parameters'] if p['name'] == args.name)
                 actual = target.get('raw_value')
@@ -273,6 +278,10 @@ def operate(args, directory):
                 result['catalog'] = data['catalog']
             else:
                 result['snapshot'] = data['after']
+            if legacy_plan is not None:
+                # 旧结果字段继续保留；目录结果补充说明统一修改器实际核对的内容。
+                result.update(catalog_before=data['catalog_before'], catalog=data['catalog'],
+                              catalog_diff=catalog_diff(data['catalog_before'], data['catalog'], legacy_plan))
             if args.action == 'modify':
                 result.update(modification=args.catalog_request if catalog_call else args.modification,
                               snapshot=data['after'], snapshot_diff=snapshot_diff(data['before'], data['after']))
@@ -338,10 +347,14 @@ def main():
                 args.catalog, args.execution, args.request)
         else:
             args.modification = load_request(args.request)
+            args.legacy_plan = prepare_legacy(args.modification)
     elif args.action in ('describe', 'read'):
         # 目录、成员指纹与请求校验在获取会话活动标记之前完成；无效输入不会污染会话。
         args.catalog_plan, args.catalog_request = prepare_catalog_read(
             args.catalog, args.execution, args.request, args.action)
+    elif args.action == 'set-scalar':
+        # 默认目录也在活动标记前校验，目录缺失或签名失效不会污染会话状态。
+        args.legacy_plan = prepare_legacy()
     directory = args.session_dir.resolve()
     result = start(args, directory) if args.action == 'start' else operate(args, directory)
     # 部分对象读取失败不意味着会话身份不确定；保留可用快照，并显式提示缺失内容。

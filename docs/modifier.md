@@ -2,9 +2,11 @@
 
 [返回项目入口](README.cn.md) · [Inspector 快照](inspector.md) · [目录修改](catalog-modifier.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
-`modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。当前优先建立[版本目录与通用读写基础](../TODO.md)；Mesh Controls、Boundary Parameters、Selected Physics Settings 和 Simulation Operations 的修改纳入[后续目录覆盖扩展](roadmap.md#目录覆盖扩展与版本演进)。本页描述不带目录参数的旧 schema 1 契约。带 `--catalog` 和 `--execution` 的 `modify` 已支持[目录 schema 2 修改](catalog-modifier.md)，两种请求分开解析；旧入口和 `set-scalar` 尚未迁入共享目录。
+`modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。当前优先建立[版本目录与通用读写基础](../TODO.md)；Mesh Controls、Boundary Parameters、Selected Physics Settings 和 Simulation Operations 的修改纳入[后续目录覆盖扩展](roadmap.md#目录覆盖扩展与版本演进)。本页描述不带目录参数的兼容 schema 1 契约。它与 `set-scalar` 自动加载仓库随附的 2602 目录并复用同一修改器，原 CLI、请求和旧结果字段继续保留。带 `--catalog` 和 `--execution` 的 `modify` 使用[目录 schema 2 契约](catalog-modifier.md)，无需把旧请求改成新格式。
 
 ## 使用方式
+
+这些兼容写入口精确支持 STAR-CCM+ 2602 Build 21.02.007；版本不匹配在写入前返回 `rejected`。默认目录位于 `catalogs/2602/generated/catalog.json`，人工调用映射为 `catalogs/2602/execution.json`，用户不必额外生成目录或增加命令参数。
 
 先运行 `inspect`，从目标对象快照提取名称、类型和预期旧属性，再保存请求，例如 `change.json`：
 
@@ -33,7 +35,7 @@ python3 bridge/runner/file_bridge.py modify 'Base.sim~' \
   --work-dir outputs/modify-parameter
 ```
 
-`--output` 必须是不存在的 `.sim` 文件，父目录必须存在；工作目录也必须全新。执行顺序为核对当前状态、修改、保存前回读、另存、重新加载、比较所有已覆盖对象字段、核对源文件 SHA256。任一环节失败都不生成成功摘要；如果失败发生在另存之后，输出文件可能已存在，应保留排查。
+`--output` 必须是不存在的 `.sim` 文件，父目录必须存在；工作目录也必须全新。执行顺序为核对当前 server 版本、读取并检查旧状态和目录投影、统一修改与回读、另存、重新加载、比较所有已覆盖旧快照字段与目标已配目录属性、核对源文件 SHA256。任一环节失败都不生成成功摘要；如果失败发生在另存之后，输出文件可能已存在，应保留排查。
 
 后台会话需要先用 `session_bridge.py start` 启动，再执行：
 
@@ -83,22 +85,28 @@ python3 bridge/runner/session_bridge.py save \
 
 ## 拒绝、失败与结果
 
-请求格式错误在启动客户端或标记会话活动请求之前返回。宏在同一次调用内先读取当前快照、比较 `expected`，再调用写入 API；所需标签也在写入前全部解析。
+请求格式错误、默认目录缺失或映射指纹失效在启动客户端或标记会话活动请求之前返回。宏在同一次调用内先精确核对 server 版本，读取当前快照并比较用户提供的全部 `expected` 字段；然后将请求桥接为内部目录修改，核对目录读取与旧快照的对应字段一致，交给统一准备与写入流程。所需标签也在写入前全部解析；不会只取 schema 2 的最小旧值而跳过旧请求中的额外预期字段。
 
 - `status: rejected`：宏确认尚未调用写入 API，预检查已经拒绝请求。`result.json` 保留错误原因和相同的前后快照。CLI 以非零退出码返回；后台会话保持 `ready`，`last_request_status` 为 `rejected`，可以重新读取后构造新请求。
 - `status: ok`：宏已完成写入和回读；文件入口还需通过重新加载核对后才生成成功摘要。
 - 超时、客户端异常、写入或回读失败：后台会话进入 `uncertain` 或保留活动请求标记，按[后台会话失败处理](bridge-session.md#身份隔离与失败处理)处理。当前不自动重试、不承诺回滚。
 
-新 `modify` 入口要求修改前后 Inspector 的已覆盖字段全部读取成功。它不能在部分快照上声称已确认操作结果。原有 `set-scalar` 命令继续保留，仍是直接设置常量的入口，没有新增 `expected` 前置条件；需要旧状态保护的表达式修改应使用 `modify`。
+`modify` 要求修改前后旧 Inspector 已覆盖字段和目标类型全部已配目录属性读取成功。它不能在部分快照上声称已确认操作结果。`set-scalar` 也通过目录的 `quantity_value` 写入常量，但没有新增调用者提供的 `expected`。内部读取当前值用于同次操作准备与回读，不构成陈旧请求保护；需要保护此前读取状态时使用 `modify`。
 
-文件 `summary.json` 与会话修改结果包含 `modification`、`snapshot` 和 `snapshot_diff`。文件结果另有 `reopened_snapshot_match`。运行目录内的 `request.json` 保存规范化后的请求，`result.json` 保存宏返回的 `before`、`after` 及执行状态；请求和日志沿用文件及会话各自的目录结构。
+文件 `summary.json` 与会话修改结果包含 `modification`、`snapshot` 和 `snapshot_diff`。另增 `catalog_before`、`catalog`、`catalog_diff`；文件结果还有 `reopened_snapshot_match` 和 `reopened_catalog_match`，分别确认旧快照与目录内容的独立重载一致。运行目录内的 `request.json` 保存规范化后的兼容请求，`legacy-plan.json` 保存裁剪后的默认目录执行计划；`result.json` 保存宏返回的 `before`、`after` 及执行状态；请求和日志沿用文件及会话各自的目录结构。
 
-`snapshot_diff` 记录已覆盖字段的所有变化，包括参数依赖导致的求值变化。每项包含 `path`、`before`、`after`，其中 `path` 是相对于快照根的 JSON Pointer；对象数组按 Inspector 的稳定排序使用下标，标签等标量数组整体记录。比较排除 `simulation_name`、`session_path` 和 `modified` 三个加载元数据字段。Diff 不覆盖完整 STAR 对象树，不能证明所有未读取设置都未变化。
+`snapshot_diff` 记录已覆盖字段的所有变化，包括参数依赖导致的求值变化。每项包含 `path`、`before`、`after`，其中 `path` 是相对于快照根的 JSON Pointer；对象数组按 Inspector 的稳定排序使用下标，标签等标量数组整体记录。比较排除 `simulation_name`、`session_path` 和 `modified` 三个加载元数据字段。Diff 不覆盖完整 STAR 对象树，不能证明所有未读取设置都未变化。新增 `catalog_diff` 的同会话引用与跨加载规范化规则见[目录结果与差异](catalog-modifier.md#结果与差异)。
 
 
 ## 已确认的范围
 
-2026-10-28，在本机 Linux、STAR-CCM+ 2602 Build 21.02.007 与 `Base.sim~` 上完成实际操作：文件入口将角度参数表达式设为 `3 * <1 deg> + 3 * <1 deg>`，以 `radian` 回读得到 `0.1047197551196598`，另存后重新加载的已覆盖对象内容一致。错误的 SI 单位名称在写入前被拒绝。
+2026-10-28，在本机 Linux、STAR-CCM+ 2602 Build 21.02.007 与 `Base.sim~` 上验证共享目录兼容入口：旧文件 `modify` 将角度参数由 `5 deg` 改为 `6 deg` 表达式，以 `radian` 回读；旧文件 `set-scalar` 写入 `9 deg`。两者均保留原有结果字段，并通过完整旧快照、目录内容的独立重载核对和原输入摘要核对；`set-scalar` 的 `reopened_parameters_match` 也通过。后台旧 schema 1 请求完成用户场函数定义写入 `0`、内置 `Pressure` 场函数和 `BackgroundBlock.Bottom` 边界关联标签 `AirfoilMotion`。随附候选目录与本机当前 35 个根类型重新生成的文件逐字节一致。运行产物位于 `outputs/catalog-legacy-20261028/`。
+
+旧场函数请求重放因定义过时而拒绝；保持当前定义但故意提交过时的 `expected.function_name` 也拒绝，确认其他预期字段仍参与检查。旧 `set-scalar` 使用不兼容量纲的 `m` 被写入前拒绝，随后同会话成功写入 `7 deg` 并继续 `inspect`。向兼容路径的内部计划注入错误 Build `21.02.999` 时，精确版本检查也拒绝请求，会话保持 `ready`。
+
+正常会话显式另存后独立加载，完整旧快照与保存结果一致；标量、用户场函数、内置场函数标签和边界标签四个目标的全部已配目录属性与各自修改结果一致，跨加载引用按目录规则规范化。原始 `Base.sim~` 摘要未变，本轮验证服务均已关闭。
+
+迁移前的原型另已确认：文件入口将角度参数表达式设为 `3 * <1 deg> + 3 * <1 deg>`，以 `radian` 回读得到 `0.1047197551196598`，另存后重新加载的已覆盖对象内容一致。错误的 SI 单位名称在写入前被拒绝。
 
 后台会话完成标量常量 `6` 到 `6.0` 的规范化、用户场函数表达式修改、指定区域内边界的用户标签替换。重放旧场函数请求被拒绝，拒绝前后快照一致，会话保持可读取和可保存；显式另存后独立重载的对象内容一致。原文件和初始工作副本 SHA256 未变化，服务 PID 保持不变、算例只加载一次，验证服务已关闭。
 
