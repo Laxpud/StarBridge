@@ -4,7 +4,7 @@
 
 核对基线：2026-10-20，本机 Linux、STAR-CCM+ 2602 Build 21.02.007，以及用户提供的 `Base.sim~`。本页说明每次加载文件的入口；连续操作同一后台会话见[后台会话说明](bridge-session.md)。两者均为原型脚本，尚未封装为正式 `starbridge` CLI。
 
-## 读取算例参数
+## 读取算例对象与参数
 
 需要 Python 3.11 或更新版本、可启动且具有可用许可证的 STAR-CCM+，以及与其兼容的输入算例。本次仅实际验证上述 STAR 版本。Runner 默认调用 `PATH` 中的 `starccm+`，可用 `--star /absolute/path/to/starccm+` 指定启动器。
 
@@ -15,7 +15,7 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' \
   --work-dir outputs/read-parameters
 ```
 
-`--work-dir` 必须是尚不存在的目录。程序完成后打印 `summary.json` 的绝对路径，快照包含：
+`--work-dir` 必须是尚不存在的目录。程序完成后打印 `summary.json` 的绝对路径。完整对象字段、关系、排序和错误语义见 [Inspector 对象快照](inspector.md)；原有参数字段包含：
 
 * 算例名称、当前加载文件路径及 STAR 的 `modified` 标志；此标志在本机另存后仍可能为真，不能单凭它判断保存失败。
 * 参数名称与 STAR 对象类型。
@@ -75,7 +75,7 @@ Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常�
 | 文件 | 职责 |
 |---|---|
 | [file_bridge.py](../bridge/runner/file_bridge.py) | 校验路径、生成宏、启动 STAR、记录日志、重新加载并核对参数与输入摘要 |
-| [BridgeFileMacro.java](../bridge/java/BridgeFileMacro.java) | 调用 STAR Java API 读取参数、设置标量、另存文件并序列化结果 |
+| [BridgeFileMacro.java](../bridge/java/BridgeFileMacro.java) | 调用 STAR Java API 读取对象快照、设置标量、另存文件并序列化结果 |
 
 宏模板中的占位符由 Runner 填入，不能直接作为完整宏执行。输入由 STAR 自身加载，没有解析或修改 `.sim` 二进制格式。
 
@@ -85,4 +85,4 @@ Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常�
 
 实际输入共读取到 32 个标量全局参数，无参数读取错误。将 `_AirfoilPitchAmplitude` 从 `5 deg` 改为 `6 deg` 后，新文件重新加载结果与保存后快照一致；参数 Diff 只有该项，输入文件摘要保持一致。
 
-没有执行网格生成或求解，也没有验证向量、其他参数类型、异常单位、MCP 或工作记忆功能。后台会话的验证范围单独记录在[会话说明](bridge-session.md#已确认的范围)。
+没有执行网格生成或求解，也没有验证向量、其他参数类型、异常单位、MCP 或工作记忆功能。扩展对象读取的验证范围见 [Inspector](inspector.md#验证范围)。后台会话的验证范围单独记录在[会话说明](bridge-session.md#已确认的范围)。

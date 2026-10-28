@@ -33,7 +33,7 @@ python3 bridge/runner/session_bridge.py save \
 
 `start` 要求会话目录尚不存在。它把输入复制为目录内的 `working.sim`，以单进程计算配置启动独立 STAR 服务，并用一次读取确认服务可用。原输入不作为保存目标；每次请求完成后都会核对原输入的 SHA256。若用户在外部修改原输入，检查也会失败，此后需查看日志并处理会话。
 
-`status` 只读取本地记录并核对进程身份，不启动 Java 客户端；其中 `modified` 是上次成功请求的值。`inspect` 读取服务的当前状态。快照字段及参数覆盖范围见[文件 Bridge](bridge-file.md#读取算例参数)。
+`status` 只读取本地记录并核对进程身份，不启动 Java 客户端；其中 `modified` 是上次成功请求的值。`inspect` 读取服务的当前状态。快照字段、读取错误及覆盖范围见 [Inspector 对象快照](inspector.md)。
 
 `set-scalar` **只修改内存，不保存文件**。它将已有标量设置为数值常量，替换原表达式，检查单位量纲并回读目标数值与单位。临时客户端退出后，另一次 `inspect` 仍能读到该修改。
 
@@ -89,3 +89,5 @@ python3 bridge/runner/session_bridge.py stop \
 本机 `Base.sim~` 读取到 32 个标量参数。跨独立客户端把 `_AirfoilPitchAmplitude` 从 `5 deg` 设置为 `6 deg` 并再次读取，期间服务 PID 不变、算例只加载一次，原输入及工作副本摘要未变化。另存文件重新加载后参数快照一致，服务关闭后记录的进程退出、端口释放。
 
 以上只确认参数读写、保存和生命周期；没有执行网格或求解，没有验证向量分支、GUI 共享会话、异常恢复、其他主机或 STAR 版本。
+
+扩展对象快照的文件与会话对照结果及未实测分支见 [Inspector 验证范围](inspector.md#验证范围)。

@@ -4,6 +4,7 @@
 
 ## 已完成里程碑
 
+- [Inspector 对象快照](archive/milestone-2026-10-28-15-29-inspector.md)
 - [后台常驻会话与临时客户端](archive/milestone-2026-10-21-10-08-background-session.md)
 - [文件 Bridge 原型](archive/milestone-2026-10-21-10-02-file-bridge.md)
 
@@ -11,49 +12,17 @@
 
 当前无进行中的里程碑；活动入口见 [TODO](../TODO.md)。
 
-文件读取与有限设置链路、复用后台会话处理连续请求均已实现，后续阶段按需要推进。各阶段均需核对并同步受影响的项目文档。
+文件与后台会话的对象读取、有限设置和连续请求均已实现，后续阶段按需要推进。各阶段均需核对并同步受影响的项目文档。
 
 ## 后续里程碑
 
-文件原型之后，按 Inspector 扩展 → Modifier 扩展 → MCP → Skills 的初步顺序推进。GUI 会话接入和持久化工作记忆继续保留为目标，其具体实施时点待确定：
+Inspector 对象清单已交付，后续按 Modifier 扩展 → MCP → Skills 的初步顺序推进。GUI 会话接入和持久化工作记忆继续保留为目标，其具体实施时点待确定：
 
-* Inspector 扩展完善文件与后台会话的读取覆盖；GUI 会话接入另行规划。
 * Modifier 阶段需考虑共享状态协调、修改前检查、回读验证和操作记录。
 * MCP 阶段需统一暴露会话管理、算例操作与记忆访问能力。
 * Skills 阶段需明确通用流程如何使用用户、项目及算例记忆。
 
 具体实现里程碑在技术验证后细化。
-
-### Inspector
-
-在文件原型基础上扩展读取能力；以下是预期覆盖，不是当前已实现清单。
-
-预期覆盖：
-
-* Simulation metadata
-* Global Parameters
-* Field Functions
-* Tags
-* Continua
-* Physics Models
-* Regions
-* Boundaries
-* Interfaces
-* Mesh Operations
-* Reports
-* Monitors
-* Stopping Criteria
-* Simulation Operations
-
-预期命令形式（尚未实现）：
-
-```bash
-starbridge inspect case.sim > case.json
-```
-
-为 Agent 理解已有 STAR-CCM+ 算例提供结构化事实，并结合技术文本和工作记忆补充设置背景。
-
----
 
 ### Modifier
 
@@ -121,6 +90,10 @@ Skill 与底层 MCP Tool 分离：
 设计依据见 [StarBridge 设计](../StarBridge.md)，参考实现与适用边界见[参考项目](references.md)。
 
 ## Backlog
+
+### Inspector 读取深度与补充验证
+
+当前交付对象清单及关键属性，字段契约与未实测分支统一见 [Inspector 对象快照](inspector.md)。后续结合实际算例补充非空 Simulation Operations、向量参数和读取失败场景的验证，并按工作流需要扩展边界条件、物性、网格控制及操作执行顺序；不将当前清单视为完整设置导出。
 
 ### 常驻 Java 适配器与 GUI 接入
 

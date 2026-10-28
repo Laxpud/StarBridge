@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""调用本机 STAR 批处理宏，读取文件或修改标量参数后另存并重新加载核对。"""
+"""调用本机 STAR 批处理宏，读取算例对象或修改标量参数后另存并重新加载核对。"""
 
 import argparse
 import hashlib
@@ -78,7 +78,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
 def main():
     """处理文件操作请求；输出目录必须全新，已有文件不被覆盖。"""
     parser = argparse.ArgumentParser(
-        description="Inspect simulation parameters or set a scalar and verify a saved copy.")
+        description="Inspect simulation objects or set a scalar and verify a saved copy.")
     parser.add_argument("action", choices=["inspect", "set-scalar"])
     parser.add_argument("input", type=Path)
     parser.add_argument("--work-dir", type=Path, required=True)
@@ -138,6 +138,10 @@ def main():
     summary["input_unchanged"] = True
     (directory / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    # 部分读取仍保留成功字段与原文件核对结果，同时提示调用方检查错误位置。
+    if not data["after"].get("inspection_complete", True):
+        print("StarBridge warning: Inspection is incomplete; check snapshot read_errors.",
+              file=sys.stderr)
     print(directory / "summary.json")
 
 

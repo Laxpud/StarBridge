@@ -11,7 +11,7 @@
 
 ## What this project is for
 
-StarBridge is in early development. A file Bridge prototype can read global parameters and set an existing scalar parameter in a new simulation file, then reload it to verify the saved values. A background-session prototype also reuses one loaded STAR server for successive requests. Each request starts a temporary Java client; a persistent Java adapter, GUI integration, MCP, and working memory remain future work.
+StarBridge is in early development. The Inspector reads simulation objects, key properties, and relationships through both file and background-session entry points. The file Bridge can also set an existing scalar parameter in a new simulation file, then reload it to verify the saved values. A background-session prototype also reuses one loaded STAR server for successive requests. Each request starts a temporary Java client; a persistent Java adapter, GUI integration, MCP, and working memory remain future work.
 
 The proposed system combines structured simulation access, workflow Skills, persistent working memory, and long-lived background or GUI simulation sessions. See the [design document](StarBridge.md) for scope and boundaries.
 
@@ -29,6 +29,7 @@ Supply your own compatible simulation file and a new work directory. For repeate
 
 | Document | Purpose |
 |---|---|
+| [Inspector snapshot](docs/inspector.md) | Object coverage, snapshot fields, read errors, and validation limits |
 | [File Bridge guide](docs/bridge-file.md) | File operations, requirements, and implementation limits |
 | [Background-session guide](docs/bridge-session.md) | Start, inspect, modify, save, and stop a persistent STAR server |
 | [Design](StarBridge.md) | Product scope, proposed architecture, sessions, and working memory |

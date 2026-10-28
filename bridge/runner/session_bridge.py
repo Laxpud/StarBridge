@@ -284,6 +284,10 @@ def main():
         parser.error('--value must be finite')
     directory = args.session_dir.resolve()
     result = start(args, directory) if args.action == 'start' else operate(args, directory)
+    # 部分对象读取失败不意味着会话身份不确定；保留可用快照，并显式提示缺失内容。
+    if not result.get('snapshot', {}).get('inspection_complete', True):
+        print('StarBridge warning: Inspection is incomplete; check snapshot read_errors.',
+              file=sys.stderr)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

@@ -11,7 +11,7 @@
 
 ## 适合做什么
 
-StarBridge 目前处于早期开发阶段。文件 Bridge 原型已支持读取全局参数、修改已有标量并另存，以及重新加载核对保存值。后台会话原型也已支持复用同一个 STAR 服务连续操作，每次请求启动临时 Java 客户端；常驻 Java 适配器、GUI 接入、MCP 和工作记忆仍为后续目标。
+StarBridge 目前处于早期开发阶段。Inspector 已支持通过文件和后台会话入口读取算例对象、关键属性与归属关系。文件 Bridge 还支持修改已有标量并另存，以及重新加载核对保存值。后台会话原型也已支持复用同一个 STAR 服务连续操作，每次请求启动临时 Java 客户端；常驻 Java 适配器、GUI 接入、MCP 和工作记忆仍为后续目标。
 
 拟议系统结合结构化算例访问、工作流 Skills、持久化工作记忆，以及后台或 GUI 常驻算例会话。具体定位与边界见[设计文档](../StarBridge.md)。
 
@@ -29,6 +29,7 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' --work-dir outputs/read
 
 | 文档 | 职责 |
 |---|---|
+| [Inspector 对象快照](inspector.md) | 对象覆盖、快照字段、读取错误与验证边界 |
 | [文件 Bridge 使用说明](bridge-file.md) | 文件操作、运行条件与实现边界 |
 | [后台会话使用说明](bridge-session.md) | 常驻 STAR 服务的启动、读取、修改、保存和关闭 |
 | [设计文档](../StarBridge.md) | 项目定位、拟议架构、会话与工作记忆 |

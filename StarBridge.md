@@ -6,7 +6,7 @@
 
 **StarBridge** 是一个面向 AI Agent 的 **STAR-CCM+ 交互插件**，通过 Skills、MCP、自动化接口和持久化工作记忆，使 Agent 能够读取、理解、修改、运行 STAR-CCM+ 算例，并验证操作结果。
 
-项目已实现文件 Bridge 与后台会话原型。本文描述目标能力和拟议架构，已实现范围见[文件 Bridge](docs/bridge-file.md)与[后台会话使用说明](docs/bridge-session.md)；接口名称、目录划分和实现方式仍可在技术验证后调整。
+项目已实现文件 Bridge、后台会话原型和 [Inspector 对象快照](docs/inspector.md)。本文描述目标能力和拟议架构，已实现范围见[文件 Bridge](docs/bridge-file.md)与[后台会话使用说明](docs/bridge-session.md)；接口名称、目录划分和实现方式仍可在技术验证后调整。
 
 StarBridge 不将自身限定为单纯的 CLI 或 Java Macro 工具，而是作为 AI Agent 与 STAR-CCM+ 之间的统一桥接层。
 
@@ -75,7 +75,7 @@ StarBridge 的基本原则是：
 
 ## 常驻服务与算例会话
 
-当前已实现后台 STAR 服务常驻，每次请求启动临时批处理客户端连接该服务，支持读取参数、只修改内存、显式另存和关闭。客户端退出不会关闭服务，使用方式与限制见[后台会话说明](docs/bridge-session.md)。常驻 Java 适配器、持续接收请求的 Bridge 服务和 GUI 接入留待后续研究。以下描述完整目标。
+当前已实现后台 STAR 服务常驻，每次请求启动临时批处理客户端连接该服务，支持读取对象快照、只修改内存、显式另存和关闭。客户端退出不会关闭服务，使用方式与限制见[后台会话说明](docs/bridge-session.md)。常驻 Java 适配器、持续接收请求的 Bridge 服务和 GUI 接入留待后续研究。以下描述完整目标。
 
 StarBridge 服务和 STAR-CCM+ 算例会话都应支持常驻，但两者有独立的生命周期：
 
