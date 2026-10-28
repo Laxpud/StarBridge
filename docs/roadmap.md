@@ -10,7 +10,7 @@
 
 ## 当前里程碑
 
-当前无进行中的里程碑；活动入口见 [TODO](../TODO.md)。
+当前为 Modifier；活动目标、任务与完成条件见 [TODO](../TODO.md)。
 
 文件与后台会话的对象读取、有限设置和连续请求均已实现，后续阶段按需要推进。各阶段均需核对并同步受影响的项目文档。
 
@@ -26,21 +26,7 @@ Inspector 对象清单已交付，后续按 Modifier 扩展 → MCP → Skills �
 
 ### Modifier
 
-在已有标量设置入口基础上扩展修改类型，并明确每类操作的检查与保存契约。
-
-优先支持：
-
-```text
-Global Parameters
-Field Functions
-Tags
-Mesh Controls
-Boundary Parameters
-Selected Physics Settings
-Simulation Operations
-```
-
-修改后自动重新读取对应对象并验证。
+当前里程碑已移入 [TODO](../TODO.md)。表达式与标签修改的当前契约见 [Modifier 单项修改](modifier.md)，其余类别继续按可读取和回读的属性推进。
 
 ---
 

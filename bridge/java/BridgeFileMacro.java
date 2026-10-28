@@ -17,7 +17,7 @@ import star.base.report.*;
 import star.meshing.*;
 
 /**
- * 在 STAR 已加载的算例中读取对象清单、设置标量或显式另存，供文件与会话 Runner 共用。
+ * 在 STAR 已加载的算例中读取对象清单、修改表达式或标签、设置标量及显式另存，供文件与会话 Runner 共用。
  * Runner 替换配置占位符；本宏不生成网格、不执行求解。
  */
 public class BridgeFileMacro extends StarMacro {
@@ -28,29 +28,42 @@ public class BridgeFileMacro extends StarMacro {
     private static final String NAME = __NAME__;
     private static final String UNIT = __UNIT__;
     private static final double VALUE = __VALUE__;
+    private static final Map<String, Object> MODIFICATION = __MODIFICATION__;
 
     @Override
     public void execute() {
         try {
             Simulation sim = getActiveSimulation();
-            // 常驻请求先核对工作文件身份，避免把请求发到其他已打开的算例。
+            // 1. 核对服务身份并读取当前状态；预期旧值在同一客户端内、写入前检查。
             if (!EXPECTED_SESSION.isEmpty()
                     && !Path.of(sim.getSessionPath()).toRealPath().equals(
                         Path.of(EXPECTED_SESSION).toRealPath())) {
                 throw new IllegalArgumentException("Unexpected simulation session: " + sim.getSessionPath());
             }
-            if (!List.of("inspect", "set-scalar", "save", "file-set").contains(ACTION)) {
+            if (!List.of("inspect", "set-scalar", "save", "file-set", "modify", "file-modify").contains(ACTION)) {
                 throw new IllegalArgumentException("Unknown action: " + ACTION);
             }
-            // 1. 先读取对象与参数快照，便于区分目标修改与依赖值变化。
-            String before = snapshot(sim);
-            if (ACTION.equals("save") || ACTION.equals("file-set")) {
+            Map<String, Object> before = snapshot(sim);
+            boolean modifying = ACTION.equals("modify") || ACTION.equals("file-modify");
+            boolean saving = ACTION.equals("save") || ACTION.equals("file-set") || ACTION.equals("file-modify");
+            if (saving) {
                 if (OUTPUT.isEmpty()) throw new IllegalArgumentException("Output is required");
                 if (Files.exists(Path.of(OUTPUT))) {
                     throw new IllegalArgumentException("Output already exists: " + OUTPUT);
                 }
             }
-            if (ACTION.equals("set-scalar") || ACTION.equals("file-set")) {
+            if (modifying) {
+                Runnable change;
+                try {
+                    change = prepareModification(sim, before);
+                } catch (IllegalArgumentException error) {
+                    // 只有确定尚未调用写入 API 的预检查拒绝，才允许会话继续使用。
+                    writeResult("rejected", before, before, error.getMessage());
+                    return;
+                }
+                // 2. 写入或回读失败不冒充拒绝；Runner 会将后台会话标为 uncertain。
+                change.run();
+            } else if (ACTION.equals("set-scalar") || ACTION.equals("file-set")) {
                 NamedObject object = sim.get(GlobalParameterManager.class).getObject(NAME);
                 if (!(object instanceof ScalarGlobalParameter)) {
                     throw new IllegalArgumentException("Not a scalar global parameter: " + NAME);
@@ -60,22 +73,226 @@ public class BridgeFileMacro extends StarMacro {
                 if (units == null || !quantity.getUnits().compatible(units)) {
                     throw new IllegalArgumentException("Unknown or incompatible unit: " + UNIT);
                 }
-                // 2. 此入口明确把目标设置为数值常量；原表达式会由 before 保留。
+                // 保留旧数值入口：设置数值常量，原表达式由 before 保存。
                 quantity.setValueAndUnits(VALUE, units);
             }
-            // 会话的 set-scalar 只改内存；只有显式 save 或旧文件入口才保存。
-            if (ACTION.equals("save") || ACTION.equals("file-set")) {
+            Map<String, Object> after = ACTION.equals("inspect") ? before : snapshot(sim);
+            if (modifying) verifyModified(before, after);
+            // 3. 新修改入口先回读再另存；后台 modify 不隐含保存。
+            if (saving) {
                 sim.saveState(OUTPUT);
+                after = snapshot(sim);
+                if (modifying) verifyModified(before, after);
             }
-            // 3. 成功标记在另存及回读结束后写出；Runner 不只依赖 STAR 退出码。
-            // 只读请求复用同一次快照，避免重复查询，并保证 before 与 after 一致。
-            String after = ACTION.equals("inspect") ? before : snapshot(sim);
-            Files.writeString(Path.of(RESULT),
-                "{\"status\":\"ok\",\"before\":" + before + ",\"after\":" + after + "}",
-                StandardCharsets.UTF_8);
+            writeResult("ok", before, after, null);
         } catch (Exception error) {
-            throw new RuntimeException("StarBridge macro failed", error);
+            throw new RuntimeException("StarBridge macro failed: " + error, error);
         }
+    }
+
+    /** 保存执行状态、前后快照与原始修改请求；拒绝结果也保留可审阅证据。 */
+    private void writeResult(String status, Map<String, Object> before,
+                             Map<String, Object> after, String error) throws java.io.IOException {
+        Map<String, Object> result = fields("status", status, "before", before, "after", after);
+        if (MODIFICATION != null) result.put("modification", MODIFICATION);
+        if (error != null) result.put("error", error);
+        Files.writeString(Path.of(RESULT), json(result), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 先解析唯一目标、核对预期旧属性并解析所需标签，再返回单项写入动作。
+     * 本方法不能调用设置 API；只有返回后的 Runnable 可以写入。
+     */
+    @SuppressWarnings("unchecked")
+    private Runnable prepareModification(Simulation sim, Map<String, Object> before) {
+        if (MODIFICATION == null || !Boolean.TRUE.equals(before.get("inspection_complete"))) {
+            throw new IllegalArgumentException("Modification requires a complete covered snapshot and request");
+        }
+        Map<String, Object> target = (Map<String, Object>) MODIFICATION.get("target");
+        Map<String, Object> expected = (Map<String, Object>) MODIFICATION.get("expected");
+        Map<String, Object> current = targetSnapshot(before, target);
+        for (Map.Entry<String, Object> entry : expected.entrySet()) {
+            if (!current.containsKey(entry.getKey()) || !sameValue(current.get(entry.getKey()), entry.getValue())) {
+                throw new IllegalArgumentException("Precondition mismatch: " + entry.getKey());
+            }
+        }
+        ClientServerObject object = resolveTarget(sim, target);
+        String operation = (String) MODIFICATION.get("operation");
+        if (operation.equals("set-definition")) {
+            if (object instanceof ScalarGlobalParameter) {
+                Map<String, Object> value = (Map<String, Object>) MODIFICATION.get("value");
+                String definition = (String) value.get("definition");
+                ScalarPhysicalQuantity quantity = ((ScalarGlobalParameter) object).getQuantity();
+                // STAR 强制将非常量表达式的单位切换为 SI，不能假定保留原显示单位。
+                // 请求必须显式声明该结果单位；不符合时在写入前拒绝。
+                String siUnit = quantity.getUnits().getSIUnits().getPresentationName();
+                Double constant = PhysicalQuantityParser.parseAsConstant(definition);
+                if (constant != null && !Double.isFinite(constant)) {
+                    throw new IllegalArgumentException("Scalar constants must be finite");
+                }
+                if (constant == null && !value.get("unit").equals(siUnit)) {
+                    throw new IllegalArgumentException("Scalar expressions require SI result unit: '" + siUnit + "'");
+                }
+                Units units = findNamed(sim.getUnitsManager().getObjects(), (String) value.get("unit"));
+                if (!quantity.getUnits().compatible(units)) {
+                    throw new IllegalArgumentException("Incompatible result unit");
+                }
+                return () -> quantity.setDefinitionAndUnits(definition, units);
+            }
+            if (object instanceof UserFieldFunction) {
+                String definition = (String) MODIFICATION.get("value");
+                return () -> ((UserFieldFunction) object).setDefinition(definition);
+            }
+            throw new IllegalArgumentException("Definitions require scalar parameters or user field functions");
+        }
+        if (operation.equals("set-tags")) {
+            TagManager manager = sim.get(TagManager.class);
+            // 系统标签可能承载 STAR 内部状态，本入口只替换全部由用户标签构成的关联。
+            for (Tag tag : manager.getTags(object)) {
+                if (!(tag instanceof UserTag)) {
+                    throw new IllegalArgumentException("Target has non-user tags");
+                }
+            }
+            List<Tag> tags = new ArrayList<>();
+            for (Object name : (List<?>) MODIFICATION.get("value")) {
+                Tag tag = findNamed(manager.getObjects(), (String) name);
+                if (!(tag instanceof UserTag)) {
+                    throw new IllegalArgumentException("Not a user tag: " + name);
+                }
+                tags.add(tag);
+            }
+            return () -> manager.setTags(object, tags);
+        }
+        throw new IllegalArgumentException("Unsupported modification operation: " + operation);
+    }
+
+    /** 目标类别采用白名单；边界必须在指定区域中解析，不按全局同名对象猜测。 */
+    private ClientServerObject resolveTarget(Simulation sim, Map<String, Object> target) {
+        String name = (String) target.get("name");
+        switch ((String) target.get("kind")) {
+            case "parameter": return findNamed(sim.get(GlobalParameterManager.class).getObjects(), name);
+            case "field_function": return findNamed(sim.getFieldFunctionManager().getObjects(), name);
+            case "region": return findNamed(sim.getRegionManager().getObjects(), name);
+            case "boundary":
+                Region region = findNamed(sim.getRegionManager().getObjects(), (String) target.get("region"));
+                return findNamed(region.getBoundaryManager().getObjects(), name);
+            default: throw new IllegalArgumentException("Unsupported target kind");
+        }
+    }
+
+    /** 只接受恰好一个显示名称匹配的对象；不创建缺失对象，也不接受模糊匹配。 */
+    private <T extends ClientServerObject> T findNamed(Collection<T> objects, String name) {
+        T found = null;
+        for (T object : objects) {
+            if (name.equals(object.getPresentationName())) {
+                if (found != null) throw new IllegalArgumentException("Ambiguous object name: " + name);
+                found = object;
+            }
+        }
+        if (found == null) throw new IllegalArgumentException("Object not found: " + name);
+        return found;
+    }
+
+    /** 从同一份 Inspector 快照定位对象，确保预检查与输出使用同一字段契约。 */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> targetSnapshot(Map<String, Object> snapshot, Map<String, Object> target) {
+        String collection;
+        switch ((String) target.get("kind")) {
+            case "parameter": collection = "parameters"; break;
+            case "field_function": collection = "field_functions"; break;
+            case "region": collection = "regions"; break;
+            case "boundary":
+                snapshot = targetSnapshot(snapshot, fields("kind", "region", "name", target.get("region")));
+                collection = "boundaries";
+                break;
+            default: throw new IllegalArgumentException("Unsupported target kind");
+        }
+        Map<String, Object> found = null;
+        for (Map<String, Object> entry : (List<Map<String, Object>>) snapshot.get(collection)) {
+            if (target.get("name").equals(entry.get("name"))) {
+                if (found != null) throw new IllegalArgumentException("Ambiguous snapshot target");
+                found = entry;
+            }
+        }
+        if (found == null) throw new IllegalArgumentException("Snapshot target not found");
+        return found;
+    }
+
+    /**
+     * 保存前核对目标属性、声明的结果单位与身份；部分读取不能作为修改成功证据。
+     * 表达式按文本回读核对，不调用求解或场函数求值来证明其物理有效性。
+     */
+    @SuppressWarnings("unchecked")
+    private void verifyModified(Map<String, Object> before, Map<String, Object> after) {
+        if (!Boolean.TRUE.equals(after.get("inspection_complete"))) {
+            throw new IllegalStateException("Modified snapshot is incomplete");
+        }
+        Map<String, Object> target = (Map<String, Object>) MODIFICATION.get("target");
+        Map<String, Object> original = targetSnapshot(before, target);
+        Map<String, Object> current = targetSnapshot(after, target);
+        String property = MODIFICATION.get("operation").equals("set-definition") ? "definition" : "tags";
+        boolean scalar = property.equals("definition") && current.get("object_type").equals("ScalarGlobalParameter");
+        Object value = scalar ? ((Map<?, ?>) MODIFICATION.get("value")).get("definition") : MODIFICATION.get("value");
+        boolean matches = sameValue(current.get(property), value);
+        if (!matches && scalar) {
+            // STAR 将纯数值文本规范化为 double 字符串，例如 6 变为 6.0。
+            Double wanted = PhysicalQuantityParser.parseAsConstant((String) value);
+            Double actual = PhysicalQuantityParser.parseAsConstant((String) current.get("definition"));
+            matches = wanted != null && actual != null && sameValue(wanted, actual);
+        }
+        if (!matches) {
+            throw new IllegalStateException("Modification readback mismatch: " + property);
+        }
+        if (scalar && !sameValue(current.get("unit"), ((Map<?, ?>) MODIFICATION.get("value")).get("unit"))) {
+            throw new IllegalStateException("Modification readback mismatch: unit");
+        }
+        if (scalar) {
+            for (String key : List.of("raw_value", "si_value")) {
+                Object number = current.get(key);
+                if (!(number instanceof Number) || !Double.isFinite(((Number) number).doubleValue())) {
+                    throw new IllegalStateException("Modified scalar is non-finite: " + key);
+                }
+            }
+        }
+        for (String key : List.of("name", "object_type", "unit", "function_name", "value_type", "dimensions")) {
+            if (scalar && key.equals("unit")) continue;
+            if (original.containsKey(key) && !sameValue(original.get(key), current.get(key))) {
+                throw new IllegalStateException("Target identity or type changed: " + key);
+            }
+        }
+    }
+
+    /** 递归比较 JSON 值；映射不依赖键顺序，数值允许 1 与 1.0 相等。 */
+    private boolean sameValue(Object left, Object right) {
+        // Inspector 将非有限值输出为字符串；预期状态必须与这个 JSON 表示一致。
+        if (left instanceof Double && !Double.isFinite((Double) left)) left = left.toString();
+        if (right instanceof Double && !Double.isFinite((Double) right)) right = right.toString();
+        if (left instanceof Number && right instanceof Number) {
+            return new java.math.BigDecimal(left.toString()).compareTo(
+                new java.math.BigDecimal(right.toString())) == 0;
+        }
+        if (left instanceof Map<?, ?> && right instanceof Map<?, ?>) {
+            Map<?, ?> a = (Map<?, ?>) left;
+            Map<?, ?> b = (Map<?, ?>) right;
+            if (!a.keySet().equals(b.keySet())) return false;
+            for (Object key : a.keySet()) if (!sameValue(a.get(key), b.get(key))) return false;
+            return true;
+        }
+        if (left instanceof List<?> && right instanceof List<?>) {
+            List<?> a = (List<?>) left;
+            List<?> b = (List<?>) right;
+            if (a.size() != b.size()) return false;
+            for (int i = 0; i < a.size(); i++) if (!sameValue(a.get(i), b.get(i))) return false;
+            return true;
+        }
+        return java.util.Objects.equals(left, right);
+    }
+
+    /** 按键值对构造请求和结果；Runner 只把转义后的 JSON 值填入此容器。 */
+    private static Map<String, Object> fields(Object... pairs) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) result.put((String) pairs[i], pairs[i + 1]);
+        return result;
     }
 
     /**
@@ -83,7 +300,7 @@ public class BridgeFileMacro extends StarMacro {
      * 各集合独立记录错误；空集合只有在对应位置没有 read_errors 时才表示确实为空。
      * inspection_complete 仅表示本版声明的字段均成功读取，不代表完整 STAR 设置。
      */
-    private String snapshot(Simulation sim) {
+    private Map<String, Object> snapshot(Simulation sim) {
         Map<String, Object> result = new LinkedHashMap<>();
         List<Map<String, Object>> errors = new ArrayList<>();
         result.put("schema_version", 1);
@@ -189,13 +406,14 @@ public class BridgeFileMacro extends StarMacro {
         // 4. 即使一个类别失败，也交出其他类别；调用方必须检查完整性和错误位置。
         result.put("inspection_complete", errors.isEmpty());
         result.put("read_errors", errors);
-        return json(result);
+        return result;
     }
 
     /** 统一数量字段：raw_value 使用 unit 所示单位，si_value 使用 SI 单位。 */
     private void scalar(Map<String, Object> entry, ScalarPhysicalQuantity quantity) {
         entry.put("definition", quantity.getDefinition());
         entry.put("unit", quantity.getUnits().getPresentationName());
+        entry.put("si_unit", quantity.getUnits().getSIUnits().getPresentationName());
         entry.put("raw_value", quantity.getRawValue());
         entry.put("si_value", quantity.getSIValue());
     }

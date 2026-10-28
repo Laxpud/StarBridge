@@ -19,6 +19,7 @@ import time
 import uuid
 
 from file_bridge import digest, execute
+from modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
 
 
 def write_json(path, data):
@@ -110,7 +111,8 @@ def terminate_owned(state):
     raise RuntimeError('Managed server processes did not terminate')
 
 
-def request(directory, state, action, timeout, *, output=None, name='', value=0.0, unit=''):
+def request(directory, state, action, timeout, *, output=None, name='', value=0.0, unit='',
+            modification=None):
     """连接已登记的服务并校验目标文件身份；修改失败不自动重试。"""
     if not alive(state):
         raise RuntimeError('Managed server is not running; refusing to connect to its old port')
@@ -120,7 +122,7 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
     data = execute(state['star'], None, run, output, name, value, unit,
                    action=action, host=state['host'], port=state['port'],
                    expected_session=state['current_file'], timeout=timeout,
-                   client_userdir=directory / 'client-settings')
+                   client_userdir=directory / 'client-settings', modification=modification)
     if not alive(state):
         raise RuntimeError('Server exited or changed identity during request')
     if digest(Path(state['input'])) != state['input_sha256']:
@@ -128,6 +130,7 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
     state['current_file'] = data['after']['session_path']
     state['modified'] = data['after']['modified']
     state['last_request'] = identifier
+    state['last_request_status'] = data['status']
     state['active_request'] = None
     state['state'] = 'ready'
     write_json(directory / 'session.json', state)
@@ -233,7 +236,11 @@ def operate(args, directory):
         try:
             data, run = request(directory, state, args.action, args.timeout, output=output,
                                 name=getattr(args, 'name', ''), value=getattr(args, 'value', 0.0),
-                                unit=getattr(args, 'unit', ''))
+                                unit=getattr(args, 'unit', ''), modification=getattr(args, 'modification', None))
+            if data['status'] == 'rejected':
+                raise ModificationRejected(f'{data["error"]}; see {run / "result.json"}')
+            if args.action == 'modify':
+                verify_modification(args.modification, data['before'], data['after'])
             if args.action == 'set-scalar':
                 target = next(p for p in data['after']['parameters'] if p['name'] == args.name)
                 actual = target.get('raw_value')
@@ -243,8 +250,15 @@ def operate(args, directory):
             if output:
                 if not output.is_file() or Path(data['after']['session_path']).resolve() != output:
                     raise RuntimeError('Saved file/path was not confirmed')
-            return {'session': str(directory), 'process': state['process'],
-                    'request_result': str(run / 'result.json'), 'snapshot': data['after']}
+            result = {'session': str(directory), 'process': state['process'],
+                      'request_result': str(run / 'result.json'), 'snapshot': data['after']}
+            if args.action == 'modify':
+                result.update(modification=args.modification,
+                              snapshot_diff=snapshot_diff(data['before'], data['after']))
+            return result
+        except ModificationRejected:
+            # 宏已确认写入前拒绝，request 已清除活动标记；不把拒绝变成未知写入结果。
+            raise
         except BaseException:
             # 超时或客户端失败可能发生在写入之后；保留不确定状态并禁止静默重试。
             state['state'] = 'uncertain'
@@ -258,7 +272,7 @@ def main():
         raise RuntimeError('Session prototype currently supports Linux only')
     parser = argparse.ArgumentParser(description='Manage a persistent local STAR simulation server.')
     commands = parser.add_subparsers(dest='action', required=True)
-    for action in ['start', 'status', 'inspect', 'set-scalar', 'save', 'stop']:
+    for action in ['start', 'status', 'inspect', 'set-scalar', 'modify', 'save', 'stop']:
         command = commands.add_parser(action)
         command.add_argument('--session-dir', type=Path, required=True)
         if action != 'status':
@@ -273,6 +287,8 @@ def main():
             command.add_argument('--unit', required=True)
         elif action == 'save':
             command.add_argument('--output', type=Path, required=True)
+        elif action == 'modify':
+            command.add_argument('--request', type=Path, required=True)
         elif action == 'stop':
             command.add_argument('--discard', action='store_true')
     args = parser.parse_args()
@@ -282,6 +298,9 @@ def main():
         parser.error('--port must be between 1024 and 65535')
     if args.action == 'set-scalar' and not math.isfinite(args.value):
         parser.error('--value must be finite')
+    if args.action == 'modify':
+        # 请求格式在写入活动标记前完成校验，格式错误不影响已有会话。
+        args.modification = load_request(args.request)
     directory = args.session_dir.resolve()
     result = start(args, directory) if args.action == 'start' else operate(args, directory)
     # 部分对象读取失败不意味着会话身份不确定；保留可用快照，并显式提示缺失内容。

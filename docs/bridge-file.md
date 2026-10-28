@@ -25,6 +25,10 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' \
 
 无量纲参数的单位名称可为空字符串。表达式和求值结果同时保留，例如引用其他参数的表达式不会仅被记录为当前数值。非有限标量值作为字符串输出，避免生成不合法 JSON。
 
+## 按预期旧状态修改
+
+表达式和标签修改使用 `modify --request`，请求格式、预检查、全部已覆盖字段的 Diff 和重载核对见 [Modifier 单项修改](modifier.md)。以下 `set-scalar` 保留原有直接设置常量的行为，不包含 `expected` 旧状态检查。
+
 ## 修改已有标量并另存
 
 以下示例把俯仰幅值设为 `6 deg`：

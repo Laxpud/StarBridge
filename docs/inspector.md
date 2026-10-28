@@ -2,7 +2,7 @@
 
 [返回项目入口](README.cn.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
-Inspector 读取算例对象清单、关键属性和归属关系。文件 `inspect` 的 `summary.json.snapshot` 与后台会话 `inspect` 的 `snapshot` 使用相同格式。设置与保存操作中的 `before`、`after` 也使用此格式；标量修改的自动 Diff 和重新加载核对仍只覆盖参数。
+Inspector 读取算例对象清单、关键属性和归属关系。文件 `inspect` 的 `summary.json.snapshot` 与后台会话 `inspect` 的 `snapshot` 使用相同格式。设置与保存操作中的 `before`、`after` 也使用此格式；旧 `set-scalar` 的自动 Diff 和重新加载核对仍只覆盖参数；新 [Modifier](modifier.md) 使用同一快照记录全部已覆盖字段的 Diff，并在文件重新加载后比较对象内容。
 
 ```bash
 python3 bridge/runner/file_bridge.py inspect 'Base.sim~' \
@@ -22,7 +22,7 @@ python3 bridge/runner/session_bridge.py inspect \
 
 | 字段 | 当前读取内容 |
 |---|---|
-| `parameters` | 标量表达式、单位、当前单位值和 SI 值；向量表达式、单位和当前单位分量；附加标签 |
+| `parameters` | 标量表达式、单位、SI 单位对象名 `si_unit`、当前单位值和 SI 值；向量表达式、单位和当前单位分量；附加标签 |
 | `field_functions` | 显示名称、可在表达式中引用的 `function_name`、`value_type`、量纲名称 `dimensions`、`user_defined`；用户场函数另有 `definition` |
 | `tags` | 标签名称与对象类型 |
 | `continua` | 连续体、关联区域 `regions`、其模型管理器中的 `models` |
@@ -36,7 +36,7 @@ python3 bridge/runner/session_bridge.py inspect \
 
 对象集合按名称、类型排序，标签按名称排序。边界嵌套在所属区域中；接口的边界引用也带区域，避免不同区域里的同名边界发生混淆。缺失的可选关系保留为 `null`。
 
-数量对象的 `raw_value` 使用 `unit` 对应单位，`si_value` 使用 SI 单位；无量纲单位名称可能为空字符串。向量不转换坐标系，只保留 STAR 返回的分量，不应推断为另一坐标系下的向量。`NaN`、`Infinity` 等非有限数值编码为字符串，保持 JSON 合法。
+数量对象的 `raw_value` 使用 `unit` 对应单位，`si_value` 使用 `si_unit` 指明的 SI 单位；无量纲单位名称可能为空字符串。向量不转换坐标系，只保留 STAR 返回的分量，不应推断为另一坐标系下的向量。`NaN`、`Infinity` 等非有限数值编码为字符串，保持 JSON 合法。
 
 ## 空集合、读取错误与覆盖范围
 

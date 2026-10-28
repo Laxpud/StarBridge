@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""调用本机 STAR 批处理宏，读取算例对象或修改标量参数后另存并重新加载核对。"""
+"""调用本机 STAR 批处理宏，读取算例对象或按请求修改，另存后重新加载核对。"""
 
 import argparse
 import hashlib
@@ -12,6 +12,9 @@ import signal
 import subprocess
 import sys
 
+from modifier import (ModificationRejected, content_snapshot, java_literal, load_request,
+                      same_value, snapshot_diff, verify_modification)
+
 
 def digest(path):
     """对文件流式计算摘要，核对源算例在操作前后未发生变化。"""
@@ -21,7 +24,7 @@ def digest(path):
 
 def execute(star, source, directory, output=None, name="", value=0.0, unit="", *,
             action=None, host=None, port=None, expected_session="", timeout=None,
-            client_userdir=None):
+            client_userdir=None, modification=None):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
     directory.mkdir(parents=True, exist_ok=False)
     result = directory / "result.json"
@@ -36,10 +39,15 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
         "__UNIT__": unit,
         "__VALUE__": value,
     }
+    # 修改请求单独留存；Java 容器源码由已校验 JSON 生成，不接收任意 Java 片段。
+    if modification is not None:
+        (directory / "request.json").write_text(
+            json.dumps(modification, ensure_ascii=False, indent=2) + "\n")
     text = template.read_text()
     # 一次替换原模板中的占位符，避免用户文本被后续占位符替换再次解释。
-    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|OUTPUT|NAME|UNIT|VALUE)__",
-                  lambda match: json.dumps(replacements[match.group()], ensure_ascii=True),
+    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|OUTPUT|NAME|UNIT|VALUE|MODIFICATION)__",
+                  lambda match: java_literal(modification) if match.group() == "__MODIFICATION__"
+                  else json.dumps(replacements[match.group()], ensure_ascii=True),
                   text)
     macro.write_text(text)
     command = [star, "-noretry", "-nbuserdir",
@@ -70,7 +78,8 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
     if process.returncode != 0 or not result.is_file():
         raise RuntimeError(f"STAR did not complete the macro; see {directory / 'star.log'}")
     data = json.loads(result.read_text())
-    if data.get("status") != "ok":
+    if data.get("status") != "ok" and not (
+            modification is not None and data.get("status") == "rejected"):
         raise RuntimeError(f"Invalid macro result: {result}")
     return data
 
@@ -78,8 +87,8 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
 def main():
     """处理文件操作请求；输出目录必须全新，已有文件不被覆盖。"""
     parser = argparse.ArgumentParser(
-        description="Inspect simulation objects or set a scalar and verify a saved copy.")
-    parser.add_argument("action", choices=["inspect", "set-scalar"])
+        description="Inspect simulation objects or modify and verify a saved copy.")
+    parser.add_argument("action", choices=["inspect", "set-scalar", "modify"])
     parser.add_argument("input", type=Path)
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--star", default="starccm+")
@@ -87,15 +96,26 @@ def main():
     parser.add_argument("--name")
     parser.add_argument("--value", type=float)
     parser.add_argument("--unit")
+    parser.add_argument("--request", type=Path)
     args = parser.parse_args()
     source = args.input.resolve(strict=True)
     directory = args.work_dir.resolve()
     output = args.output.resolve() if args.output else None
+    modification = None
+    if args.action == "modify":
+        if args.request is None or output is None:
+            parser.error("modify requires --request and --output")
+        if any(item is not None for item in [args.name, args.value, args.unit]):
+            parser.error("modify does not accept --name, --value or --unit")
+        modification = load_request(args.request)
+    elif args.request is not None:
+        parser.error("--request is only supported by modify")
     if args.action == "set-scalar":
         if output is None or args.name is None or args.value is None or args.unit is None:
             parser.error("set-scalar requires --output, --name, --value and --unit")
         if not math.isfinite(args.value):
             parser.error("--value must be finite")
+    if args.action in ("set-scalar", "modify"):
         if output.exists() or output == source or output.suffix != ".sim":
             parser.error("--output must be a new .sim file distinct from the input")
         if not output.parent.is_dir():
@@ -108,9 +128,22 @@ def main():
     original = digest(source)
     try:
         data = execute(args.star, source, directory / "apply", output,
-                       args.name or "", args.value or 0.0, args.unit or "")
+                       args.name or "", args.value or 0.0, args.unit or "",
+                       action="file-modify" if modification else None, modification=modification)
+        if data["status"] == "rejected":
+            raise ModificationRejected(f'{data["error"]}; see {directory / "apply" / "result.json"}')
         summary = {"input": str(source), "input_sha256": original, "action": args.action}
-        if output:
+        if modification:
+            # 2. 新入口同时核对目标与全部已覆盖对象，保存前回读由宏完成。
+            verify_modification(modification, data["before"], data["after"])
+            reopened = execute(args.star, output, directory / "reopen")["after"]
+            verify_modification(modification, data["before"], reopened)
+            if not same_value(content_snapshot(data["after"]), content_snapshot(reopened)):
+                raise RuntimeError("Reopened object snapshot differs from saved session")
+            summary.update(output=str(output), modification=modification,
+                           reopened_snapshot_match=True, snapshot=reopened,
+                           snapshot_diff=snapshot_diff(data["before"], reopened))
+        elif output:
             # 2. 重新启动 STAR 加载输出文件；验证落盘结果，而非只看内存回读。
             reopened = execute(args.star, output, directory / "reopen")["after"]
             before = {p["name"]: p for p in data["before"]["parameters"]}
