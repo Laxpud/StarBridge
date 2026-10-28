@@ -6,7 +6,7 @@
 
 **StarBridge** 是一个面向 AI Agent 的 **STAR-CCM+ 交互插件**，通过 Skills、MCP、自动化接口和持久化工作记忆，使 Agent 能够读取、理解、修改、运行 STAR-CCM+ 算例，并验证操作结果。
 
-项目已实现文件 Bridge、后台会话原型、[Inspector 对象快照](docs/inspector.md)和 [Modifier 单项修改](docs/modifier.md)。本文描述目标能力和拟议架构，已实现范围见[文件 Bridge](docs/bridge-file.md)与[后台会话使用说明](docs/bridge-session.md)；接口名称、目录划分和实现方式仍可在技术验证后调整。
+项目已实现文件 Bridge、后台会话原型、[Inspector 对象快照](docs/inspector.md)和 [Modifier 单项修改](docs/modifier.md)。下一步以版本化的对象、属性与操作目录统一读取和修改能力；目录及通用执行机制尚未实现。本文描述目标架构，当前可用入口及限制仍以这些使用说明为准。
 
 StarBridge 不将自身限定为单纯的 CLI 或 Java Macro 工具，而是作为 AI Agent 与 STAR-CCM+ 之间的统一桥接层。
 
@@ -16,13 +16,16 @@ StarBridge 不将自身限定为单纯的 CLI 或 Java Macro 工具，而是作�
 
 这里的“验证”限定为检查操作是否成功、设置是否按预期改变，以及是否产生非预期修改。验证 CFD 结果可信性不属于当前定位；Agent 可以结合知识储备、技术文本和工作记忆判断物理合理性与网格质量，当前暂不考虑收敛性判断。
 
+配置读写的目标是覆盖算例本身所有可修改参数和选项，包括几何、网格、物理模型、边界条件、求解器、后处理及操作流程。客户端偏好、安装配置等不在此范围内。覆盖以明确 STAR 版本的目录和验证记录推进，不将已有少量对象接口或一个算例的对象清单等同于全量支持。
+
 ---
 
 ## 核心能力
 
 StarBridge 计划提供以下能力：
 
-* 读取 STAR-CCM+ 算例结构与设置
+* 建立按 STAR 版本维护的对象、属性与操作目录
+* 通过共享目录与类型适配器读取 STAR-CCM+ 算例结构与设置
 * 查询参数、场函数、标签和对象属性
 * 检查物理模型、区域、边界和接口
 * 检查和修改网格操作及网格控制参数
@@ -40,36 +43,90 @@ StarBridge 计划提供以下能力：
 ## 总体架构
 
 ```text
-AI Agent
+AI Agent / Skills
+        │
+        ▼
+     MCP / CLI
+        │
+        ▼
+  StarBridge Core
+   ├── Inspector：描述与读取
+   ├── Modifier：统一配置修改
+   │       │
+   │       ▼
+   │   版本化对象—属性—操作目录
+   │       │
+   │       ▼
+   │   通用类型适配器 / 特殊操作适配器
+   │       │
+   │       ▼
+   │   Java API Bridge
    │
-   ├── Skills
-   │     └── 描述如何完成 STAR-CCM+ 工作流
-   │
-   └── MCP / CLI
-         └── 提供共享 Core API 的操作入口
-                │
-                ▼
-         StarBridge Core
-          ├── 会话管理
-          ├── 工作记忆存储与检索
-                │
-        ┌───────┴────────┐
-        │                │
-   Java API Bridge      Runner
-        │                │
-        └───────┬────────┘
-                ▼
-       STAR-CCM+ 常驻算例会话
-         （后台 / GUI）
-                │
-             .sim
+   ├── 网格与求解执行
+   ├── 会话管理 / Runner
+   └── 工作记忆存储与检索
+        │
+        ▼
+  STAR-CCM+ 算例会话
+    （后台 / GUI）
+        │
+       .sim
 ```
 
-StarBridge 的基本原则是：
+Inspector 与 Modifier 共享目录和对象定位机制。Inspector 描述对象、属性与操作并读取当前状态；Modifier 承接所有算例配置变更，包括属性赋值以及创建、删除、切换模型或方法等结构操作。目录将这些请求映射到具体版本的 Java API，执行器按类型或操作语义处理。
 
-> Agent 不直接依赖复杂的 STAR-CCM+ Java API，而是通过稳定的 StarBridge 接口操作算例。
+对外提供少量稳定接口，具体对象新增属性时优先更新目录。通用类型适配器处理可复用的数据类型，特殊操作适配器处理具有多步骤或状态依赖的行为。单个对象的版本差异不应散落在多个 CLI 命令、MCP Tool 或 Skill 中。
 
-工作记忆由 StarBridge 提供持久化存储与检索接口，Agent 负责结合记忆理解任务，Bridge 负责具体操作并反馈当前事实。
+网格生成和求解属于执行能力；会话启停、保存和关闭属于生命周期管理。它们与 Modifier 配合，并保持独立的调用语义。工作记忆提供用户、项目和算例背景，实时事实仍来自当前会话。
+
+---
+
+## 版本化对象、属性与操作目录
+
+目录是主要版本适配层，先以 STAR-CCM+ 2602 Build 21.02.007 为基线。每个受支持版本维护对应目录；STAR 产品版本、Build 和目录自身的格式版本分别记录。版本匹配策略需明确，不能默认相邻版本兼容。
+
+### 目录描述什么
+
+目录描述 API 对象类型与配置能力，不保存某个算例的对象实例或当前参数值。
+
+| 内容 | 需要描述的信息 |
+|---|---|
+| 对象类型与访问关系 | 类型标识、Java 类、所属管理器、查找路径、构造或工厂操作、关联对象类型 |
+| 属性 | 属性标识、读写方法及签名、值类型、单位与量纲、枚举、对象引用、集合或查询语义 |
+| 约束与可写条件 | 只读声明、数值范围、模型或方法前提、状态依赖、条件的运行时检查方式 |
+| 操作 | 创建、删除、启停模型、切换方法、调整结构等操作的参数、前提、影响对象和回读方式 |
+| 执行映射 | 使用的类型或特殊操作适配器、必要的调用顺序及结果解释规则 |
+| 来源与覆盖 | 对应版本的 API 材料、人工补充依据、生成信息、适配及实际验证状态 |
+
+初始类型适配覆盖基础数值、布尔、字符串、枚举、数量与表达式、向量或张量、对象引用、集合和动态查询。新增对象尽量复用已有适配器；出现新的数据类型或操作语义时再扩展执行器。
+
+属性名称和 setter 只说明部分调用信息，单位转换、方法切换及查询规则也必须保留。例如，动态选择器需要保留查询本身；参数表达式的 SI 单位行为应进入数量适配规则。特殊行为通过有依据的规则补充，不能仅凭方法名推断。
+
+### 目录生成与版本维护
+
+1. 从对应版本的 Javadoc、类签名和属性元数据生成候选目录，记录材料来源与版本。
+2. 将人工补充的语义、访问规则和例外映射与生成内容分开维护，重复生成不能覆盖这些补充。
+3. 结合宏录制和代表性算例核对访问与写入方式，形成可执行目录及覆盖记录；发现 API 不等于已经验证修改行为。
+4. 为另一版本生成目录，比较新增、删除、签名、值类型及元数据变化；改名或等价替换只能作为候选，经确认后建立映射。
+5. 普通 API 映射变化集中更新目录；数据类型或操作语义变化需要同步更新适配器和验证依据。
+
+GUI 对算例的修改所对应的 Java 宏是建立和核对映射的重要依据。目录应能持续增补能力，而不是为每个对象另建一套工具。生成方式、文件格式与具体实现模块在当前里程碑中确定。
+
+### 版本能力与运行状态
+
+版本目录描述该版本提供哪些对象类型、属性和操作。运行时状态描述当前算例有哪些实例、启用了哪些模型或方法，以及某项属性此刻是否可写。尚未在当前算例中实例化的类型仍属于版本目录。
+
+运行时发现用于对象定位、条件检查、目录校验和缺失信息反馈。发现目录以外的对象或属性时，应记录并明确报告，补充目录映射后再获得相应执行能力。目录不能替代会话身份检查、并发协调或模型状态检查。
+
+对象定位需要区分会话内引用和文件重新加载后的定位方式。对象名称、重命名、删除与重新创建不能被当作同一永久身份；具体引用与定位契约在目录接入时确定。
+
+覆盖记录分别描述“已发现”“可读取”“具备写入实现”和“已实测验证”，运行时另外报告可写条件是否满足。未适配和不可用内容保留原因，不能用字段缺失暗示 STAR 不具备对应能力。覆盖统计必须说明版本、算例或类型范围及统计基准。
+
+### 已有能力的迁移
+
+现有文件和后台会话入口、旧状态检查、回读、Diff、原文件保护及失败处理继续复用。先将 Inspector、参数与场函数表达式、标签修改接入共享目录，再将旧 `set-scalar` 收拢到统一修改流程。现有调用保持兼容，需要改变请求或快照格式时明确版本及迁移方式。
+
+迁移后，CLI、MCP 和 Skills 都通过同一 Inspector、Modifier 和版本目录访问算例。后续网格控制、边界参数、物理设置、工作流及其他配置的覆盖按目录和适配器扩展，阶段安排见[路线图](docs/roadmap.md)。
 
 ---
 
@@ -136,41 +193,32 @@ Skills 提供通用领域工作流，工作记忆补充具体用户、项目和�
 
 ## 项目结构
 
+以下是目标职责划分，目录格式与实际模块组织在实现时确定；不是当前已存在文件的清单。
+
 ```text
 StarBridge/
-├── skills/
-│   ├── inspect-simulation/
-│   ├── configure-mesh/
-│   ├── configure-physics/
-│   ├── configure-boundaries/
-│   ├── rotor-workflow/
-│   └── ...
-│
-├── mcp/
-│   ├── server/
-│   ├── tools/
-│   └── resources/
-│
+├── catalogs/                 # 按 STAR 版本保存目录
+│   └── <star-version>/
+│       ├── generated/        # 可重复生成的 API 描述
+│       └── overrides/        # 人工语义与例外映射
+├── tools/
+│   └── catalog/              # 目录生成、合并与版本比较
 ├── core/
+│   ├── catalog/              # 目录加载、版本匹配和能力查询
+│   ├── objects/              # 实例定位与运行状态
+│   ├── inspector/
+│   ├── modifier/
+│   ├── adapters/             # 按值类型和特殊操作复用
 │   ├── sessions/
 │   └── memory/
-│
 ├── bridge/
 │   ├── java/
 │   ├── runner/
 │   └── serializer/
-│
+├── mcp/
 ├── cli/
-│   └── starbridge
-│
-├── schemas/
-│   ├── simulation/
-│   ├── parameters/
-│   ├── mesh/
-│   ├── physics/
-│   └── operations/
-│
-├── tests/
+├── skills/
+├── schemas/                  # 目录、请求、快照及结果契约
 └── docs/
 ```
 
@@ -219,92 +267,19 @@ NWSEControls
 
 ## MCP
 
-MCP 是 Agent 操作 STAR-CCM+ 的主要结构化接口。
+MCP 是 Agent 操作 STAR-CCM+ 的主要结构化接口，调用共享 Core API。对外接口按能力组织，不为每种对象的每个属性创建独立 Tool。以下名称均为草案，尚未实现：
 
-除算例操作外，接口还需支持会话管理及工作记忆的检索、记录、查看、修改与删除。具体名称和参数待设计；以下算例操作应明确绑定目标会话。
+| 能力 | 拟议入口 | 职责 |
+|---|---|---|
+| 查询目录能力 | `starbridge.get_capabilities` | 返回版本匹配情况、目录能力和适配状态 |
+| 查找对象 | `starbridge.find_objects` | 按类型、名称或关系定位当前会话中的对象 |
+| 描述对象 | `starbridge.describe_object` | 返回属性、操作、值类型和当前可用条件 |
+| 读取属性 | `starbridge.read_properties` | 通过 Inspector 按需读取指定对象的属性 |
+| 修改配置 | `starbridge.modify` | 通过 Modifier 执行目录中描述的属性修改或结构操作，并返回检查与回读结果 |
 
-初步可以提供：
+算例操作明确绑定目标会话；类型、属性和操作使用目录标识，实例使用对象定位契约。具体对象的易用别名可以复用这些能力，但不能形成另一套独立的版本适配逻辑。
 
-### Simulation
-
-```text
-starbridge.open
-starbridge.inspect
-starbridge.save
-starbridge.save_as
-starbridge.run
-```
-
-### Parameters
-
-```text
-starbridge.list_parameters
-starbridge.get_parameter
-starbridge.set_parameter
-```
-
-例如：
-
-```text
-set_parameter(
-    name="_RotorRadius",
-    value=4.91,
-    unit="m"
-)
-```
-
-### Field Functions
-
-```text
-starbridge.list_field_functions
-starbridge.get_field_function
-starbridge.set_field_function
-```
-
-### Tags
-
-```text
-starbridge.list_tags
-starbridge.get_objects_by_tag
-```
-
-### Continua / Physics
-
-```text
-starbridge.list_continua
-starbridge.inspect_continuum
-starbridge.list_models
-starbridge.enable_model
-starbridge.disable_model
-```
-
-### Regions / Boundaries
-
-```text
-starbridge.list_regions
-starbridge.inspect_region
-
-starbridge.list_boundaries
-starbridge.inspect_boundary
-starbridge.set_boundary
-```
-
-### Mesh
-
-```text
-starbridge.list_mesh_operations
-starbridge.inspect_mesh_operation
-starbridge.set_mesh_control
-starbridge.generate_mesh
-```
-
-### Simulation Operations
-
-```text
-starbridge.list_operations
-starbridge.inspect_operation
-starbridge.run_operation
-```
+会话打开、状态查询、保存和关闭，以及网格生成、求解和工作记忆访问，分别通过相应 Core 能力接入。它们不因统一配置修改接口而合并为同一种操作。
 
 ---
 
@@ -330,9 +305,9 @@ Bridge 负责：
 
 1. 启动 STAR-CCM+ 或连接目标算例会话（具体连接机制待验证）
 2. 获取目标会话中的 `Simulation`
-3. 访问 STAR 对象树
-4. 执行查询或修改
-5. 将结果序列化
+3. 按已匹配版本的目录和适配器访问 STAR 对象
+4. 在当前会话中核对条件，执行查询、修改或专门操作
+5. 回读并将结果序列化
 6. 返回给 MCP / CLI
 7. 按明确的保存请求写出修改后的 `.sim`
 
@@ -342,75 +317,31 @@ AI Agent 不需要了解具体的 STAR Java API 实现。
 
 ## Schema
 
-StarBridge 应尽量避免把 STAR Java 对象直接暴露给 Agent。
+StarBridge 将 Java API 描述、运行时实例和修改请求分别转换为结构化契约，避免混用类型信息、对象身份和当前值。
 
-所有信息统一转换为结构化 Schema，例如：
+| 契约 | 主要内容 |
+|---|---|
+| 版本目录 | 对象类型、属性、操作、Java 映射、值类型、约束、来源与适配状态 |
+| 运行时对象与快照 | 会话身份、对象引用、当前值、单位、关系、可用条件及读取错误 |
+| 修改请求 | 目录与版本关联、目标对象、属性或操作、预期旧状态、输入值与选项 |
+| 执行结果 | 拒绝或执行状态、回读值、已覆盖字段 Diff、保存与重载核对结果及验证范围 |
 
-```json
-{
-  "name": "_RotorRadius",
-  "objectType": "ScalarGlobalParameter",
-  "dataType": "Scalar",
-  "value": 4.91,
-  "unit": "m",
-  "tags": [
-    "Geometry",
-    "Rotor"
-  ]
-}
-```
-
-这样可以实现：
-
-```text
-STAR Java Object
-        ↓
-StarBridge Schema
-        ↓
-MCP / CLI
-        ↓
-AI Agent
-```
-
-JSON Schema 也可以成为 StarBridge API 的稳定边界。
+目录格式版本与请求、快照格式版本分别维护。目录中的 Java 映射由 Bridge 使用；Agent 通过稳定的类型、属性和操作描述构造请求。当前原型契约仍见 [Inspector](docs/inspector.md) 和 [Modifier](docs/modifier.md)，不将上述目标格式视为已实现接口。
 
 ---
 
 ## CLI
 
-CLI 主要用于：
-
-* 开发
-* 调试
-* 自动化脚本
-* Agent 无 MCP 环境下的调用
-* CI 测试
-
-例如：
+CLI 用于开发、调试和自动化脚本，与 MCP 使用同一 Core API、Inspector、Modifier 和版本目录。以下命令仅展示拟议形式：
 
 ```bash
-starbridge inspect case.sim
+starbridge capabilities --session SESSION
+starbridge describe OBJECT_REF --session SESSION
+starbridge read OBJECT_REF --session SESSION --properties PROPERTY_ID
+starbridge modify --session SESSION --request change.json
 ```
 
-```bash
-starbridge inspect case.sim --parameters
-```
-
-```bash
-starbridge inspect case.sim --mesh
-```
-
-```bash
-starbridge get case.sim parameter _RotorRadius
-```
-
-```bash
-starbridge set case.sim parameter _RotorRadius 4.91 m
-```
-
-CLI 与 MCP 应尽可能共享同一个 Core API。
-
-上述命令展示按文件调用的初步形式。常驻会话操作还需提供明确的目标会话选择方式，具体命令语法待设计。
+文件模式保留加载、另存与重载核对的调用方式，会话模式明确绑定已加载算例。各类对象的读写通过目录中的属性和操作标识表达；当前实际可用的脚本命令仍以[文件](docs/bridge-file.md)和[后台会话](docs/bridge-session.md)说明为准。
 
 ---
 
@@ -468,9 +399,11 @@ diff
 
 修改操作尽量采用：
 
-> **Read → Diff → Write → Verify**
+> **Read → Check → Write → Readback → Diff**
 
-常驻模式下，这一流程作用于目标会话的当前状态；执行前结合相关记忆理解约束，并重新检查拟修改对象。执行后回读验证、记录结果，再按请求另存文件。GUI 中尚未保存的用户修改也属于当前状态，不能用磁盘文件或旧快照代替。
+Modifier 对所有配置修改统一执行这一流程：先匹配目录与 STAR 版本、定位目标并检查当前条件，再核对预期旧状态，调用对应适配器，回读并记录目标及相关依赖的变化。目录描述验证对象与方法；运行时按实际结果判断，不能将 setter 返回当作全部验证已经完成。
+
+常驻模式下，执行前结合相关记忆理解约束，并重新检查当前对象。执行后按请求另存文件。GUI 中尚未保存的用户修改也属于当前状态，不能用磁盘文件或旧快照代替。结构修改可能影响其他对象，不能假定把旧值逐项写回即可回滚；明确拒绝与写入结果不确定需继续分别处理。
 
 Diff 与回读验证用于确认修改是否符合预期，不构成 CFD 结果可信性或收敛性判断。
 
