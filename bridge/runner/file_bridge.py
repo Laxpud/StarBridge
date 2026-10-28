@@ -71,6 +71,16 @@ def catalog_content(catalog, plan, *, retain_references=False):
             return {key: value[key] for key in ('name', 'java_class')}
         return value
 
+    def predicate(value):
+        """仅规范化已支持标签谓词的对象引用；组合顺序和其他规则字段保持不变。"""
+        if not isinstance(value, dict):
+            return value
+        if value.get('type') == 'tag' and 'value' in value:
+            return dict(value, value=reference(value['value']))
+        if value.get('type') == 'compound' and isinstance(value.get('predicates'), list):
+            return dict(value, predicates=[predicate(item) for item in value['predicates']])
+        return value
+
     target = catalog['target']
     properties = {}
     for name, result in catalog['properties'].items():
@@ -87,6 +97,9 @@ def catalog_content(catalog, plan, *, retain_references=False):
         elif (adapter == 'query' and isinstance(value, dict)
               and value.get('mode') == 'static' and isinstance(value.get('objects'), list)):
             value = dict(value, objects=[reference(item) for item in value['objects']])
+        elif (adapter == 'query' and isinstance(value, dict)
+              and value.get('mode') == 'query' and 'predicate' in value):
+            value = dict(value, predicate=predicate(value['predicate']))
         properties[name] = dict(result, value=value)
     stable_target = {key: target[key] for key in ('type', 'name', 'java_class', 'locator')}
     if retain_references:

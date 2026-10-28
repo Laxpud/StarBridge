@@ -234,7 +234,9 @@ class CatalogRuntime {
                 values.put(name, fields("adapter", adapter, "writable", property.get("writable"),
                                         "reason", string(property.get("reason"), "property.reason"),
                                         "conditions_checked", false,
-                                        "guards", property.getOrDefault("guards", java.util.List.of())));
+                                        "guards", property.getOrDefault("guards", java.util.List.of()),
+                                        "value_types", property.getOrDefault("value_types", java.util.List.of()),
+                                        "value_guards", property.getOrDefault("value_guards", java.util.List.of())));
                 continue;
             }
             // 3. 读取错误属于对应属性；未知适配器和未支持查询也不能伪装成空值。
@@ -265,15 +267,18 @@ class CatalogRuntime {
         private final Object value;
         private final Invocation invocation;
         private final java.util.Map<String, Object> writer;
+        private final java.util.List<ReferenceBinding> bindings;
         private boolean applied;
 
         PreparedModification(star.common.Simulation sim, java.util.Map<String, Object> plan,
                 java.util.Map<String, Object> readRequest, String token, String property,
                 String adapter, Object value, Invocation invocation,
-                java.util.Map<String, Object> writer, java.util.Map<String, Object> before) {
+                java.util.Map<String, Object> writer, java.util.Map<String, Object> before,
+                java.util.List<ReferenceBinding> bindings) {
             this.sim = sim; this.plan = plan; this.readRequest = readRequest; this.token = token;
             this.property = property; this.adapter = adapter; this.value = value;
             this.invocation = invocation; this.writer = writer; this.before = before;
+            this.bindings = java.util.List.copyOf(bindings);
         }
 
         /**
@@ -287,6 +292,11 @@ class CatalogRuntime {
             Resolved current = locate(sim, object(plan.get("types"), "plan.types"),
                     object(readRequest.get("target"), "read target"), token, 0);
             checkGuards(sim, current, writer, token);
+            // 新关联和标签谓词也固定到准备阶段的 key；同名重建不能替代原对象。
+            for (ReferenceBinding binding : bindings) {
+                Resolved referenced = locate(sim, object(plan.get("types"), "plan.types"), binding.target, token, 0);
+                checkGuards(sim, referenced, fields("guards", binding.guards), token);
+            }
             invocation.invoke();
             java.util.Map<String, Object> after = inspect(sim, plan, readRequest, token);
             if (!Boolean.TRUE.equals(after.get("inspection_complete")))
@@ -329,7 +339,7 @@ class CatalogRuntime {
         require(Boolean.TRUE.equals(entry.get("writable")), "Property is not implemented for writing");
         java.util.Map<String, Object> writer = object(entry.get("write"), "property.write");
         java.util.List<Object> checks = checkGuards(sim, resolved, writer, token);
-        // 2. 全部前提通过后读取本类型所有属性；expected 仍核对完整的标准回读值。
+        // 2. 全部前提通过后读取本类型所有属性；旧关联只忽略协议约定的引用元数据。
         java.util.Map<String, Object> before = inspect(sim, plan, readRequest, token);
         require(Boolean.TRUE.equals(before.get("inspection_complete")), "Modification requires complete catalog reads");
         require(sameValue(identity(resolved.object, token), object(before.get("target"), "before.target").get("reference")),
@@ -341,12 +351,19 @@ class CatalogRuntime {
             // 标签关联的旧状态是名称与实际类型集合；读回携带的 token/key 仅为描述。
             // 目标自身的 reference 已由 inspect 严格核对，不在此处削弱其身份前提。
             require(sameValue(tagState(expected), tagState(actual)), "Modification expected tags do not match");
+        } else if (adapter.equals("reference")) {
+            require(sameValue(referenceState(expected), referenceState(actual)), "Modification expected reference does not match");
+        } else if (adapter.equals("object_selection")) {
+            require(sameValue(selectionState(expected), selectionState(actual)), "Modification expected selection does not match");
         } else require(sameValue(expected, actual), "Modification expected value does not match");
         resolved = locate(sim, object(plan.get("types"), "plan.types"), target, token, 0);
         require(sameValue(identity(resolved.object, token), object(before.get("target"), "before.target").get("reference")),
                 "Modification target changed during preparation");
         Object value = request.get("value");
         java.util.Map<String, Object> values = new java.util.LinkedHashMap<>();
+        java.util.List<ReferenceBinding> bindings = new java.util.ArrayList<>();
+        java.util.Map<String, Object> writePipeline = null;
+        Object wantedReadback = value;
         // 3. 校验目标数量或枚举状态并绑定参数；解析最终 setter 仍不触发写入。
         try {
             if (adapter.equals("field_definition")) {
@@ -436,13 +453,68 @@ class CatalogRuntime {
                 java.util.List<star.common.Tag> tags = new java.util.ArrayList<>();
                 for (String name : names) tags.add(uniqueNamed(manager.getObjects(), name, star.common.UserTag.class));
                 values.put("value", tags);
+            } else if (adapter.equals("reference")) {
+                // 先解析新关联，再在被关联对象上核对值条件；此阶段不调用任何 setter。
+                java.util.Map<String, Object> input = object(value, "reference target");
+                require(list(writer.get("value_types"), "write.value_types").contains(input.get("type")),
+                        "Reference target type is not allowed");
+                Resolved referenced = bindReference(sim, plan, input, token,
+                        list(writer.getOrDefault("value_guards", java.util.List.of()), "write.value_guards"), bindings);
+                values.put("value", referenced.object);
+                wantedReadback = reference(referenced.object, token);
+                // 值条件描述被关联对象，独立于主目标 guards；保留准备阶段实际通过的证据。
+                ReferenceBinding binding = bindings.get(bindings.size() - 1);
+                before.put("value_checks", java.util.List.of(fields(
+                        "target", reference(referenced.object, token), "checks", binding.checks)));
+            } else if (adapter.equals("object_selection")) {
+                java.util.Map<String, Object> input = object(value, "object selection");
+                String mode = string(input.get("mode"), "selection.mode");
+                Object raw = pipeline(sim, resolved.object, resolved.parent, object(entry.get("read"), "property.read"));
+                require(raw instanceof star.base.query.ManagerWithQuery<?>, "Selection writes require a ManagerWithQuery");
+                if (mode.equals("static")) {
+                    require(input.keySet().equals(java.util.Set.of("mode", "objects")), "Invalid static selection fields");
+                    java.util.List<star.base.neo.ClientServerObject> objects = new java.util.ArrayList<>();
+                    java.util.Set<String> seen = new java.util.HashSet<>();
+                    for (Object item : list(input.get("objects"), "selection.objects")) {
+                        java.util.Map<String, Object> selected = object(item, "selection target");
+                        require(list(writer.get("value_types"), "write.value_types").contains(selected.get("type")),
+                                "Selection target type is not allowed");
+                        Resolved referenced = bindReference(sim, plan, selected, token, java.util.List.of(), bindings);
+                        require(seen.add(referenced.object.getObjectKeyAsString()), "Duplicate selected object identity");
+                        objects.add(referenced.object);
+                    }
+                    // PartGroup 的过滤模型定义实际允许对象；合法 Java 类型本身不足以证明可选。
+                    // STAR setObjects 内部先清除 query 再替换列表，进入 apply 后失败仍是结果不确定。
+                    require(raw instanceof star.common.ManagerWithFilterModel<?>, "Static selection requires a filter model");
+                    require(((star.common.ManagerWithFilterModel<?>) raw).isValid(objects), "Selection contains invalid objects");
+                    values.put("value", objects);
+                    wantedReadback = fields("mode", "static", "objects", collection(objects, token));
+                } else if (mode.equals("query")) {
+                    require(input.keySet().equals(java.util.Set.of("mode", "predicate", "modifiers")),
+                            "Invalid dynamic selection fields");
+                    star.base.query.QueryPredicate predicate = buildPredicate(sim, plan, writer,
+                            input.get("predicate"), token, bindings, 0, new int[] {0});
+                    java.util.EnumSet<star.base.query.Query.Modifier> modifiers = java.util.EnumSet.noneOf(star.base.query.Query.Modifier.class);
+                    for (Object modifier : list(input.get("modifiers"), "query.modifiers")) {
+                        star.base.query.Query.Modifier selected = star.base.query.Query.Modifier.valueOf(string(modifier, "query modifier"));
+                        require(selected == star.base.query.Query.Modifier.PrefilterNamedObjects, "Unsupported query modifier");
+                        require(modifiers.add(selected), "Duplicate query modifier");
+                    }
+                    // 保留规则本身，不求值，也不要求它在当前算例中匹配到对象。
+                    star.base.query.Query query = new star.base.query.Query(predicate, modifiers);
+                    values.put("value", query);
+                    wantedReadback = queryDefinition(query, token);
+                } else throw new IllegalArgumentException("Unsupported selection mode: " + mode);
+                writePipeline = object(object(writer.get("pipelines"), "write.pipelines").get(mode), "selection write pipeline");
             } else throw new IllegalArgumentException("Unsupported write adapter: " + adapter);
-            Invocation setter = prepareWrite(sim, resolved, object(writer.get("pipeline"), "write.pipeline"), values);
+            if (writePipeline == null) writePipeline = object(writer.get("pipeline"), "write.pipeline");
+            // 只解析一次最终调用；静态模式由 STAR setObjects 自行清除 query，不能提前额外清除。
+            Invocation setter = prepareWrite(sim, resolved, writePipeline, values);
             // 回读固定到本次准备得到的 key，不能让同名重建的对象冒充写入对象。
             java.util.Map<String, Object> fixedTarget = new java.util.LinkedHashMap<>(target);
             fixedTarget.put("reference", identity(resolved.object, token));
             java.util.Map<String, Object> fixedRead = fields("schema_version", 1L, "action", "read", "target", fixedTarget);
-            return new PreparedModification(sim, plan, fixedRead, token, property, adapter, value, setter, writer, before);
+            return new PreparedModification(sim, plan, fixedRead, token, property, adapter, wantedReadback, setter, writer, before, bindings);
         } catch (Exception error) {
             throw new IllegalArgumentException("Modification preparation failed: " + errorText(error), error);
         }
@@ -475,6 +547,142 @@ class CatalogRuntime {
             }
         }
         return checks;
+    }
+
+    /** 保存一个新关联的定位路径及值条件；路径中的每层父对象都带本会话身份。 */
+    private static final class ReferenceBinding {
+        final java.util.Map<String, Object> target;
+        final java.util.List<?> guards;
+        final java.util.List<Object> checks;
+        ReferenceBinding(java.util.Map<String, Object> target, java.util.List<?> guards, java.util.List<Object> checks) {
+            this.target = target;
+            this.guards = java.util.List.copyOf(guards);
+            this.checks = java.util.List.copyOf(checks);
+        }
+    }
+
+    /** 解析、检查并固定新关联；被引用对象的值条件同时用于准备和最终调用前。 */
+    private static Resolved bindReference(star.common.Simulation sim, java.util.Map<String, Object> plan,
+            java.util.Map<String, Object> target, String token, java.util.List<?> guards,
+            java.util.List<ReferenceBinding> bindings) {
+        java.util.Map<String, Object> types = object(plan.get("types"), "plan.types");
+        java.util.Map<String, Object> fixed = pinTarget(sim, types, target, token, 0);
+        Resolved resolved = locate(sim, types, fixed, token, 0);
+        java.util.List<Object> checks = checkGuards(sim, resolved, fields("guards", guards), token);
+        bindings.add(new ReferenceBinding(fixed, guards, checks));
+        return resolved;
+    }
+
+    /** 逐层固定父路径后再定位当前对象，防止同名父对象在两次解析之间被替换。 */
+    private static java.util.Map<String, Object> pinTarget(star.common.Simulation sim,
+            java.util.Map<String, Object> types, java.util.Map<String, Object> target, String token, int depth) {
+        require(depth < 32, "Reference parent nesting is too deep");
+        require(java.util.Set.of("type", "name", "parent", "reference").containsAll(target.keySet()),
+                "Invalid reference target fields");
+        java.util.Map<String, Object> fixed = new java.util.LinkedHashMap<>(target);
+        if (target.containsKey("parent")) fixed.put("parent", pinTarget(sim, types,
+                object(target.get("parent"), "reference parent"), token, depth + 1));
+        Resolved resolved = locate(sim, types, fixed, token, 0);
+        fixed.put("reference", identity(resolved.object, token));
+        return fixed;
+    }
+
+    /**
+     * 在本地构造已支持的规则树；只从写入器声明的对象类型选择 Java 类型。
+     * 节点数与深度分别计数，组合分支不能通过大量浅层节点绕过容量上限。
+     */
+    private static star.base.query.QueryPredicate buildPredicate(star.common.Simulation sim,
+            java.util.Map<String, Object> plan, java.util.Map<String, Object> writer, Object value,
+            String token, java.util.List<ReferenceBinding> bindings, int depth, int[] nodes) throws Exception {
+        checkPredicateBudget(depth, nodes);
+        java.util.Map<String, Object> rule = object(value, "query predicate");
+        String type = string(rule.get("type"), "predicate.type");
+        String operator = string(rule.get("operator"), "predicate.operator");
+        if (type.equals("compound")) {
+            require(rule.keySet().equals(java.util.Set.of("type", "operator", "predicates")), "Invalid compound predicate fields");
+            java.util.List<star.base.query.QueryPredicate> children = new java.util.ArrayList<>();
+            for (Object child : list(rule.get("predicates"), "predicate.predicates"))
+                children.add(buildPredicate(sim, plan, writer, child, token, bindings, depth + 1, nodes));
+            return new star.base.query.CompoundPredicate(star.base.query.CompoundOperator.valueOf(operator), children);
+        }
+        require(rule.keySet().equals(java.util.Set.of("type", "operator", "value")), "Invalid predicate fields");
+        if (type.equals("name")) {
+            // 空名称也是合法匹配值；只有正则算子才解释模式，其余算子保持原始文本。
+            require(rule.get("value") instanceof String, "Predicate name must be a string");
+            String name = (String) rule.get("value");
+            star.base.query.NameOperator selected = star.base.query.NameOperator.valueOf(operator);
+            if (selected == star.base.query.NameOperator.RegexContains
+                    || selected == star.base.query.NameOperator.RegexDoesNotContain)
+                java.util.regex.Pattern.compile(name);
+            return new star.base.query.NamePredicate(selected, name);
+        }
+        if (type.equals("java_type")) {
+            String className = string(rule.get("value"), "predicate Java type");
+            java.util.Map<String, Object> types = object(plan.get("types"), "plan.types");
+            boolean allowed = false;
+            for (Object typeId : list(writer.get("value_types"), "write.value_types")) {
+                java.util.Map<String, Object> selected = object(types.get(string(typeId, "value type")), "selected value type");
+                allowed |= className.equals(selected.get("java_class"));
+            }
+            require(allowed, "Query Java type is not allowed");
+            Class<?> selected = javaType(className);
+            require(star.base.neo.ClientServerObject.class.isAssignableFrom(selected), "Query type must be a STAR object");
+            return new star.base.query.TypePredicate(star.base.query.TypeOperator.valueOf(operator),
+                    selected.asSubclass(star.base.neo.ClientServerObject.class));
+        }
+        if (type.equals("tag")) {
+            java.util.Map<String, Object> target = object(rule.get("value"), "predicate tag target");
+            require("user_tag".equals(target.get("type")), "Tag predicate requires a user_tag target");
+            Resolved resolved = bindReference(sim, plan, target, token, java.util.List.of(), bindings);
+            require(resolved.object instanceof star.common.UserTag, "Tag predicate requires a UserTag");
+            return new star.base.query.TagPredicate(star.base.query.TagOperator.valueOf(operator), (star.common.UserTag) resolved.object);
+        }
+        throw new IllegalArgumentException("Unsupported query predicate type: " + type);
+    }
+
+    /** 根规则深度为零；读取与构造共用同一限额，保证写入结果一定能规范回读。 */
+    private static void checkPredicateBudget(int depth, int[] nodes) {
+        require(depth <= 16, "Query predicate nesting exceeds 16 levels");
+        require(++nodes[0] <= 256, "Query predicate count exceeds 256 nodes");
+    }
+
+    /** 旧关联仅忽略本对象的引用元数据，其余字段继续参与严格比较。 */
+    private static Object referenceState(Object value) {
+        if (value == null) return null;
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(object(value, "reference state"));
+        result.remove("reference");
+        return result;
+    }
+
+    /** 静态列表和标签叶节点中的引用元数据不构成旧规则的业务状态。 */
+    private static Object selectionState(Object value) {
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(object(value, "selection state"));
+        if ("static".equals(result.get("mode"))) {
+            java.util.List<Object> objects = new java.util.ArrayList<>();
+            for (Object item : list(result.get("objects"), "selection objects")) objects.add(referenceState(item));
+            // 旧状态不含身份元数据后按名称和实际类排序；相同项保留数量，不能变成集合。
+            objects.sort(java.util.Comparator.comparing((Object item) ->
+                    string(object(item, "selected reference").get("name"), "selected name"))
+                    .thenComparing(item -> string(object(item, "selected reference").get("java_class"), "selected type")));
+            result.put("objects", objects);
+        } else if ("query".equals(result.get("mode"))) {
+            result.put("predicate", predicateState(result.get("predicate"), 0, new int[] {0}));
+        }
+        return result;
+    }
+
+    /** 只去掉 tag.value 内的引用，保留其他谓词字段和组合顺序，避免误删业务值。 */
+    private static Object predicateState(Object value, int depth, int[] nodes) {
+        checkPredicateBudget(depth, nodes);
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(object(value, "predicate state"));
+        if ("tag".equals(result.get("type"))) result.put("value", referenceState(result.get("value")));
+        else if ("compound".equals(result.get("type"))) {
+            java.util.List<Object> children = new java.util.ArrayList<>();
+            for (Object child : list(result.get("predicates"), "compound predicates"))
+                children.add(predicateState(child, depth + 1, nodes));
+            result.put("predicates", children);
+        }
+        return result;
     }
 
     /** 向量写入只接受三个有限原始分量，二维数据必须由调用者显式补全。 */
@@ -635,6 +843,9 @@ class CatalogRuntime {
             java.util.Map<String, Object> output = object(actual, "enum output");
             matches = sameValue(wanted, output.get("selected"))
                     && list(output.get("allowed"), "enum allowed").contains(wanted);
+        } else if (adapter.equals("reference") || adapter.equals("object_selection")) {
+            // 新关联按准备阶段的规范结果完整核对，包含本会话 key，不能只比较名称。
+            matches = sameValue(wanted, actual);
         } else if (adapter.equals("user_tags")) {
             java.util.List<String> names = new java.util.ArrayList<>();
             for (Object tag : tagState(actual)) names.add((String) object(tag, "tag").get("name"));
@@ -944,23 +1155,42 @@ class CatalogRuntime {
         if (query == null) {
             return fields("mode", "static", "objects", collection(manager.getObjects(), sessionToken));
         }
-        Object predicate = query.getPredicate();
-        java.util.Map<String, Object> rule;
-        // 只编码公开且已核对 getter 的谓词；组合谓词等需要后续单独适配。
-        if (predicate != null && predicate.getClass() == star.base.query.NamePredicate.class) {
-            star.base.query.NamePredicate name = (star.base.query.NamePredicate) predicate;
-            rule = fields("type", "name", "operator", name.getOperator().name(), "value", name.getName());
-        } else if (predicate != null && predicate.getClass() == star.base.query.TypePredicate.class) {
-            star.base.query.TypePredicate type = (star.base.query.TypePredicate) predicate;
-            rule = fields("type", "java_type", "operator", type.getOperator().name(), "value", type.getType().getName());
-        } else {
-            throw new IllegalArgumentException("Unsupported query predicate: "
-                    + (predicate == null ? "null" : predicate.getClass().getName()));
-        }
+        return queryDefinition(query, sessionToken);
+    }
+
+    /** 动态选择以规则与 modifiers 回读，不把当前求值结果写成静态对象列表。 */
+    private static Object queryDefinition(star.base.query.Query query, String sessionToken) {
+        Object rule = encodePredicate(query.getPredicate(), sessionToken, 0, new int[] {0});
         java.util.List<String> modifiers = new java.util.ArrayList<>();
         for (star.base.query.Query.Modifier modifier : query.getModifiers()) modifiers.add(modifier.name());
         java.util.Collections.sort(modifiers);
         return fields("mode", "query", "predicate", rule, "modifiers", modifiers);
+    }
+
+    /** 仅编码公开 getter 已核对的精确谓词类；未知子类不能假装成已支持规则。 */
+    private static Object encodePredicate(star.base.query.QueryPredicate predicate, String token, int depth, int[] nodes) {
+        checkPredicateBudget(depth, nodes);
+        if (predicate != null && predicate.getClass() == star.base.query.NamePredicate.class) {
+            star.base.query.NamePredicate name = (star.base.query.NamePredicate) predicate;
+            return fields("type", "name", "operator", name.getOperator().name(), "value", name.getName());
+        }
+        if (predicate != null && predicate.getClass() == star.base.query.TypePredicate.class) {
+            star.base.query.TypePredicate type = (star.base.query.TypePredicate) predicate;
+            return fields("type", "java_type", "operator", type.getOperator().name(), "value", type.getType().getName());
+        }
+        if (predicate != null && predicate.getClass() == star.base.query.CompoundPredicate.class) {
+            star.base.query.CompoundPredicate compound = (star.base.query.CompoundPredicate) predicate;
+            java.util.List<Object> children = new java.util.ArrayList<>();
+            for (star.base.query.QueryPredicate child : compound.getPredicates())
+                children.add(encodePredicate(child, token, depth + 1, nodes));
+            return fields("type", "compound", "operator", compound.getOperator().name(), "predicates", children);
+        }
+        if (predicate != null && predicate.getClass() == star.base.query.TagPredicate.class) {
+            star.base.query.TagPredicate tag = (star.base.query.TagPredicate) predicate;
+            return fields("type", "tag", "operator", tag.getOperator().name(), "value", encode(tag.getTag(), "reference", token));
+        }
+        throw new IllegalArgumentException("Unsupported query predicate: "
+                + (predicate == null ? "null" : predicate.getClass().getName()));
     }
 
     /** 保留 JSON 基础类型；非有限数值使用显式字符串，避免生成非法 JSON。 */

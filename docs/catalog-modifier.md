@@ -2,7 +2,7 @@
 
 [返回项目入口](README.cn.md) · [目录描述与读取](catalog-runtime.md) · [旧 Modifier 契约](modifier.md) · [当前任务](../TODO.md)
 
-文件与后台会话的 `modify` 使用候选目录和人工执行映射修改已有属性。当前映射包含标量与向量表达式或常量、用户场函数定义及布尔/枚举选项、重力向量，以及用户标签关联。每次请求修改一个属性，先核对条件与旧状态，再写入、回读并返回差异。新增写入的实际验证状态见[验证范围](#验证范围与迁移边界)；创建、删除、重命名、模型切换和其他结构操作尚未实现。
+文件与后台会话的 `modify` 使用候选目录和人工执行映射修改已有属性。当前映射包含标量与向量表达式或常量、用户场函数定义及布尔/枚举选项、重力向量、用户标签关联，以及体积平均报告的场函数引用和对象选择。每次请求修改一个属性，先核对条件与旧状态，再写入、回读并返回差异。新增写入的实际验证状态见[验证范围](#验证范围与迁移边界)；创建、删除、重命名、模型切换和其他结构操作尚未实现。
 
 ## 使用方式
 
@@ -70,6 +70,8 @@ python3 bridge/runner/session_bridge.py save \
 | `user_field_function` | `definition` | 当前定义字符串 | 非空定义字符串 |
 | `user_field_function` | `ignore_boundary_values` | 当前 JSON 布尔值 | JSON 布尔值，例如 `true`，不能使用字符串 `"true"` |
 | `user_field_function` | `value_type` | 完整枚举对象：`selected`、`allowed` | 当前 `allowed` 中的一个枚举名称字符串 |
+| `volume_average_report` | `field_function` | 当前关联的 `name`、`java_class`，可带读取结果中的 `reference`；未关联时为 `null` | 已存在场函数的 `field_function` 定位对象；要求其值类型为 `SCALAR` |
+| `volume_average_report` | `parts` | 当前完整静态选择或查询规则 | 完整 `static` 或 `query` 选择对象，见[对象引用与选择](#对象引用与选择) |
 | `global_parameter`、`scalar_parameter`、`vector_parameter`、`field_function`、`user_field_function`、`region`、`boundary`、`volume_average_report` | `tags` | 当前标签对象数组 | 已存在且不重复的用户标签名称数组 |
 
 `quantity` 和 `quantity_value` 读取同一数量对象，分别选择表达式写入和数值常量写入；`gravity` 与 `gravity_value` 也是如此。参数的独立 `definition`、`unit` 属性仍只读，不能以它们的属性 ID 发起修改。所有数量旧状态字段都参与比较，包括依赖其他参数的求值结果；保留 JSON 数值与字符串类型，不能把 `5.0` 改成 `"5.0"`。读取到的非有限值以 `"NaN"`、`"Infinity"` 或 `"-Infinity"` 保留，不能作为新的数值常量提交。
@@ -114,9 +116,74 @@ python3 bridge/runner/session_bridge.py save \
 
 标签 `expected` 可直接使用读取到的条目，也可只提供每项的 `name` 和 `java_class`。请求规范化会移除标签条目中的 `reference`，按名称和实际 Java 类型集合比较；同名同类型标签删除重建不会被这一旧状态检查识别。目标对象自身及父对象的 `target.reference` 仍严格核对，不受此规则影响。
 
+## 对象引用与选择
+
+关联属性的旧值和新值使用不同形状。`expected` 直接取读取结果，比较已有对象的 `name` 和实际 `java_class`，规范化时移除引用条目中的 token/key。新 `value` 使用类型 ID、名称及父路径定位对象，可带同会话 `reference`；准备阶段解析后会固定对象及父路径的身份，`apply()` 在 setter 前重新核对，回读也比较新关联的实际 key。旧关联按名称和类型比较不能识别同名同类型对象的删除重建，这不会削弱新值或修改目标的身份检查。
+
+报告 `field_function` 的新值统一使用 `type: field_function` 定位内置或用户场函数，不能传读取结果中的引用对象，也暂不支持用 `null` 清空。`value_guards` 在被关联场函数上检查 `scalar_field_function`，要求其值类型为 `SCALAR`。以下仅示例请求形状，报告必须已存在，`expected` 必须替换为当前读取值：
+
+```json
+{
+  "schema_version": 2,
+  "action": "modify",
+  "target": {"type": "volume_average_report", "name": "MyVolumeAverage"},
+  "property": "field_function",
+  "expected": null,
+  "value": {"type": "field_function", "name": "Pressure"}
+}
+```
+
+`parts` 写入替换完整选择，不能将静态对象列表当成增量添加。静态模式的 `value` 形状如下；边界必须携带所属区域，空 `objects` 数组表示清空静态选择：
+
+```json
+{
+  "mode": "static",
+  "objects": [
+    {"type": "region", "name": "Background"},
+    {"type": "boundary", "name": "BackgroundBlock.Bottom", "parent": {"type": "region", "name": "Background"}}
+  ]
+}
+```
+
+静态新值只允许映射声明的 `region` 和 `boundary`，还需通过 STAR 选择管理器的过滤模型校验；同一对象出现两次会被拒绝。静态旧值的 `objects` 则是读取到的名称/Java 类引用数组，按名称和类型排序后比较，并保留同名同类条目的数量，避免合并不同区域下的同名边界。旧引用没有父路径，这种比较不能区分名称、类型及数量均相同但父区域不同的替换。
+
+动态模式保留规则，不展开成当前匹配对象，也不要求规则当前匹配到对象。例如 `parts` 的新 `value` 可以是：
+
+```json
+{
+  "mode": "query",
+  "predicate": {
+    "type": "compound",
+    "operator": "And",
+    "predicates": [
+      {"type": "java_type", "operator": "Is", "value": "star.common.Region"},
+      {"type": "tag", "operator": "Contains", "value": {"type": "user_tag", "name": "AirfoilMotion"}}
+    ]
+  },
+  "modifiers": []
+}
+```
+
+支持的规则及写入限制如下：
+
+| `type` | `operator` | 值 |
+|---|---|---|
+| `name` | `Contains`、`DoesNotContain`、`Matches`、`DoesNotMatch`、`StartsWith`、`DoesNotStartWith`、`EndsWith`、`DoesNotEndWith`、`RegexContains`、`RegexDoesNotContain` | 文本，可为空；只有两个 Regex 算子按 Java 正则解释并在准备阶段校验 |
+| `java_type` | `Is`、`IsNot` | 当前写映射允许的 Java 类：`star.common.Region` 或 `star.common.Boundary` |
+| `compound` | `And`、`Or` | `predicates` 数组，保持子规则顺序 |
+| `tag` | `Contains`、`DoesNotContain`、`ContainsInherited`、`DoesNotContainInherited` | 新写入使用 `type: user_tag` 定位对象，可带同会话引用 |
+
+标签谓词的读取值与 `expected` 中的 `value` 是标签的名称、Java 类及可选引用；新规则必须改用上述用户标签定位对象。复合规则中的标签也会递归处理。旧规则的标签 token/key 从预期状态中移除，新规则的标签则在准备时固定身份，并在 `apply()` 前重新核对。
+
+查询根节点深度为 `0`，最大深度为 `16`，整个谓词树最多 `256` 个节点；读取、旧状态规范化与新规则构造均受限制。`modifiers` 当前只能是 `[]` 或 `["PrefilterNamedObjects"]`，不接受重复项。`value_types` 限制静态定位对象和 `java_type` 谓词可用的类；动态名称或标签规则仍由 STAR 选择管理器解释，Bridge 不枚举或推断所有匹配对象。
+
+静态和动态模式分别选择一条最终 setter 管线，每个请求只调用一次选中的 setter。STAR 的 `setObjects` 内部会先清除 query 再替换列表，这不是原子事务；即使只有一次外部 setter 调用，失败时也可能已有部分状态改变，仍按 `uncertain` 处理，不自动重试或回滚。
+
 ## 写入条件
 
 人工映射可在 `write.guards` 中声明只读条件，包含唯一 `id`、读取管线 `read`、值适配器 `adapter`、预期值 `expected` 和拒绝说明 `message`。它们由维护者配置，用户请求不能更改条件或提供额外 Java 调用。`describe` 返回每项的 `guards` 摘要（`id`、`expected`、`message`），但 `conditions_checked` 仍为 `false`，描述命令不会执行这些检查。
+
+对象引用写入另有 `value_types` 和 `value_guards`：前者限定新关联的目录类型，后者在被关联对象上读取并检查条件，和主目标的 `guards` 分开。`describe` 同样返回它们的类型列表和条件摘要；报告的标量场函数条件不表示所有报告或其他引用属性都已适配。
 
 当前 `physics_continuum.gravity` 和 `gravity_value` 配有 `gravity_model_enabled`：读取目标物理连续体的模型管理器，以 `presence` 检查 `GravityModel` 实例存在。未启用时在准备阶段拒绝，不自动启用模型。`presence` 将 `null` 编码为 `false`、非空返回值编码为 `true`；它只能证明这条管线返回对象，不能推导其他模型依赖均满足。
 
@@ -132,7 +199,7 @@ python3 bridge/runner/session_bridge.py save \
 - 一旦进入 `apply()`，包括 setter 前再次检查条件在内的任何异常，以及后续回读或保存异常，都不归为准备阶段的 `rejected`。后台会话进入 `uncertain`；超时或中断也可能保留活动请求标记，按[会话失败处理](bridge-session.md#身份隔离与失败处理)排查。不会自动重试或承诺回滚。
 - 文件操作只有另存并独立加载后，旧快照和目录内容都一致，才生成成功 `summary.json`。
 
-`describe` 返回的 `writable` 只表示有写入实现，不能代替实际条件检查。当前条件示例仅覆盖重力模型存在性，其他模型依赖、方法切换条件、结构操作及跨对象事务仍待实现。
+`describe` 返回的 `writable` 只表示有写入实现，不能代替实际条件检查。当前条件示例覆盖重力模型存在性和新关联场函数的标量类型，其他模型依赖、方法切换条件、结构操作及跨对象事务仍待实现。
 
 ## 结果与差异
 
@@ -140,9 +207,17 @@ python3 bridge/runner/session_bridge.py save \
 
 配置了写入条件并准备成功时，`catalog_before.checks` 记录各项 `id`、`expected` 和 `actual`。这是准备阶段通过的检查记录，不是全部模型状态报告，也不表示修改后的条件仍成立。
 
-两层 Diff 都使用 `path`、`before`、`after`，路径是相应比较对象的 JSON Pointer。`snapshot_diff` 覆盖旧 Inspector 已读取的对象字段；`catalog_diff` 比较目标及该类型已配置属性。同会话保留对象 key 变化，跨加载则移除协议引用中的 token/key，以名称和实际类型核对可重定位内容；不会任意删除业务字典中的同名字段。Diff 不涵盖整个 STAR 对象树，不能证明未读取设置均未变化。
+对象引用写入还在 `catalog_before.value_checks` 中记录新关联对象及其条件检查。静态选择和查询标签会固定对象身份，但不据此生成完整模型检查报告。
+
+两层 Diff 都使用 `path`、`before`、`after`，路径是相应比较对象的 JSON Pointer。`snapshot_diff` 覆盖旧 Inspector 已读取的对象字段；`catalog_diff` 比较目标及该类型已配置属性。同会话保留对象 key 变化，跨加载则移除协议引用中的 token/key，以名称和实际类型核对可重定位内容；查询内标签引用也递归规范化，其他谓词字段及组合顺序保持不变，不会任意删除业务字典中的同名字段。Diff 不涵盖整个 STAR 对象树，不能证明未读取设置均未变化。
 
 ## 验证范围与迁移边界
+
+本机 STAR-CCM+ 2602 Build 21.02.007 的 `_SelectionReport` 体积平均报告已由 `Pressure` 关联到 `Density`，`value_checks` 记录 `scalar_field_function` 的预期和实际值均为 `SCALAR`。`parts` 已完成名称查询→静态 `Background` 区域→嵌套查询→空静态选择→同一嵌套查询的回读；嵌套规则为 `And(Type Is Region, Or(Name Matches Background, Tag Contains AirfoilMotion))`，保留 `PrefilterNamedObjects` 修饰符。
+
+非标量 `Velocity`、不存在的场函数、跨会话新引用、重复静态对象、非法正则 `[` 和过时选择旧值均被写入前拒绝，会话保持 `ready`。本地校验拒绝不允许的关联类型、`java.lang.Runtime` 类型谓词、未知算子、深度 `17` 和 `257` 个节点的规则，并确认旧 schema 2/3 执行映射仍可加载。`describe` 返回场函数的 `value_types: ["field_function"]`、值条件 `SCALAR`，且 `conditions_checked` 保持 `false`。
+
+会话保存后，文件 `modify` 将报告由 `Density` 改回 `Pressure`，嵌套标签查询保持不变；完整快照与目录内容的重载核对及输入摘要核对均通过。文件修改前的全部已配目录属性也与会话恢复后的结果跨加载规范化一致，确认原 `Density` 关联和嵌套标签规则均已持久化。原 `Base.sim~` 摘要未变，会话均已停止，未执行报告求值、网格或求解。本轮静态选择只验证单个区域与空集合；边界选择、多对象选择、其他谓词算子、未知谓词类型，以及并发或中断场景尚未实测。运行产物位于 `outputs/catalog-selection-20261028/`。
 
 本机 STAR-CCM+ 2602 Build 21.02.007 已完成新增写入的内存回读：`ignore_boundary_values` 从 `false` 改为 `true`、`value_type` 从 `SCALAR` 改为 `VECTOR`、向量分量写入 `[2.25, -3.5, 4.75]`、向量表达式写入 `[5, -6, 7]`，以及重力分量写入 `[0, -9.8, 0] m/s^2`。重力修改的 `catalog_before.checks` 记录 `gravity_model_enabled` 的预期值和实际值均为 `true`。
 
@@ -160,4 +235,4 @@ python3 bridge/runner/session_bridge.py save \
 
 不带 `--catalog/--execution` 的 `modify` 保留[兼容 schema 1 契约](modifier.md)，`set-scalar` 保留原 CLI 参数；内部自动加载随仓库分发的 2602 目录并桥接到同一修改器，用户无需生成目录或转换旧请求。旧 `modify` 提供的全部 `expected` 字段仍先按旧快照检查；`set-scalar` 没有调用者提供的预期旧值，因此仍不保护陈旧请求。两者也精确检查 server 为 2602 Build 21.02.007。
 
-新 schema 2 仍由 `--catalog` 和 `--execution` 明确选择；读取请求仍是 schema 1。候选目录 schema 1、人工执行映射 schema 3 和修改请求 schema 2 分开版本化，新增写适配器不要求升级用户请求。执行映射加载器兼容 schema 1/2；schema 2 中原来专用于场函数定义的 `primitive` 会规范化为 `field_definition`，不会因 schema 3 新增通用 `primitive` 而放宽旧定义契约。兼容快照仍用于旧状态校验和结果输出，其读取通过独立 `snapshot.json` 布局共享成员映射和适配器。
+新 schema 2 仍由 `--catalog` 和 `--execution` 明确选择；读取请求仍是 schema 1。候选目录 schema 1、人工执行映射 schema 4 和修改请求 schema 2 分开版本化，新增写适配器不要求升级用户请求。执行映射加载器兼容 schema 1/2/3；schema 2 中原来专用于场函数定义的 `primitive` 会规范化为 `field_definition`，不会因 schema 3 新增通用 `primitive` 而放宽旧定义契约。兼容快照仍用于旧状态校验和结果输出，其读取通过独立 `snapshot.json` 布局共享成员映射和适配器。

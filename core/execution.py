@@ -24,10 +24,19 @@ WRITE_ADAPTERS = {
     'scalar_value': {'number', 'units'},
     'vector_expression': {'definition', 'units'},
     'vector_value': {'x', 'y', 'z', 'units'},
+    'reference': {'value'},
+    'object_selection': {'value'},
     'user_tags': {'value'},
 }
 JAVA_TYPE = re.compile(r'[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\[\])*\Z')
 PRIMITIVES = {'boolean', 'byte', 'char', 'short', 'int', 'long', 'float', 'double'}
+QUERY_OPERATORS = {
+    'name': {'Contains', 'DoesNotContain', 'Matches', 'DoesNotMatch', 'StartsWith',
+             'DoesNotStartWith', 'EndsWith', 'DoesNotEndWith', 'RegexContains', 'RegexDoesNotContain'},
+    'java_type': {'Is', 'IsNot'},
+    'compound': {'And', 'Or'},
+    'tag': {'Contains', 'DoesNotContain', 'ContainsInherited', 'DoesNotContainInherited'},
+}
 
 
 def _text(value, where):
@@ -147,6 +156,24 @@ def _pipeline(catalog, methods, pipeline, where, *, write_adapter=None):
     return {'root': pipeline['root'], 'steps': compiled}
 
 
+def _guards(catalog, methods, source, *, has_parent):
+    """编译目标或关联对象的只读条件，逐项核对标识、值及父路径是否可用。"""
+    guards = []
+    _require(isinstance(source, list), 'Write guards must be a list')
+    for guard in source:
+        _keys(guard, 'id read adapter expected message', 'write guard')
+        _text(guard['id'], 'guard.id')
+        _text(guard['message'], 'guard.message')
+        _require(guard['id'] not in {g['id'] for g in guards}, 'Duplicate write guard')
+        _require(isinstance(guard['adapter'], str) and guard['adapter'] in ADAPTERS,
+                 'Unsupported guard adapter')
+        _json_value(guard['expected'])
+        read = _pipeline(catalog, methods, guard['read'], 'guard.' + guard['id'])
+        _require(read['root'] != 'parent' or has_parent, 'Guard has no parent context')
+        guards.append({**guard, 'read': read})
+    return guards
+
+
 def load_execution(catalog_path, execution_path):
     """加载共享候选目录及人工执行映射，返回已校验的完整运行时目录。
 
@@ -156,7 +183,7 @@ def load_execution(catalog_path, execution_path):
     catalog = load(catalog_path)
     rules = read_json(execution_path)
     _keys(rules, 'schema_version target members types properties', 'execution')
-    _require(type(rules['schema_version']) is int and rules['schema_version'] in (1, 2, 3),
+    _require(type(rules['schema_version']) is int and rules['schema_version'] in (1, 2, 3, 4),
              'Unsupported execution schema_version')
     _require(rules['target'] == catalog['target'], 'Execution catalog version mismatch')
     _require(isinstance(rules['members'], dict) and bool(rules['members']), 'Missing execution members')
@@ -214,8 +241,16 @@ def load_execution(catalog_path, execution_path):
             if 'write' in entry:
                 _require(rules['schema_version'] >= 2, 'Writes require execution schema 2 or later')
                 write = entry['write']
-                fields = 'adapter pipeline' + (' guards' if 'guards' in write else '')
+                _require(isinstance(write, dict), 'Write contract must be an object')
+                selection = write.get('adapter') == 'object_selection'
+                related = selection or write.get('adapter') == 'reference'
+                fields = 'adapter ' + ('pipelines' if selection else 'pipeline')
+                fields += ' value_types' if related else ''
+                fields += ' value_guards' if write.get('adapter') == 'reference' else ''
+                fields += ' guards' if 'guards' in write else ''
                 _keys(write, fields, identifier + '.' + name + '.write')
+                _require(not related or rules['schema_version'] >= 4,
+                         'Reference and selection writers require execution schema 4')
                 if rules['schema_version'] == 2:
                     _require('guards' not in write and write['adapter'] in
                              ('primitive', 'scalar_expression', 'scalar_value', 'user_tags'),
@@ -228,27 +263,37 @@ def load_execution(catalog_path, execution_path):
                 expected_reader = {'primitive': 'primitive', 'field_definition': 'primitive',
                                    'scalar_expression': 'quantity', 'scalar_value': 'quantity',
                                    'vector_expression': 'vector', 'vector_value': 'vector',
-                                   'enum': 'enum', 'user_tags': 'collection'}[write['adapter']]
+                                   'enum': 'enum', 'user_tags': 'collection', 'reference': 'reference',
+                                   'object_selection': 'query'}[write['adapter']]
                 _require(entry['adapter'] == expected_reader, 'Read and write adapters do not agree')
-                compiled = _pipeline(catalog, methods, write['pipeline'], identifier + '.' + name + '.write',
-                                     write_adapter=write['adapter'])
-                _require(compiled['root'] != 'parent' or types[identifier]['parent_type'] is not None,
-                         f'Write property has no parent context: {identifier}.{name}')
-                guards = []
-                _require(isinstance(write.get('guards', []), list), 'Write guards must be a list')
-                for guard in write.get('guards', []):
-                    _keys(guard, 'id read adapter expected message', 'write guard')
-                    _text(guard['id'], 'guard.id')
-                    _text(guard['message'], 'guard.message')
-                    _require(guard['id'] not in {g['id'] for g in guards}, 'Duplicate write guard')
-                    _require(isinstance(guard['adapter'], str) and guard['adapter'] in ADAPTERS,
-                             'Unsupported guard adapter')
-                    _json_value(guard['expected'])
-                    guard_read = _pipeline(catalog, methods, guard['read'], 'guard.' + guard['id'])
-                    _require(guard_read['root'] != 'parent' or types[identifier]['parent_type'] is not None,
-                             'Guard has no parent context')
-                    guards.append({**guard, 'read': guard_read})
-                properties[identifier][name]['write'] = {**write, 'pipeline': compiled, 'guards': guards}
+                # 静态选择和动态规则各有一个终点；每个请求只选择一个 setter。
+                pipelines = write['pipelines'] if selection else {'single': write['pipeline']}
+                if selection:
+                    _keys(pipelines, 'static query', 'selection pipelines')
+                compiled = {}
+                for mode, pipeline in pipelines.items():
+                    compiled[mode] = _pipeline(catalog, methods, pipeline,
+                                              identifier + '.' + name + '.write.' + mode,
+                                              write_adapter=write['adapter'])
+                    _require(compiled[mode]['root'] != 'parent' or types[identifier]['parent_type'] is not None,
+                             f'Write property has no parent context: {identifier}.{name}')
+                guards = _guards(catalog, methods, write.get('guards', []),
+                                 has_parent=types[identifier]['parent_type'] is not None)
+                writer = {**write, 'guards': guards}
+                writer.update({'pipelines': compiled} if selection else {'pipeline': compiled['single']})
+                if related:
+                    _require(isinstance(write['value_types'], list) and bool(write['value_types'])
+                             and all(isinstance(t, str) and t in types for t in write['value_types'])
+                             and len(set(write['value_types'])) == len(write['value_types']),
+                             'Writer value_types must be unique mapped types')
+                if write['adapter'] == 'reference':
+                    writer['value_guards'] = _guards(catalog, methods, write['value_guards'], has_parent=all(
+                        types[t]['parent_type'] is not None for t in write['value_types']))
+                    properties[identifier][name]['value_guards'] = [
+                        {key: g[key] for key in ('id', 'expected', 'message')} for g in writer['value_guards']]
+                if related:
+                    properties[identifier][name]['value_types'] = write['value_types']
+                properties[identifier][name]['write'] = writer
                 # describe 去除执行管线后仍可展示前提；不把描述当作已完成运行检查。
                 properties[identifier][name]['guards'] = [
                     {key: guard[key] for key in ('id', 'expected', 'message')} for guard in guards]
@@ -326,6 +371,82 @@ def _json_value(value):
         _literal(value)
 
 
+def _reference_state(value):
+    """保留旧关联的名称与实际类；会话引用不作为跨加载的旧状态前提。"""
+    if value is None:
+        return None
+    _require(isinstance(value, dict) and value.keys() in (
+        {'name', 'java_class'}, {'name', 'java_class', 'reference'}), 'Invalid expected object reference')
+    _text(value['name'], 'reference.name')
+    _text(value['java_class'], 'reference.java_class')
+    if 'reference' in value:
+        _keys(value['reference'], 'session_token key', 'expected object reference')
+        _text(value['reference']['session_token'], 'expected reference token')
+        _text(value['reference']['key'], 'expected reference key')
+    return {key: value[key] for key in ('name', 'java_class')}
+
+
+def _selection_value(plan, writer, value, *, expected=False):
+    """校验完整静态选择或动态规则；新引用保留定位路径，旧引用去掉会话元数据。
+
+    动态规则不在本地求值。类型谓词只能使用写映射允许的类，标签谓词只解析
+    已映射的用户标签；两种参数都不能变成调用者提供的任意 Java 类加载。
+    """
+    _require(isinstance(value, dict), 'Object selection must be an object')
+    mode = value.get('mode')
+    if mode == 'static':
+        _keys(value, 'mode objects', 'static selection')
+        _require(isinstance(value['objects'], list), 'Static objects must be a list')
+        if expected:
+            objects = [_reference_state(item) for item in value['objects']]
+            _require(all(item is not None for item in objects), 'Selected objects cannot be null')
+            # 保留同名同类项的数量，不能把不同父对象下的同名边界合并成一项。
+            objects.sort(key=lambda item: (item['name'], item['java_class']))
+            return {**value, 'objects': objects}
+        for target in value['objects']:
+            _target(plan, target)
+            _require(target['type'] in writer['value_types'], 'Unsupported selected object type')
+        return value
+    _require(mode == 'query', 'Unsupported object selection mode')
+    _keys(value, 'mode predicate modifiers', 'query selection')
+    modifiers = value['modifiers']
+    _require(isinstance(modifiers, list) and all(m == 'PrefilterNamedObjects' for m in modifiers)
+             and len(modifiers) == len(set(modifiers)), 'Unsupported or duplicate query modifiers')
+    count = 0
+
+    def predicate(rule, depth=0):
+        """根节点深度为零；限制边数和总节点数，避免任意深递归进入宏编译或执行。"""
+        nonlocal count
+        count += 1
+        _require(depth <= 16 and count <= 256, 'Query exceeds depth or node limit')
+        _require(isinstance(rule, dict), 'Query predicate must be an object')
+        kind = rule.get('type')
+        _require(isinstance(kind, str) and kind in QUERY_OPERATORS, 'Unsupported query predicate')
+        _keys(rule, 'type operator ' + ('predicates' if kind == 'compound' else 'value'), 'predicate')
+        _require(isinstance(rule['operator'], str) and rule['operator'] in QUERY_OPERATORS[kind],
+                 'Unsupported query operator')
+        if kind == 'compound':
+            _require(isinstance(rule['predicates'], list), 'Compound predicates must be a list')
+            return {**rule, 'predicates': [predicate(p, depth + 1) for p in rule['predicates']]}
+        if kind == 'tag':
+            if expected:
+                tag = _reference_state(rule['value'])
+                _require(tag is not None, 'Tag predicate requires a tag')
+                return {**rule, 'value': tag}
+            _target(plan, rule['value'])
+            _require(rule['value']['type'] == 'user_tag', 'Tag predicate requires a user_tag target')
+        else:
+            _require(isinstance(rule['value'], str), 'Predicate value must be a string')
+            if kind == 'java_type':
+                _require(bool(JAVA_TYPE.fullmatch(rule['value'])), 'Invalid predicate Java class')
+                if not expected:
+                    classes = {plan['types'][t]['java_class'] for t in writer['value_types']}
+                    _require(rule['value'] in classes, 'Query type is outside writer value_types')
+        return rule
+
+    return {**value, 'predicate': predicate(value['predicate']), 'modifiers': sorted(modifiers)}
+
+
 def prepare_modification(catalog_path, execution_path, request_path):
     """校验单属性修改请求并裁剪写入计划；旧状态和实际可写条件在 server 再核对。
 
@@ -348,7 +469,15 @@ def prepare_modification(catalog_path, execution_path, request_path):
     _json_value(request['expected'])
     _json_value(request['value'])
     adapter, value = prop['write']['adapter'], request['value']
-    if adapter == 'field_definition':
+    if adapter == 'reference':
+        _target(plan, value)
+        _require(value['type'] in prop['write']['value_types'], 'Unsupported reference value type')
+        request = {**request, 'expected': _reference_state(request['expected'])}
+    elif adapter == 'object_selection':
+        request = {**request,
+                   'value': _selection_value(plan, prop['write'], value),
+                   'expected': _selection_value(plan, prop['write'], request['expected'], expected=True)}
+    elif adapter == 'field_definition':
         _require(isinstance(value, str) and bool(value.strip()), 'Definition must be a non-empty string')
         _require(isinstance(request['expected'], str), 'Expected definition must be a string')
     elif adapter == 'primitive':
@@ -425,10 +554,15 @@ def prepare_modification(catalog_path, execution_path, request_path):
         request = {**request, 'value': sorted(value), 'expected': sorted(expected, key=lambda item: item['name'])}
     # 所有本类型读取都留在计划中，用于修改前完整性检查与修改后差异；只保留一个写入。
     required = {}
-    current = identifier
-    while current is not None:
-        required[current] = plan['types'][current]
-        current = plan['types'][current]['parent_type']
+    needed = [identifier]
+    if adapter in ('reference', 'object_selection'):
+        needed += prop['write']['value_types']
+        if adapter == 'object_selection' and 'user_tag' in plan['types']:
+            needed.append('user_tag')
+    for current in needed:
+        while current is not None:
+            required[current] = plan['types'][current]
+            current = plan['types'][current]['parent_type']
     clipped = {name: {key: item for key, item in value.items()
                       if key != 'write' or name == request['property']}
                for name, value in properties.items()}

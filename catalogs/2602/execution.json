@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "target": {
     "release": "2602",
     "build": "21.02.007"
@@ -587,6 +587,52 @@
         "java.lang.Class"
       ],
       "effect": "read"
+    },
+    "scalar_report.function": {
+      "type": "star.base.report.ScalarReport",
+      "member": "getFieldFunction()",
+      "signature": "@StarBeanProperty(display=\"Field Function\", hint=\"Field function report is based on\", booleanValues=@BooleanValue(key=\"scalars\",value=true)) public FieldFunction getFieldFunction()",
+      "fingerprint": "153457b10b5c3c66faeec7bba852a62a9f87db2d55d80cab627471ece57db60f",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "scalar_report.write_function": {
+      "type": "star.base.report.ScalarReport",
+      "member": "setFieldFunction(star.common.FieldFunction)",
+      "signature": "public void setFieldFunction(FieldFunction fieldFunction)",
+      "fingerprint": "7de2851c83ff2ae0c2362b0a505c9c146205d9aad51e16813d955fbc0ace9588",
+      "parameter_types": [
+        "star.common.FieldFunction"
+      ],
+      "effect": "write"
+    },
+    "function.type_enum": {
+      "type": "star.common.FieldFunction",
+      "member": "getTypeAsEnum()",
+      "signature": "public FieldFunctionTypeOption.Type getTypeAsEnum()",
+      "fingerprint": "6bbcf86a6c37ac7d2f68efe7b131b20a580da885020ad19955ae31425bc2db9d",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "selection.write_objects": {
+      "type": "star.base.query.ManagerWithQuery",
+      "member": "setObjects(java.util.Collection)",
+      "signature": "public void setObjects(Collection<? extends T> v)",
+      "fingerprint": "ca968740541fc6c52d468f5a3c076725862e6dc919c6b68aa31264aec956801f",
+      "parameter_types": [
+        "java.util.Collection"
+      ],
+      "effect": "write"
+    },
+    "selection.write_query": {
+      "type": "star.base.query.ManagerWithQuery",
+      "member": "setQuery(star.base.query.Query)",
+      "signature": "public void setQuery(Query query)",
+      "fingerprint": "22a65e23c0888f5c49dd1db3cc6d474ee47328d461c4fa85024d8fbfe7467732",
+      "parameter_types": [
+        "star.base.query.Query"
+      ],
+      "effect": "write"
     }
   },
   "types": {
@@ -1625,8 +1671,51 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "替换完整静态对象选择或动态查询，准备时检查新关联和查询规则",
+        "write": {
+          "adapter": "object_selection",
+          "pipelines": {
+            "static": {
+              "root": "object",
+              "steps": [
+                {
+                  "member": "report.parts",
+                  "arguments": []
+                },
+                {
+                  "member": "selection.write_objects",
+                  "arguments": [
+                    {
+                      "context": "value"
+                    }
+                  ]
+                }
+              ]
+            },
+            "query": {
+              "root": "object",
+              "steps": [
+                {
+                  "member": "report.parts",
+                  "arguments": []
+                },
+                {
+                  "member": "selection.write_query",
+                  "arguments": [
+                    {
+                      "context": "value"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "value_types": [
+            "region",
+            "boundary"
+          ]
+        }
       },
       "tags": {
         "adapter": "collection",
@@ -1679,6 +1768,56 @@
               }
             ]
           }
+        }
+      },
+      "field_function": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "scalar_report.function",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "按当前旧关联核对后关联已存在的标量场函数",
+        "write": {
+          "adapter": "reference",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "scalar_report.write_function",
+                "arguments": [
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          "value_types": [
+            "field_function"
+          ],
+          "value_guards": [
+            {
+              "id": "scalar_field_function",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "function.type_enum",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "enum_name",
+              "expected": "SCALAR",
+              "message": "Scalar report requires a scalar field function"
+            }
+          ]
         }
       }
     },
