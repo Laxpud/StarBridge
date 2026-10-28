@@ -13,14 +13,10 @@ class CatalogRuntime {
                       "session_token", sessionToken);
     }
 
-    /**
-     * 先核对版本和目标身份，再描述或读取选定属性；单项读取失败保留其他结果。
-     * 返回值只含 JSON 可表示的数据。这里的完整性只针对本次选择，不代表整个算例。
-     */
-    public static java.util.Map<String, Object> inspect(
-            star.common.Simulation sim, java.util.Map<String, Object> plan,
-            java.util.Map<String, Object> request, String sessionToken) {
-        // 1. 目录中的任何方法都必须在当前 server 版本匹配后才有机会执行。
+    /** 目录读取和旧快照共用同一版本门槛，目录中的方法只能在匹配的当前服务上执行。 */
+    public static java.util.Map<String, Object> checkVersion(star.common.Simulation sim,
+            java.util.Map<String, Object> plan, String sessionToken) {
+        require(plan != null, "Execution plan is required");
         java.util.Map<String, Object> runtime = metadata(sim, sessionToken);
         require((plan.get("schema_version") instanceof Integer || plan.get("schema_version") instanceof Long)
                 && ((Number) plan.get("schema_version")).longValue() == 1L,
@@ -29,6 +25,187 @@ class CatalogRuntime {
         require(runtime.get("release").equals(version.get("release"))
                 && runtime.get("build").equals(version.get("build")),
                 "Catalog version mismatch: expected " + version + ", got " + runtime);
+        return runtime;
+    }
+
+    /**
+     * 按目录节点生成旧 schema 1 快照，保留名称排序、局部失败与完整性标记的既有契约。
+     * 版本检查先于快照元数据和字段读取；节点只描述读取，不执行设置、求值或保存。
+     */
+    public static java.util.Map<String, Object> snapshot(star.common.Simulation sim,
+            java.util.Map<String, Object> plan, String sessionToken) {
+        checkVersion(sim, plan, sessionToken);
+        string(plan.get("catalog_id"), "snapshot.catalog_id");
+        java.util.Map<String, Object> nodes = object(plan.get("nodes"), "snapshot.nodes");
+        java.util.List<java.util.Map<String, Object>> errors = new java.util.ArrayList<>();
+        java.util.Map<String, Object> result = fields("schema_version", 1,
+                "simulation_name", sim.getPresentationName(), "session_path", sim.getSessionPath(),
+                "modified", sim.isModified());
+        java.util.Set<String> active = new java.util.HashSet<>();
+        // 每个根集合独立记录枚举错误；一个集合失败不会中止其他集合的读取。
+        for (Object raw : list(plan.get("collections"), "snapshot.collections")) {
+            java.util.Map<String, Object> field = object(raw, "snapshot collection");
+            require(field.keySet().equals(java.util.Set.of("output", "read", "collection")),
+                    "Invalid snapshot collection fields");
+            String output = string(field.get("output"), "collection.output");
+            result.put(output, snapshotCollection(sim, null, nodes, field, output,
+                    sessionToken, errors, active, 0));
+        }
+        result.put("inspection_complete", errors.isEmpty());
+        result.put("read_errors", errors);
+        return result;
+    }
+
+    /** 集合管线失败返回空数组并记录路径；节点错误由各节点自身保留，互不覆盖。 */
+    private static java.util.List<java.util.Map<String, Object>> snapshotCollection(
+            star.common.Simulation sim, star.base.neo.ClientServerObject owner,
+            java.util.Map<String, Object> nodes, java.util.Map<String, Object> field,
+            String location, String token, java.util.List<java.util.Map<String, Object>> errors,
+            java.util.Set<String> active, int depth) {
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        java.util.List<star.base.neo.ClientServerObject> values = new java.util.ArrayList<>();
+        String node;
+        try {
+            node = string(field.get("collection"), "collection.node");
+            Object raw = pipeline(sim, owner, null, object(field.get("read"), "collection.read"));
+            require(raw instanceof java.util.Collection<?>, "Snapshot collection requires a collection");
+            for (Object value : (java.util.Collection<?>) raw) {
+                require(value instanceof star.base.neo.ClientServerObject,
+                        "Snapshot collection requires STAR objects");
+                values.add((star.base.neo.ClientServerObject) value);
+            }
+            values.sort(java.util.Comparator.comparing(star.base.neo.ClientServerObject::getPresentationName)
+                    .thenComparing(value -> value.getClass().getSimpleName()));
+        } catch (Exception error) {
+            snapshotError(errors, location, error);
+            return result;
+        }
+        for (star.base.neo.ClientServerObject value : values) {
+            result.add(snapshotNode(sim, value, nodes, node, location, token, errors, active, depth));
+        }
+        return result;
+    }
+
+    /**
+     * 节点先保留身份，再按顺序读取公共字段及全部匹配的类型分支。
+     * 活动路径按节点和对象 key 检测循环；重复引用在不同路径上仍可正常读取。
+     */
+    private static java.util.Map<String, Object> snapshotNode(star.common.Simulation sim,
+            star.base.neo.ClientServerObject value, java.util.Map<String, Object> nodes, String nodeId,
+            String location, String token, java.util.List<java.util.Map<String, Object>> errors,
+            java.util.Set<String> active, int depth) {
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        String path = location, activeKey = null;
+        boolean entered = false;
+        try {
+            String name = value.getPresentationName();
+            result.put("name", name);
+            result.put("object_type", value.getClass().getSimpleName());
+            path += "/" + name;
+            require(depth < 64, "Snapshot nesting exceeds 64 nodes");
+            activeKey = nodeId + "\u0000" + value.getObjectKeyAsString();
+            require(active.add(activeKey), "Snapshot node cycle detected: " + nodeId);
+            entered = true;
+            java.util.Map<String, Object> node = object(nodes.get(nodeId), "snapshot node " + nodeId);
+            snapshotFields(sim, value, nodes, list(node.get("fields"), "node.fields"), result,
+                    path, token, errors, active, depth);
+            boolean matched = false;
+            for (Object raw : list(node.get("variants"), "node.variants")) {
+                java.util.Map<String, Object> variant = object(raw, "node variant");
+                Class<?> type = javaType(string(variant.get("java_class"), "variant.java_class"));
+                if (type.isInstance(value)) {
+                    matched = true;
+                    snapshotFields(sim, value, nodes, list(variant.get("fields"), "variant.fields"),
+                            result, path, token, errors, active, depth);
+                }
+            }
+            require(node.get("require_variant") instanceof Boolean, "Node require_variant must be boolean");
+            if (Boolean.TRUE.equals(node.get("require_variant")) && !matched) {
+                result.put("unsupported", true);
+                throw new IllegalArgumentException("Unsupported snapshot object type: " + value.getClass().getName());
+            }
+        } catch (Exception error) {
+            result.put("read_error", errorText(error));
+            snapshotError(errors, path, error);
+        } finally {
+            if (entered) active.remove(activeKey);
+        }
+        return result;
+    }
+
+    /**
+     * 四种字段分别处理适配值、子集合、单对象记录和常量；未配置的隐式读取不会发生。
+     * select 只沿适配结果的映射取值，quantity 展开沿用旧数量的五个字段及单位含义。
+     */
+    private static void snapshotFields(star.common.Simulation sim,
+            star.base.neo.ClientServerObject owner, java.util.Map<String, Object> nodes,
+            java.util.List<?> fields, java.util.Map<String, Object> result, String location, String token,
+            java.util.List<java.util.Map<String, Object>> errors, java.util.Set<String> active, int depth)
+            throws Exception {
+        for (Object raw : fields) {
+            java.util.Map<String, Object> field = object(raw, "snapshot field");
+            Object output = field.get("output");
+            require(field.containsKey("output") && (output == null || output instanceof String && !((String) output).isEmpty()),
+                    "Snapshot output must be a non-empty string or null");
+            if (field.containsKey("collection")) {
+                require(field.keySet().equals(java.util.Set.of("output", "read", "collection")) && output != null,
+                        "Invalid snapshot collection fields");
+                result.put((String) output, snapshotCollection(sim, owner, nodes, field,
+                        location + "/" + output, token, errors, active, depth + 1));
+                continue;
+            }
+            Object value;
+            if (field.containsKey("literal")) {
+                require(field.keySet().equals(java.util.Set.of("output", "literal")) && output != null,
+                        "Invalid snapshot literal fields");
+                value = primitive(field.get("literal"));
+            } else {
+                value = pipeline(sim, owner, null, object(field.get("read"), "field.read"));
+                if (field.containsKey("record")) {
+                    require(field.keySet().equals(java.util.Set.of("output", "read", "record")) && output != null,
+                            "Invalid snapshot record fields");
+                    require(value == null || value instanceof star.base.neo.ClientServerObject,
+                            "Snapshot record requires a STAR object");
+                    value = value == null ? null : snapshotNode(sim, (star.base.neo.ClientServerObject) value,
+                            nodes, string(field.get("record"), "record.node"), location + "/" + output,
+                            token, errors, active, depth + 1);
+                } else {
+                    require(field.keySet().equals(java.util.Set.of("output", "read", "adapter", "select")),
+                            "Invalid snapshot adapted fields");
+                    String adapter = string(field.get("adapter"), "field.adapter");
+                    value = encode(value, adapter, token);
+                    for (Object key : list(field.get("select"), "field.select")) {
+                        String name = string(key, "select key");
+                        java.util.Map<String, Object> map = object(value, "selected value");
+                        require(map.containsKey(name), "Snapshot selected value is missing: " + name);
+                        value = map.get(name);
+                    }
+                    if (output == null) {
+                        require(adapter.equals("quantity"), "Only quantity fields may expand into a node");
+                        result.putAll(object(value, "expanded quantity"));
+                        continue;
+                    }
+                }
+            }
+            result.put((String) output, value);
+        }
+    }
+
+    /** 全局错误保留路径和展开后的根因，防止空集合或部分记录被误解为完整结果。 */
+    private static void snapshotError(java.util.List<java.util.Map<String, Object>> errors,
+            String location, Exception error) {
+        errors.add(fields("location", location, "message", errorText(error)));
+    }
+
+    /**
+     * 先核对版本和目标身份，再描述或读取选定属性；单项读取失败保留其他结果。
+     * 返回值只含 JSON 可表示的数据。这里的完整性只针对本次选择，不代表整个算例。
+     */
+    public static java.util.Map<String, Object> inspect(
+            star.common.Simulation sim, java.util.Map<String, Object> plan,
+            java.util.Map<String, Object> request, String sessionToken) {
+        // 1. 目录中的任何方法都必须在当前 server 版本匹配后才有机会执行。
+        java.util.Map<String, Object> runtime = checkVersion(sim, plan, sessionToken);
         String action = string(request.get("action"), "request.action");
         require(action.equals("describe") || action.equals("read"), "Unsupported catalog action");
         String catalogId = string(plan.get("catalog_id"), "plan.catalog_id");
@@ -543,11 +720,35 @@ class CatalogRuntime {
 
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
-        require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query")
+        require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
+                "name", "type_name", "names", "enum_name")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
-        if (value == null) return null;
+        // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
+        // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
+        if (value == null) {
+            require(!java.util.List.of("type_name", "names", "enum_name").contains(adapter),
+                    "Metadata adapter requires a non-null value: " + adapter);
+            return null;
+        }
         switch (adapter) {
             case "primitive": return primitive(value);
+            // 这些身份适配器也供普通按需读取使用，不附带会话引用或执行对象求值。
+            case "name":
+                require(value instanceof star.base.neo.ClientServerObject, "Name adapter requires a STAR object");
+                return ((star.base.neo.ClientServerObject) value).getPresentationName();
+            case "type_name": return value.getClass().getSimpleName();
+            case "names":
+                require(value instanceof java.util.Collection<?>, "Names adapter requires a collection");
+                java.util.List<String> names = new java.util.ArrayList<>();
+                for (Object item : (java.util.Collection<?>) value) {
+                    require(item instanceof star.base.neo.ClientServerObject, "Names adapter requires STAR objects");
+                    names.add(((star.base.neo.ClientServerObject) item).getPresentationName());
+                }
+                java.util.Collections.sort(names);
+                return names;
+            case "enum_name":
+                require(value instanceof Enum<?>, "Enum name adapter requires an enum");
+                return ((Enum<?>) value).name();
             case "reference":
                 require(value instanceof star.base.neo.ClientServerObject, "Reference adapter requires a STAR object");
                 return reference((star.base.neo.ClientServerObject) value, sessionToken);

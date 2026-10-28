@@ -13,7 +13,11 @@
 
 StarBridge is in early development. The Inspector reads simulation objects, key properties, and relationships through both file and background-session entry points. The Modifier can update existing scalar-parameter and user-field-function definitions and replace existing user-tag assignments, with expected-state checks and readback. File changes are saved to a new simulation and reloaded for verification; session changes remain in memory until an explicit save. A background-session prototype also reuses one loaded STAR server for successive requests. Each request starts a temporary Java client; a persistent Java adapter, GUI integration, MCP, and working memory remain future work.
 
-Catalog-driven `describe` and `read` commands now check the running server version, locate objects, and read selected properties through reviewed mappings and shared type adapters. They return separate catalog results with session-scoped references and per-property status. Catalog-based `modify` now supports scalar expressions and numeric constants, user-field-function definitions, and user-tag assignments, with expected-state checks, readback, and both catalog and snapshot diffs. The existing schema 1 `modify` and `set-scalar` commands now use the same catalog modifier automatically, with their arguments and existing result fields preserved. They use the bundled catalog and require the running server to match 2602 Build 21.02.007 exactly; `set-scalar` still has no caller-provided expected state. Migration of the existing Inspector snapshot, broader write adapters, structural operations, and model-state checks remain unfinished.
+Catalog-driven `describe` and `read` commands now check the running server version, locate objects, and read selected properties through reviewed mappings and shared type adapters. They return separate catalog results with session-scoped references and per-property status. Catalog-based `modify` now supports scalar expressions and numeric constants, user-field-function definitions, and user-tag assignments, with expected-state checks, readback, and both catalog and snapshot diffs.
+
+The existing schema 1 `modify` and `set-scalar` commands now use the same catalog modifier automatically, with their arguments and existing result fields preserved. They use the bundled catalog and require the running server to match 2602 Build 21.02.007 exactly; `set-scalar` still has no caller-provided expected state.
+
+The existing Inspector snapshot now also uses the shared catalog through a separate snapshot layout while preserving its schema 1 fields; `inspect` and `save` enforce the same exact server version. Broader write adapters, operation descriptions, coverage reporting, structural operations, and model-state checks remain unfinished.
 
 The proposed system combines structured simulation access, workflow Skills, persistent working memory, and long-lived background or GUI simulation sessions. See the [design document](StarBridge.md) for scope and boundaries.
 
@@ -35,7 +39,7 @@ Supply your own compatible simulation file and a new work directory. For repeate
 | [Catalog modification](docs/catalog-modifier.md) | Schema 2 property writes, expected state, readback, diffs, and file reload verification |
 | [Offline catalog tools](docs/catalog.md) | Generate versioned API candidates, merge reviewed semantics, and compare declarations |
 | [Modifier guide](docs/modifier.md) | Single-object requests, expected-state checks, readback, and save behavior |
-| [Inspector snapshot](docs/inspector.md) | Object coverage, snapshot fields, read errors, and validation limits |
+| [Inspector snapshot](docs/inspector.md) | Catalog-driven snapshot layout, compatible fields, read errors, and validation limits |
 | [File Bridge guide](docs/bridge-file.md) | File operations, requirements, and implementation limits |
 | [Background-session guide](docs/bridge-session.md) | Start, inspect, modify, save, and stop a persistent STAR server |
 | [Design](StarBridge.md) | Product scope, proposed architecture, sessions, and working memory |

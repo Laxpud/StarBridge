@@ -6,7 +6,7 @@
 
 ## 读取算例对象与参数
 
-需要 Python 3.11 或更新版本、可启动且具有可用许可证的 STAR-CCM+，以及与其兼容的输入算例。本次仅实际验证上述 STAR 版本。Runner 默认调用 `PATH` 中的 `starccm+`，可用 `--star /absolute/path/to/starccm+` 指定启动器。
+需要 Python 3.11 或更新版本、可启动且具有可用许可证的 STAR-CCM+，以及与其兼容的输入算例。当前 `inspect` 和修改均由随附目录驱动，运行中 server 必须精确匹配 2602 Build 21.02.007；字段读取或写入前拒绝不匹配的版本。Runner 默认调用 `PATH` 中的 `starccm+`，可用 `--star /absolute/path/to/starccm+` 指定启动器。
 
 在仓库根目录运行：
 
@@ -67,6 +67,7 @@ python3 bridge/runner/file_bridge.py set-scalar 'Base.sim~' \
 | `apply/star.log` | STAR 加载、编译和执行日志 |
 | `apply/result.json` | 宏返回的修改前后快照及目录结果 |
 | `apply/legacy-plan.json` | 兼容 `modify` / `set-scalar` 裁剪后的默认目录执行计划 |
+| `apply/snapshot-plan.json` | `inspect` 及修改前后使用的只读快照布局和调用计划 |
 | `reopen/` | 修改操作第二次启动 STAR 的同类产物 |
 
 Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常退出就判断宏执行成功。失败时检查错误消息指向的日志；输出文件可能已保存但后续核对失败，此时不会生成成功摘要。保留该文件用于排查，再次运行时应选择新的输出路径。
@@ -88,8 +89,8 @@ Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常�
 
 ## 已确认的范围
 
-实际输入共读取到 32 个标量全局参数，无参数读取错误。将 `_AirfoilPitchAmplitude` 从 `5 deg` 改为 `6 deg` 后，新文件重新加载结果与保存后快照一致；参数 Diff 只有该项，输入文件摘要保持一致。
+早期参数原型的实际输入共读取到 32 个标量全局参数，无参数读取错误。将 `_AirfoilPitchAmplitude` 从 `5 deg` 改为 `6 deg` 后，新文件重新加载结果与保存后快照一致；参数 Diff 只有该项，输入文件摘要保持一致。
 
 迁入共享目录后的 `modify` / `set-scalar` 已完成旧字段兼容、完整快照与目录重载核对，具体验收与限制见 [Modifier](modifier.md#已确认的范围)。
 
-没有执行网格生成或求解，也没有验证向量、其他参数类型、异常单位、MCP 或工作记忆功能。扩展对象读取的验证范围见 [Inspector](inspector.md#验证范围)。后台会话的验证范围单独记录在[会话说明](bridge-session.md#已确认的范围)。
+上述早期参数原型没有执行网格生成或求解，也未验证向量、其他参数类型、异常单位、MCP 或工作记忆功能。扩展对象读取的验证范围见 [Inspector](inspector.md#验证范围)。后台会话的验证范围单独记录在[会话说明](bridge-session.md#已确认的范围)。

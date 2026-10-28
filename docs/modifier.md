@@ -85,9 +85,9 @@ python3 bridge/runner/session_bridge.py save \
 
 ## 拒绝、失败与结果
 
-请求格式错误、默认目录缺失或映射指纹失效在启动客户端或标记会话活动请求之前返回。宏在同一次调用内先精确核对 server 版本，读取当前快照并比较用户提供的全部 `expected` 字段；然后将请求桥接为内部目录修改，核对目录读取与旧快照的对应字段一致，交给统一准备与写入流程。所需标签也在写入前全部解析；不会只取 schema 2 的最小旧值而跳过旧请求中的额外预期字段。
+请求格式错误、默认目录缺失或映射指纹失效在启动客户端或标记会话活动请求之前返回。宏在同一次调用内先精确核对快照计划与写入计划的 server 版本，读取当前快照并比较用户提供的全部 `expected` 字段；然后将请求桥接为内部目录修改，核对目录读取与旧快照的对应字段一致，交给统一准备与写入流程。所需标签也在写入前全部解析；不会只取 schema 2 的最小旧值而跳过旧请求中的额外预期字段。
 
-- `status: rejected`：宏确认尚未调用写入 API，预检查已经拒绝请求。`result.json` 保留错误原因和相同的前后快照。CLI 以非零退出码返回；后台会话保持 `ready`，`last_request_status` 为 `rejected`，可以重新读取后构造新请求。
+- `status: rejected`：宏确认尚未调用写入 API，预检查已经拒绝请求。`result.json` 保留错误原因和未写入的前后状态；版本检查在快照字段读取前拒绝时仅含最小会话元数据，不能当作完整快照。CLI 以非零退出码返回；后台会话保持 `ready`，`last_request_status` 为 `rejected`，可以重新读取后构造新请求。
 - `status: ok`：宏已完成写入和回读；文件入口还需通过重新加载核对后才生成成功摘要。
 - 超时、客户端异常、写入或回读失败：后台会话进入 `uncertain` 或保留活动请求标记，按[后台会话失败处理](bridge-session.md#身份隔离与失败处理)处理。当前不自动重试、不承诺回滚。
 
@@ -100,7 +100,7 @@ python3 bridge/runner/session_bridge.py save \
 
 ## 已确认的范围
 
-2026-10-28，在本机 Linux、STAR-CCM+ 2602 Build 21.02.007 与 `Base.sim~` 上验证共享目录兼容入口：旧文件 `modify` 将角度参数由 `5 deg` 改为 `6 deg` 表达式，以 `radian` 回读；旧文件 `set-scalar` 写入 `9 deg`。两者均保留原有结果字段，并通过完整旧快照、目录内容的独立重载核对和原输入摘要核对；`set-scalar` 的 `reopened_parameters_match` 也通过。后台旧 schema 1 请求完成用户场函数定义写入 `0`、内置 `Pressure` 场函数和 `BackgroundBlock.Bottom` 边界关联标签 `AirfoilMotion`。随附候选目录与本机当前 35 个根类型重新生成的文件逐字节一致。运行产物位于 `outputs/catalog-legacy-20261028/`。
+2026-10-28，在本机 Linux、STAR-CCM+ 2602 Build 21.02.007 与 `Base.sim~` 上验证共享目录兼容入口：旧文件 `modify` 将角度参数由 `5 deg` 改为 `6 deg` 表达式，以 `radian` 回读；旧文件 `set-scalar` 写入 `9 deg`。两者均保留原有结果字段，并通过完整旧快照、目录内容的独立重载核对和原输入摘要核对；`set-scalar` 的 `reopened_parameters_match` 也通过。后台旧 schema 1 请求完成用户场函数定义写入 `0`、内置 `Pressure` 场函数和 `BackgroundBlock.Bottom` 边界关联标签 `AirfoilMotion`。该次验收使用的候选目录与当时 35 个根类型重新生成的文件逐字节一致。运行产物位于 `outputs/catalog-legacy-20261028/`。
 
 旧场函数请求重放因定义过时而拒绝；保持当前定义但故意提交过时的 `expected.function_name` 也拒绝，确认其他预期字段仍参与检查。旧 `set-scalar` 使用不兼容量纲的 `m` 被写入前拒绝，随后同会话成功写入 `7 deg` 并继续 `inspect`。向兼容路径的内部计划注入错误 Build `21.02.999` 时，精确版本检查也拒绝请求，会话保持 `ready`。
 

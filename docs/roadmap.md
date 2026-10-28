@@ -12,7 +12,7 @@
 
 当前为 **2602 版本目录与通用读写基础**，活动目标、任务和完成条件统一维护在 [TODO](../TODO.md)。
 
-文件与后台会话的 Inspector、首批 Modifier 已实现，当前使用说明仍以 [Inspector](inspector.md) 和 [Modifier](modifier.md) 为准。[离线候选目录工具](catalog.md)已可生成、合并和比较 API 描述，[目录描述与读取](catalog-runtime.md)已接入当前算例的版本检查、对象定位和按需读取。[首批目录修改](catalog-modifier.md)已支持表达式、标量常量和用户标签写入，复用预期旧状态检查、回读、双层 Diff 与文件另存重载。兼容 schema 1 `modify` 与 `set-scalar` 也已使用仓库随附目录和同一修改器，保留原请求与结果字段。接下来迁移旧快照，补齐其他写适配器、模型条件及结构操作；原 Modifier 阶段的全部扩展仍未完成。
+文件与后台会话的 Inspector、首批 Modifier 已实现，当前使用说明仍以 [Inspector](inspector.md) 和 [Modifier](modifier.md) 为准。[离线候选目录工具](catalog.md)已可生成、合并和比较 API 描述，[目录描述与读取](catalog-runtime.md)已接入当前算例的版本检查、对象定位和按需读取。[首批目录修改](catalog-modifier.md)已支持表达式、标量常量和用户标签写入，复用预期旧状态检查、回读、双层 Diff 与文件另存重载。兼容 schema 1 `modify` 与 `set-scalar` 也已使用仓库随附目录和同一修改器，保留原请求与结果字段。Inspector schema 1 快照已通过独立布局迁入共享目录。接下来补齐操作描述、分项覆盖报告、其他写适配器、模型条件及结构操作；原 Modifier 阶段的全部扩展仍未完成。
 
 长期覆盖范围为算例本身所有可修改参数和选项，包括几何、网格、物理模型、边界条件、求解器、后处理和操作流程；客户端偏好、安装配置等不在范围内。目录是主要适配层，运行时发现负责补充和校验。架构及维护原则见[设计文档](../StarBridge.md#版本化对象属性与操作目录)。
 
@@ -64,7 +64,7 @@ Tool 决定 Agent 能做什么，Skill 描述 Agent 如何完成工作。
 
 ### Inspector 读取深度与补充验证
 
-当前字段契约与未实测分支见 [Inspector 对象快照](inspector.md)。非空 Simulation Operations、向量参数、读取失败及其他设置的覆盖纳入[目录覆盖扩展与版本演进](#目录覆盖扩展与版本演进)；现有对象清单不等于完整设置导出。
+当前字段契约、已验收分支与限制见 [Inspector 对象快照](inspector.md)。尚未覆盖的参数类型、字段与错误场景，以及其他设置的读取纳入[目录覆盖扩展与版本演进](#目录覆盖扩展与版本演进)；现有对象清单不等于完整设置导出。
 
 ### 常驻 Java 适配器与 GUI 接入
 

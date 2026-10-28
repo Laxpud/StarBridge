@@ -14,7 +14,8 @@ from urllib.parse import urlsplit
 from .catalog import CatalogError, _keys, _pinned_member, _require, load, read_json
 
 
-ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum', 'query'}
+ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum', 'query',
+            'name', 'type_name', 'names', 'enum_name'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
     'scalar_expression': {'definition', 'units'},

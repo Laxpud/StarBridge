@@ -19,7 +19,8 @@ import time
 import uuid
 
 from file_bridge import (catalog_content, catalog_diff, digest, execute,
-                         prepare_catalog_modification, prepare_catalog_read, prepare_legacy)
+                         prepare_catalog_modification, prepare_catalog_read, prepare_legacy,
+                         prepare_snapshot)
 from modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
 
 
@@ -113,7 +114,8 @@ def terminate_owned(state):
 
 
 def request(directory, state, action, timeout, *, output=None, name='', value=0.0, unit='',
-            modification=None, catalog_plan=None, catalog_request=None, legacy_plan=None):
+            modification=None, catalog_plan=None, catalog_request=None, legacy_plan=None,
+            snapshot_plan=None):
     """连接已登记的服务并校验目标文件身份；修改失败不自动重试。"""
     if not alive(state):
         raise RuntimeError('Managed server is not running; refusing to connect to its old port')
@@ -129,7 +131,7 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
                    expected_session=state['current_file'], timeout=timeout,
                    client_userdir=directory / 'client-settings', modification=modification,
                    catalog_plan=catalog_plan, catalog_request=catalog_request,
-                   session_token=state['session_token'], legacy_plan=legacy_plan)
+                   session_token=state['session_token'], legacy_plan=legacy_plan, snapshot_plan=snapshot_plan)
     if not alive(state):
         raise RuntimeError('Server exited or changed identity during request')
     if digest(Path(state['input'])) != state['input_sha256']:
@@ -198,7 +200,10 @@ def start(args, directory):
                 if time.monotonic() >= deadline:
                     raise RuntimeError('Server startup timed out')
                 time.sleep(0.2)
-            _, run = request(directory, state, 'inspect', max(1, deadline - time.monotonic()))
+            data, run = request(directory, state, 'inspect', max(1, deadline - time.monotonic()),
+                                snapshot_plan=args.snapshot_plan)
+            if data['status'] != 'ok':
+                raise ModificationRejected(f'Initial inspection rejected: {data.get("error")}; see {run}')
             state['initial_request'] = run.name
             write_json(directory / 'session.json', state)
         except BaseException:
@@ -226,7 +231,10 @@ def operate(args, directory):
             # 先读取 STAR 的修改标志；本机另存后仍可能为真，不擅自清除此标志。
             # 失败或仍有修改时，只有显式 discard 才允许放弃剩余内存状态。
             if not args.discard:
-                data, _ = request(directory, state, 'inspect', args.timeout)
+                data, run = request(directory, state, 'inspect', args.timeout,
+                                    snapshot_plan=args.snapshot_plan)
+                if data['status'] != 'ok':
+                    raise ModificationRejected(f'Close inspection rejected: {data.get("error")}; see {run}')
                 if data['after']['modified']:
                     raise RuntimeError('Unsaved changes exist; save first or use stop --discard')
             terminate_owned(state)
@@ -249,7 +257,8 @@ def operate(args, directory):
                                 unit=getattr(args, 'unit', ''), modification=getattr(args, 'modification', None),
                                 catalog_plan=getattr(args, 'catalog_plan', None),
                                 catalog_request=getattr(args, 'catalog_request', None),
-                                legacy_plan=getattr(args, 'legacy_plan', None))
+                                legacy_plan=getattr(args, 'legacy_plan', None),
+                                snapshot_plan=getattr(args, 'snapshot_plan', None))
             if data['status'] == 'rejected':
                 raise ModificationRejected(f'{data["error"]}; see {run / "result.json"}')
             if args.action == 'modify' and not catalog_call:
@@ -355,6 +364,11 @@ def main():
     elif args.action == 'set-scalar':
         # 默认目录也在活动标记前校验，目录缺失或签名失效不会污染会话状态。
         args.legacy_plan = prepare_legacy()
+    # 需要快照的生命周期和修改入口共用默认目录；status 与显式 discard 不依赖目录，
+    # 以便目录损坏或不匹配时仍能查询、清理本次创建的服务。
+    if args.action in ('start', 'inspect', 'save', 'modify', 'set-scalar') or (
+            args.action == 'stop' and not args.discard):
+        args.snapshot_plan = prepare_snapshot()
     directory = args.session_dir.resolve()
     result = start(args, directory) if args.action == 'start' else operate(args, directory)
     # 部分对象读取失败不意味着会话身份不确定；保留可用快照，并显式提示缺失内容。

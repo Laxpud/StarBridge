@@ -2,7 +2,7 @@
 
 [返回项目入口](README.cn.md) · [离线目录工具](catalog.md) · [目录修改](catalog-modifier.md) · [Inspector 快照](inspector.md) · [当前任务](../TODO.md)
 
-文件和后台会话 Runner 的 `describe`、`read` 已通过同一份候选目录、人工调用映射和类型适配器访问当前算例。执行前精确核对正在运行的 STAR server 版本，再按类型、名称及父对象定位目标。首批[目录修改](catalog-modifier.md)也已复用这些定位与读取管线；兼容 schema 1 `modify` 和 `set-scalar` 也使用同一目录修改器；旧 `inspect` 快照迁移仍未完成。
+文件和后台会话 Runner 的 `describe`、`read` 已通过同一份候选目录、人工调用映射和类型适配器访问当前算例。执行前精确核对正在运行的 STAR server 版本，再按类型、名称及父对象定位目标。首批[目录修改](catalog-modifier.md)也已复用这些定位与读取管线；兼容 schema 1 `modify` 和 `set-scalar` 也使用同一目录修改器；兼容 `inspect` 快照也通过独立布局复用相同候选声明、成员映射和读取适配器，见 [Inspector](inspector.md#快照布局与共享调用)。
 
 ## 使用方式
 
@@ -98,7 +98,7 @@ python3 bridge/runner/session_bridge.py describe \
 | `runtime` | 当前 server 的 `release`、`build` 和本次会话 `session_token` |
 | `target` | 已定位对象的类型 ID、名称、实际 Java 类、会话引用及重新定位路径 |
 | `properties` | 本次选定属性的描述或读取结果 |
-| `inspection_complete` | 本次选定属性是否全部成功；不表示完整读取算例或完成旧快照迁移 |
+| `inspection_complete` | 本次选定属性是否全部成功；不表示完整读取算例或覆盖其他快照字段 |
 
 `read` 的每项成功结果为 `{"status":"ok","value":...}`，失败结果为 `{"status":"error","error":"..."}`。单项读取失败保留其他属性结果，`inspection_complete` 为 `false`，CLI 输出警告但仍可返回零退出码。使用者必须检查每项状态，不能把失败当成空集合或 `null`。
 
@@ -129,6 +129,10 @@ python3 bridge/runner/session_bridge.py describe \
 | 适配器 | 返回值与边界 |
 |---|---|
 | `primitive` | 字符串、布尔或数值；非有限数值转成显式字符串 |
+| `name` | 单个 STAR 对象的显示名称；可选关联允许 `null` |
+| `type_name` | 非空对象的 Java 简单类名 |
+| `names` | STAR 对象集合的排序名称数组；空集合返回 `[]`，集合为 `null` 则报错 |
+| `enum_name` | 非空 Java 枚举的常量名称 |
 | `reference` | 名称、实际 Java 类和会话引用；缺失的可选关联保留 `null` |
 | `collection` | 基础值或对象引用的稳定列表；输出顺序不是操作执行顺序 |
 | `quantity` | 标量数量的 `definition`、`unit`、`si_unit`、`raw_value`、`si_value`；两种数值分别使用对应单位 |
@@ -158,4 +162,4 @@ Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作�
 
 工作副本另存后独立加载，向量全部已配属性与会话读取一致，新的文件加载 token 与此前会话不同。原始 `Base.sim~` 的摘要保持不变，验证服务已关闭。运行产物位于本地 `outputs/catalog-runtime-20261028/`，不进入源码版本管理。
 
-静态查询分支目前尚未实测；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。旧 `inspect` 仍按固定字段生成快照；不带目录参数的 schema 1 `modify` 和 `set-scalar` 已通过兼容层复用目录修改器。当前能力不完成整个 Inspector/Modifier 迁移，也不改变[当前里程碑](../TODO.md)的全部完成条件。
+静态查询分支目前尚未实测；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。操作描述、覆盖报告、其他类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。

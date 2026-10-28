@@ -33,13 +33,13 @@ python3 bridge/runner/session_bridge.py save \
 
 `start` 要求会话目录尚不存在。它把输入复制为目录内的 `working.sim`，以单进程计算配置启动独立 STAR 服务，并用一次读取确认服务可用。原输入不作为保存目标；每次请求完成后都会核对原输入的 SHA256。若用户在外部修改原输入，检查也会失败，此后需查看日志并处理会话。
 
-`status` 只读取本地记录并核对进程身份，不启动 Java 客户端；其中 `modified` 是上次成功请求的值。`inspect` 读取服务的当前状态。快照字段、读取错误及覆盖范围见 [Inspector 对象快照](inspector.md)。
+`status` 只读取本地记录并核对进程身份，不启动 Java 客户端；其中 `modified` 是上次成功请求的值。`inspect` 通过随附快照布局和共享目录读取服务的当前状态，并精确核对当前 server 版本。快照字段、读取错误及覆盖范围见 [Inspector 对象快照](inspector.md)。
 
 表达式和标签修改使用 `modify --request`，预期旧状态检查、回读与拒绝处理见 [Modifier 单项修改](modifier.md)。它也只修改内存。兼容 `modify` 和 `set-scalar` 自动加载仓库随附的 2602 目录，使用统一准备、写入及回读流程，无需生成目录或修改旧命令；当前 server 必须精确匹配 2602 Build 21.02.007。显式指定目录的 schema 2 用法见[目录修改](catalog-modifier.md)。
 
 `set-scalar` **只修改内存，不保存文件**。它将已有标量设置为数值常量，替换原表达式，检查单位量纲并回读目标数值与单位。它没有调用者提供的 `expected`，内部按当前值准备修改不会保护陈旧请求。临时客户端退出后，另一次 `inspect` 仍能读到该修改。
 
-`save` 显式另存当前会话；目标必须是不存在的 `.sim` 文件，父目录必须存在。保存后，会话记录随 STAR 的当前文件路径更新。该命令确认保存调用、文件存在及会话路径，不自动重新加载。需要独立核对磁盘值时，可使用文件入口：
+`save` 显式另存当前会话；目标必须是不存在的 `.sim` 文件，父目录必须存在。保存后，会话记录随 STAR 的当前文件路径更新。该命令在保存前检查快照目录版本，确认保存调用、文件存在及会话路径，不自动重新加载。需要独立核对磁盘值时，可使用文件入口：
 
 ```bash
 python3 bridge/runner/file_bridge.py inspect outputs/Base_session_example.sim \
@@ -52,7 +52,7 @@ python3 bridge/runner/file_bridge.py inspect outputs/Base_session_example.sim \
 python3 bridge/runner/session_bridge.py stop --session-dir outputs/my-session
 ```
 
-普通 `stop` 先查询 STAR 的 `isModified()`；只要 STAR 报告存在未保存修改，就拒绝关闭。**本机实测中，另存完成后这个标志仍为真，原因尚未确定。** 程序保留该保护，不擅自把它清零。核对另存文件后，或明确不需要剩余内存状态时，使用：
+普通 `stop` 先通过目录快照查询 STAR 的 `isModified()`；只要 STAR 报告存在未保存修改，就拒绝关闭。**本机实测中，另存完成后这个标志仍为真，原因尚未确定。** 程序保留该保护，不擅自把它清零。核对另存文件后，或明确不需要剩余内存状态时，使用：
 
 ```bash
 python3 bridge/runner/session_bridge.py stop \
@@ -67,7 +67,7 @@ python3 bridge/runner/session_bridge.py stop \
 
 同一会话的 Bridge 请求通过文件锁串行执行。每次请求使用 `-batch` 和 `-noexit`：宏执行完后客户端退出，后台服务保留。客户端使用会话专属 `-nbuserdir`，子进程使用 `en_US.UTF-8`，不改动用户全局客户端配置或区域设置。
 
-除 `status` 外，命令的 `--timeout` 默认是 180 秒；启动的等待和首次读取共用这一时间预算。请求超时或执行失败时，操作可能已经生效，记录会进入 `uncertain`，或保留 `active_request` 标记；后续操作会被阻止，只有 `status` 和 `stop --discard` 可继续。不要自动重试修改；先查看请求日志、结果及可能已生成的文件。当前没有会话恢复或重新接管接口。`modify` 和 `set-scalar` 在写入前确认拒绝的请求会返回 `rejected` 并保持会话 `ready`，不属于未知写入结果。
+除 `status` 外，命令的 `--timeout` 默认是 180 秒；启动的等待和首次读取共用这一时间预算。请求超时或执行失败时，操作可能已经生效，记录会进入 `uncertain`，或保留 `active_request` 标记；后续操作会被阻止，只有 `status` 和 `stop --discard` 可继续。不要自动重试修改；先查看请求日志、结果及可能已生成的文件。当前没有会话恢复或重新接管接口。`inspect`、`save`、`modify` 和 `set-scalar` 的明确版本拒绝，以及修改的写入前拒绝，返回 `rejected` 并保持已有会话 `ready`，不属于未知写入结果。`start` 的首次目录检查被拒绝会清理刚启动的服务；普通 `stop` 的关闭前检查被拒绝会保留服务。`status` 与 `stop --discard` 不加载目录，仍可在目录失效时查询和清理本次拥有的服务。
 
 此实现只管理自己启动的后台服务，不连接用户已有 GUI 会话。独立进程、文件与客户端目录用于区分运行状态，但仍共享机器资源和许可证。`-loc` 仅控制 STAR 的服务发现范围，不能当作网络防火墙；此原型不提供远程访问或额外的端口安全配置。
 
@@ -80,7 +80,7 @@ python3 bridge/runner/session_bridge.py stop \
 | `session.json` | 服务身份、输入摘要、当前文件、最近请求及生命周期状态 |
 | `working.sim` | 输入的初始工作副本；内存修改不会自动写入此文件 |
 | `server-command.json` / `server.log` | 服务启动参数与日志 |
-| `requests/<请求 ID>/` | 每次客户端的命令、宏、日志、修改前后快照及目录结果；兼容写入口另存 `legacy-plan.json` |
+| `requests/<请求 ID>/` | 每次客户端的命令、宏、日志、修改前后快照及目录结果；兼容写入口另存 `legacy-plan.json`，快照操作另存 `snapshot-plan.json` |
 | `client-settings/` | 当前会话的临时客户端配置与缓存 |
 | `session.lock` | Bridge 请求互斥锁 |
 

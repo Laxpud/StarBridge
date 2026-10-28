@@ -93,7 +93,7 @@ python3 bridge/runner/session_bridge.py save \
 
 ## 执行与失败契约
 
-本地先检查目录成员指纹、方法 effect、请求格式和写适配器，在创建工作目录或会话活动标记前拒绝无效输入。运行时精确核对 server 版本、定位目标，并要求旧 Inspector 快照及目标类型全部已配置目录属性读取完整。
+本地先检查目录成员指纹、方法 effect、请求格式、快照布局和写适配器，在创建工作目录或会话活动标记前拒绝无效输入。运行时先精确核对快照计划与写入计划的 server 版本，再定位目标；要求兼容 Inspector 快照及目标类型全部已配置目录属性读取完整。
 
 准备阶段比较 `expected`，核对单位或用户标签，解析最终 setter 及参数；这一阶段不调用 setter。只有准备通过后才允许尝试一次写入，随后回读目标全部已配置属性，检查目标身份、写入值及相关身份字段，再读取旧 Inspector 快照。
 
@@ -117,8 +117,8 @@ python3 bridge/runner/session_bridge.py save \
 
 正常会话修改显式另存后，已独立加载 `session-saved.sim`：完整旧快照与保存结果一致，标量、场函数、边界三个目标的全部已配目录属性也与对应修改结果一致，跨加载引用按上述规则规范化。原始 `Base.sim~` 的 SHA256 保持不变。
 
-以上没有执行网格或求解，也不代表其他 STAR 版本、其他量纲、所有标签目标、系统标签、模型状态或中断恢复均已验证。其余值类型写入、结构操作、旧 Inspector 快照迁移和完整分项覆盖报告仍见 [TODO](../TODO.md)。
+以上没有执行网格或求解，也不代表其他 STAR 版本、其他量纲、所有标签目标、系统标签、模型状态或中断恢复均已验证。其余值类型写入、结构操作和完整分项覆盖报告仍见 [TODO](../TODO.md)；Inspector 快照目录迁移与验收见[快照说明](inspector.md)。
 
 不带 `--catalog/--execution` 的 `modify` 保留[兼容 schema 1 契约](modifier.md)，`set-scalar` 保留原 CLI 参数；内部自动加载随仓库分发的 2602 目录并桥接到同一修改器，用户无需生成目录或转换旧请求。旧 `modify` 提供的全部 `expected` 字段仍先按旧快照检查；`set-scalar` 没有调用者提供的预期旧值，因此仍不保护陈旧请求。两者也精确检查 server 为 2602 Build 21.02.007。
 
-新 schema 2 仍由 `--catalog` 和 `--execution` 明确选择；读取请求仍是 schema 1。候选目录 schema 1、人工执行映射 schema 2 和修改请求 schema 2 分开版本化。旧快照仍用于兼容校验和结果输出，尚未完成 Inspector 迁移。
+新 schema 2 仍由 `--catalog` 和 `--execution` 明确选择；读取请求仍是 schema 1。候选目录 schema 1、人工执行映射 schema 2 和修改请求 schema 2 分开版本化。兼容快照仍用于旧状态校验和结果输出，但其读取已迁入独立 `snapshot.json` 布局，与按需属性读写共享成员映射和适配器。

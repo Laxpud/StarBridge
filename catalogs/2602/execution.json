@@ -283,6 +283,230 @@
         "java.util.Collection"
       ],
       "effect": "write"
+    },
+    "object.tags": {
+      "type": "star.base.neo.ClientServerObject",
+      "member": "getTagGroup()",
+      "signature": "public TagGroup getTagGroup()",
+      "fingerprint": "592b96f405ece93c533455aff305612ecb922d770523323dfed6193b95c00d82",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "tag_group.objects": {
+      "type": "star.common.TagGroup",
+      "member": "getObjects()",
+      "signature": "public Collection<Tag> getObjects()",
+      "fingerprint": "7efa767ad658d7e8ab10efc62ed4495508379f868096eb1b1da2aeb9fe94eb97",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "simulation.continua": {
+      "type": "star.common.Simulation",
+      "member": "getContinuumManager()",
+      "signature": "public ContinuumManager getContinuumManager()",
+      "fingerprint": "674da1d09fe34cbe4109f3f0d5b73bb859d44734613278197d0ba312e2f208fd",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "simulation.interfaces": {
+      "type": "star.common.Simulation",
+      "member": "getInterfaceManager()",
+      "signature": "public InterfaceManager getInterfaceManager()",
+      "fingerprint": "a72abd9a1a8b71984989dae90ec0f231592dd1a5848c685bce7815e97b0153a9",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "simulation.monitors": {
+      "type": "star.common.Simulation",
+      "member": "getMonitorManager()",
+      "signature": "public MonitorManager getMonitorManager()",
+      "fingerprint": "6840d0a4371e12e26023c8f0b2b4c62f845dfad82b586d75f39a04daba040cb1",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "simulation.stopping_criteria": {
+      "type": "star.common.Simulation",
+      "member": "getSolverStoppingCriterionManager()",
+      "signature": "public SolverStoppingCriterionManager getSolverStoppingCriterionManager()",
+      "fingerprint": "8bf44b4a988d0734f9b8689e84f6a6e2a112126df13e1697025e068a2b0b0550",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "field_function.name": {
+      "type": "star.common.FieldFunction",
+      "member": "getFunctionName()",
+      "signature": "@StarBeanProperty(display=\"Function Name\",hint=\"Program function name\",booleanValues={@BooleanValue(key=\"oneline\",value=true),@BooleanValue(key=\"AllowGrouping\",value=false)}) public String getFunctionName()",
+      "fingerprint": "ce6f2d130a2e42ba3b9d2b6cb7614c4ccff836d8140ce6d3d800f54f2f6ce288",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "field_function.value_type": {
+      "type": "star.common.FieldFunction",
+      "member": "getTypeAsEnum()",
+      "signature": "public FieldFunctionTypeOption.Type getTypeAsEnum()",
+      "fingerprint": "6bbcf86a6c37ac7d2f68efe7b131b20a580da885020ad19955ae31425bc2db9d",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "field_function.dimensions": {
+      "type": "star.common.FieldFunction",
+      "member": "getDimensions()",
+      "signature": "@StarBeanProperty(display=\"Dimensions\", link=\"DimensionsVector\", hint=\"Physical dimensions\", readOnly=true) public Dimensions getDimensions()",
+      "fingerprint": "d7ee4fb8a76fa96527240797553dcf5f9e3560e099fff685a3d7df169d2673fc",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "continuum.regions": {
+      "type": "star.common.Continuum",
+      "member": "getRegions()",
+      "signature": "@StarBeanProperty(display=\"Regions\", hint=\"The regions in this continuum\\'s domain\", readOnly=true, editor=ReadOnlyObjectsEditorSupport.class) public Vector<Region> getRegions()",
+      "fingerprint": "b97229f3f87bb3e1aca7ca1f48b00949a9247309070bc3ec8cf5d38ab17c02d7",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "continuum.models": {
+      "type": "star.common.Continuum",
+      "member": "getModelManager()",
+      "signature": "public ModelManager getModelManager()",
+      "fingerprint": "49bfbe6b2010b41c47c5aa4240e868fff0b528038d0f8756faf3d86f8093edf5",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "interface.type": {
+      "type": "star.common.Interface",
+      "member": "getInterfaceType()",
+      "signature": "@StarBeanProperty(display=\"Type\", hint=\"Interface type\", editor=ConditionTypeEditor.class, index=5) public InterfaceType getInterfaceType()",
+      "fingerprint": "0d586b6cbb9ac420fc4503ff1fa8b566abcf6c380543a23982d56f502462238e",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "boundary_interface.enabled": {
+      "type": "star.common.BoundaryInterface",
+      "member": "getEnabled()",
+      "signature": "public boolean getEnabled()",
+      "fingerprint": "7483b7f6c7291d8eacad5917d4e874a5f8876f0a3c5abec388f7c85df85831ab",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "boundary_interface.boundary0": {
+      "type": "star.common.BoundaryInterface",
+      "member": "getParentBoundary0()",
+      "signature": "@StarBeanProperty(display=\"Boundary-0\", hint=\"Parent Boundary 0\", index=2) public Boundary getParentBoundary0()",
+      "fingerprint": "6dfad2206f45a068780519596f0bdc2aa857bfc9d68e65fe217b817ee9185e69",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "boundary_interface.boundary1": {
+      "type": "star.common.BoundaryInterface",
+      "member": "getParentBoundary1()",
+      "signature": "@StarBeanProperty(display=\"Boundary-1\", hint=\"Parent Boundary 1\", index=3) public Boundary getParentBoundary1()",
+      "fingerprint": "8ed24e641fc8ccecc415e8c751c09f46ef72d38b2738791f8fe739be086074ae",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "mesh_operation.index": {
+      "type": "star.meshing.MeshOperation",
+      "member": "getIndex()",
+      "signature": "public int getIndex()",
+      "fingerprint": "89fd1af3e40dc6482370a54ace38700abc927fe8725e85b6aeb80f12784d3485",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "mesh_operation.input_parts": {
+      "type": "star.meshing.MeshOperation",
+      "member": "getInputGeometryObjects()",
+      "signature": "public GeometryObjectGroup getInputGeometryObjects()",
+      "fingerprint": "ab6a14b00231e8736fa85d9a9a162d629f0ffa9ecc8be6f58f99dd15d70337d5",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "report.units": {
+      "type": "star.base.report.Report",
+      "member": "getUnits()",
+      "signature": "@StarBeanProperty(display=\"Units\", hint=\"Units the quantity is specified in\") public Units getUnits()",
+      "fingerprint": "ed0b210986ea03c5064069f16dabc40deb68bb84e311e6b7e7ca98c90e7280eb",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "expression_report.definition": {
+      "type": "star.base.report.ExpressionReport",
+      "member": "getDefinition()",
+      "signature": "@StarBeanProperty(display=\"Definition\", hint=\"Expression definition\", editor=ExpressionPropertyEditor.class) public String getDefinition()",
+      "fingerprint": "42389cdd7c31793b53805e0b7522acaf555e147de2e6947917e2486e0a3a1bc7",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "monitor.enabled": {
+      "type": "star.base.report.Monitor",
+      "member": "getEnabled()",
+      "signature": "@StarBeanProperty(display=\"Enabled\", hint=\"Enable/Disable monitor updates.\", index=1) public boolean getEnabled()",
+      "fingerprint": "f5ce89b22f97435fed763c67c046fe67b7fcc99f6f2459cd51dfc43ea382c28b",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "report_monitor.report": {
+      "type": "star.base.report.ReportMonitor",
+      "member": "getReport()",
+      "signature": "public Report getReport()",
+      "fingerprint": "e841c0a93a15de49b43da465dea4d3d7872dc8ecbb91a60972ec9c742b0c9f2a",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "stopping_criterion.enabled": {
+      "type": "star.common.SolverStoppingCriterion",
+      "member": "getIsUsed()",
+      "signature": "@StarBeanProperty(display=\"Enabled\", hint=\"Set Criterion to be used\", index=0) public boolean getIsUsed()",
+      "fingerprint": "f5d4d50b6bd397ee426e7b65929684c7c8e7d068aff012e76229af5394610333",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "step_stopping_criterion.definition": {
+      "type": "star.common.StepStoppingCriterion",
+      "member": "getDefinition()",
+      "signature": "@StarBeanProperty(display=\"Maximum Steps\", hint=\"Maximum number of steps\", editor=ExpressionPropertyEditor.class, link=\"MaximumNumberSteps\") @StarBeanBounded(min=1.0, intervalFormat=Integral) public String getDefinition()",
+      "fingerprint": "1ef32fd241239aa93b780993eb36d4590be159b1b64ccaa19bc9b7bafbe6b9c2",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "step_stopping_criterion.maximum_steps": {
+      "type": "star.common.StepStoppingCriterion",
+      "member": "getMaximumNumberSteps()",
+      "signature": "public int getMaximumNumberSteps()",
+      "fingerprint": "4b430653f6d50eac0f0d9b6df9d14babfae1be35e3348fe451d309133157a5cd",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "time_stopping_criterion.maximum_time": {
+      "type": "star.common.PhysicalTimeStoppingCriterion",
+      "member": "getMaximumTime()",
+      "signature": "public ScalarPhysicalQuantity getMaximumTime()",
+      "fingerprint": "2fc8a2bd88f400a48ff90ef9f1faaf242b65ba4027ccf5fc65846af9a555f994",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "workflow.blocks": {
+      "type": "star.automation.AutomationWorkflow",
+      "member": "getBlocks()",
+      "signature": "public AutomationBlockManager getBlocks()",
+      "fingerprint": "080b1ec24ea068213c4c2162fb66dbbfcacfa5dd8d69180e25e5dc60541c9309",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "loop.blocks": {
+      "type": "star.automation.LoopAutomationBlock",
+      "member": "getBlocks()",
+      "signature": "public AutomationBlockManager getBlocks()",
+      "fingerprint": "080b1ec24ea068213c4c2162fb66dbbfcacfa5dd8d69180e25e5dc60541c9309",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "sub_workflow.workflow": {
+      "type": "star.automation.SubWorkflowAutomationBlock",
+      "member": "getSubWorkflow()",
+      "signature": "public AutomationWorkflow getSubWorkflow()",
+      "fingerprint": "fe6db1bfe777ffa26a9c34be0bd4fd11e5e2f0c8f3c8e6cd017bb2185a2da4f3",
+      "parameter_types": [],
+      "effect": "read"
     }
   },
   "types": {
