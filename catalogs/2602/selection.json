@@ -1,0 +1,12 @@
+[
+  "star.common.Simulation",
+  "star.common.GlobalParameterManager",
+  "star.common.ScalarGlobalParameter",
+  "star.common.ScalarPhysicalQuantity",
+  "star.common.FieldFunctionManager",
+  "star.common.UserFieldFunction",
+  "star.common.TagManager",
+  "star.common.UserTag",
+  "star.common.Region",
+  "star.common.Boundary"
+]

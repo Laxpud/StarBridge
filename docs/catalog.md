@@ -1,0 +1,104 @@
+# 版本目录工具
+
+[返回项目入口](README.cn.md) · [设计文档](../StarBridge.md#版本化对象属性与操作目录) · [当前任务](../TODO.md)
+
+目录工具从本机 STAR Javadoc 生成候选 API，校验和合并人工语义，并比较不同版本的声明变化。它只读取安装材料，不需要许可证，不启动 STAR，也不加载或修改算例。Inspector 和 Modifier 尚未通过目录执行读写，当前实际操作仍使用原有脚本。
+
+## 生成与查看
+
+需要 Python 3.11+，无第三方 Python 依赖。在仓库根目录执行，`--install` 指向包含 `star/` 和 `doc/` 的安装根目录：
+
+```bash
+python3 tools/catalog/catalog.py generate \
+  --install '/opt/Siemens/21.02.007-R8/STAR-CCM+21.02.007-R8' \
+  --selection catalogs/2602/selection.json \
+  --output outputs/catalog-2602/generated/catalog.json
+
+python3 tools/catalog/catalog.py check \
+  --catalog outputs/catalog-2602/generated/catalog.json \
+  --install '/opt/Siemens/21.02.007-R8/STAR-CCM+21.02.007-R8'
+```
+
+生成器从同一安装的 `star/RELEASE_NOTES` 和 `star/version_info.properties` 读取产品版本与 Build，并核对两者的 Build 一致。类型清单来自 `type-search-index.js`；类型页提供类声明、成员签名、注解和继承引用。当前解析器面向安装附带的 HTML5 Javadoc，不读取 JAR 字节码，不执行 Java 反射。
+
+`selection.json` 是完整 Java 类型名数组，当前选取已有参数、场函数、标签修改所需的 10 个入口类型。生成器自动加入继承列表中引用的本地声明类型。需要扫描全部 `star.*` 索引类型时，用 `--all` 替代 `--selection`；输出会明显增大。索引中的类型包括辅助 API，不应将类型总数当作算例可配置对象总数。未命名包与 `com.siemens.*` 类型尚未纳入生成范围。
+
+所有文件输出都要求目标文件不存在，防止覆盖人工规则或此前结果。重复生成使用另一个输出路径。候选文件放在被 Git 忽略的 `outputs/` 中，仓库只维护生成器、选择范围和人工规则。
+
+## 人工语义与合并
+
+人工规则维护在 [`catalogs/2602/overrides.json`](../catalogs/2602/overrides.json)。当前描述标量表达式、用户场函数表达式和替换用户标签集合三项能力，依据现有宏与使用说明整理；这些是待迁移的映射，不是目录执行器已实现的能力。
+
+```bash
+python3 tools/catalog/catalog.py merge \
+  --catalog outputs/catalog-2602/generated/catalog.json \
+  --overrides catalogs/2602/overrides.json \
+  --install '/opt/Siemens/21.02.007-R8/STAR-CCM+21.02.007-R8' \
+  --output outputs/catalog-2602/catalog.json
+
+python3 tools/catalog/catalog.py describe \
+  --catalog outputs/catalog-2602/catalog.json \
+  --type star.common.ScalarGlobalParameter
+```
+
+合并仅增加人工 `bindings`，不会改写生成的 `types`。规则必须与目录的产品版本和 Build 完全一致，规则 ID 不能重复，所有成员引用必须存在。每个引用同时锁定可读签名和成员声明的 SHA256 指纹，覆盖注解及类型链接；签名或同名类型的包来源变化都会拒绝合并。规则需要维护者核对后显式更新，生成器不会自动重写它们。
+
+`check`、`describe` 和 `merge` 均可加 `--install` 核对目标安装版本。Core 的 `load()` 也接受同时提供的 `release`、`build` 并精确匹配。未提供版本时只校验目录本身；检测安装版本不等于确认某个已运行会话的版本。会话版本检测和执行前检查将在接入 Inspector、Modifier 时完成。
+
+## v1 数据格式
+
+格式由 [`core/catalog.py`](../core/catalog.py) 校验，所有列出的字段均必需，未知字段、重复 JSON 键和非标准数值常量会被拒绝。目录格式版本、STAR 产品版本、Build 分开维护；此版本尚不包含算例实例、对象永久 ID 或当前属性值。
+
+| 顶层字段 | 含义 |
+|---|---|
+| `schema_version` | 当前为整数 `1` |
+| `target` | 字符串 `release` 和 `build`，例如 `2602`、`21.02.007` |
+| `generator` | 当前为 `starbridge-javadoc-v1` |
+| `sources` | 安装版本文件与类型索引的安装相对路径、SHA256 |
+| `scope` | 显式选择的 `roots`、索引总数 `indexed_types`、是否包含继承声明 |
+| `types` | 以完整 Java 类型名为键的声明集合 |
+| `bindings` | 以稳定语义 ID 为键的人工属性或操作描述；生成时为空 |
+
+每个类型保留 `java_class`、类 `signature`、签名中的 `links`、类型页 `source`、声明的 `members`、`property_candidates`、`inherited_members` 和 `status`。成员键使用 Javadoc 锚点，包含方法参数类型，可以区分重载；值保留名称、签名、返回类型、参数、修饰符、注解及链接。继承成员通过声明类和成员键引用，不复制成子类自己的方法。Java 泛型以文档声明保留，不进行类型参数代换。
+
+只有带 `StarBeanProperty` 注解的成员自动进入属性候选。`metadata` 保存完整注解文本，包括显式的 `readOnly`、`link`、编辑器等材料；未指定的注解默认值、实际写入方法、单位与模型前提仍待核对。没有注解的 getter 或 setter 仍保留在 `members`，不会因为不在候选表中就被视为不支持。候选只标记 `discovered`，`adapter` 为 `null`。
+
+人工规则文件包含 `schema_version`、`target`、`bindings`。每个 binding 包含：
+
+| 字段 | 含义 |
+|---|---|
+| `type`、`kind` | 目标类型；`kind` 为 `property` 或 `operation` |
+| `value_type` | 属性值或操作结果的种类、单位、量纲、枚举值及引用类型 |
+| `parameters` | 操作参数名到值类型的映射；属性映射使用空对象 |
+| `access` | 管理器/查找关系的中文说明，以及需要核对的成员引用 |
+| `read`、`write` | 相关成员的有序引用，每个引用含类型、成员键、签名和指纹 |
+| `adapter` | 预留执行适配器位置，当前必须为 `null` |
+| `constraints` | 条件说明和预留的 `runtime_check`，当前检查器必须为 `null` |
+| `verification` | 回读与验证说明，以及需要核对的成员引用 |
+| `evidence` | 规则依据的材料路径 |
+| `status` | 分别记录发现、读取实现、写入实现和实测验证状态 |
+
+值类型的 `kind` 可为 `number`、`boolean`、`string`、`enum`、`quantity`、`expression`、`vector`、`tensor`、`reference`、`collection`、`query` 或 `void`。`unit`、`dimensions`、`reference_type` 使用字符串或 `null`；`null` 表示尚未静态确定，不表示无量纲。`enum_values` 是字符串数组。动态查询必须保留查询语义，不能只记录查询当时选中的对象；当前只有描述位置，还没有对应适配器。
+
+成员引用及条件说明用于维护者核对映射，还不是可执行调用计划：它们不编码完整参数绑定、返回值传递或运行时定位。在执行机制落地前，加载器强制人工映射的 `read_implemented`、`write_implemented`、`verified` 为 `false`，且描述结果标记 `runtime_state: not_checked`。旧脚本已验证的能力不会自动计入目录执行覆盖。
+
+## 版本比较
+
+分别从两个安装生成目录，再运行：
+
+```bash
+python3 tools/catalog/catalog.py diff \
+  outputs/catalog-2510/generated/catalog.json \
+  outputs/catalog-2602/generated/catalog.json \
+  --output outputs/catalog-diff.json
+```
+
+比较结果报告类型增删、类声明、成员签名/类型链接/注解、属性元数据、继承关系及人工规则变化。方法名称改变而参数锚点和返回类型相同时，另外给出 `rename_candidate`，要求人工确认；这不证明两者语义等价。类型改名没有自动对应规则。
+
+`same_roots` 表示两次显式选择范围是否一致。范围不一致时，类型增删可能只是选择范围变化；即使范围一致，继承依赖变化也可能改变所包含的类型集合。文件摘要和发布材料变化保留在各目录来源中，但不单独当作 API 声明变化。`compatibility` 始终为 `not_assessed`，不根据差异数量推断兼容。
+
+## 当前验证边界
+
+本机 2602 Build 21.02.007 的全部 23,171 个 `star.*` 索引类型已生成并通过目录结构与继承引用校验，包含 154,743 个声明成员和 9,939 个属性候选。首批 10 个入口类型及其继承依赖共 62 个类型、870 个成员、32 个属性候选，可合并三项人工规则，重复生成结果逐字节一致。2510 Build 20.06.007 的同范围目录已用于实际版本比较；这不代表其算例读写获得支持。安装版本不匹配、人工规则版本不匹配以及成员指纹失效均已确认拒绝。
+
+实际算例对象定位、条件检查、类型适配、修改、回读及保存尚未接入目录；后续任务见 [TODO](../TODO.md)。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。

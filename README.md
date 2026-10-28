@@ -29,6 +29,7 @@ Supply your own compatible simulation file and a new work directory. For repeate
 
 | Document | Purpose |
 |---|---|
+| [Offline catalog tools](docs/catalog.md) | Generate versioned API candidates, merge reviewed semantics, and compare declarations; runtime integration is pending |
 | [Modifier guide](docs/modifier.md) | Single-object requests, expected-state checks, readback, and save behavior |
 | [Inspector snapshot](docs/inspector.md) | Object coverage, snapshot fields, read errors, and validation limits |
 | [File Bridge guide](docs/bridge-file.md) | File operations, requirements, and implementation limits |

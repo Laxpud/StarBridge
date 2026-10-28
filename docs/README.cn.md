@@ -29,6 +29,7 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' --work-dir outputs/read
 
 | 文档 | 职责 |
 |---|---|
+| [离线目录工具](catalog.md) | 生成版本化候选 API、合并人工语义与比较声明；运行时接入尚未实现 |
 | [Modifier 单项修改](modifier.md) | 修改请求、旧状态检查、回读与保存契约 |
 | [Inspector 对象快照](inspector.md) | 对象覆盖、快照字段、读取错误与验证边界 |
 | [文件 Bridge 使用说明](bridge-file.md) | 文件操作、运行条件与实现边界 |
