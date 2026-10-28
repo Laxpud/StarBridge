@@ -43,12 +43,16 @@ public class BridgeFileMacro extends StarMacro {
                         Path.of(EXPECTED_SESSION).toRealPath())) {
                 throw new IllegalArgumentException("Unexpected simulation session: " + sim.getSessionPath());
             }
-            if (ACTION.equals("catalog-read") || ACTION.equals("catalog-describe")) {
+            if (ACTION.equals("catalog-read") || ACTION.equals("catalog-describe") || ACTION.equals("catalog-verify")) {
                 readCatalog(sim);
                 return;
             }
+            if (ACTION.equals("catalog-modify") || ACTION.equals("file-catalog-modify")) {
+                modifyCatalog(sim);
+                return;
+            }
             if (CATALOG_PLAN != null || CATALOG_REQUEST != null) {
-                throw new IllegalArgumentException("Catalog payload requires a catalog read action");
+                throw new IllegalArgumentException("Catalog payload requires a catalog action");
             }
             if (!List.of("inspect", "set-scalar", "save", "file-set", "modify", "file-modify").contains(ACTION)) {
                 throw new IllegalArgumentException("Unknown action: " + ACTION);
@@ -107,10 +111,12 @@ public class BridgeFileMacro extends StarMacro {
     private void readCatalog(Simulation sim) throws java.io.IOException {
         Map<String, Object> before = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
         Map<String, Object> catalog;
+        boolean verifying = ACTION.equals("catalog-verify");
         try {
             if (CATALOG_PLAN == null || CATALOG_REQUEST == null || MODIFICATION != null
                     || !OUTPUT.isEmpty() || SESSION_TOKEN.isEmpty()
-                    || !ACTION.equals("catalog-" + CATALOG_REQUEST.get("action"))) {
+                    || !(verifying ? "read".equals(CATALOG_REQUEST.get("action"))
+                                   : ACTION.equals("catalog-" + CATALOG_REQUEST.get("action")))) {
                 throw new IllegalArgumentException("Catalog reads require a matching plan, request and read-only action");
             }
             // CatalogRuntime 先精确核对当前服务版本，再定位对象和读取选定属性。
@@ -120,11 +126,78 @@ public class BridgeFileMacro extends StarMacro {
             writeResult("rejected", before, after, error.getMessage());
             return;
         }
+        if (verifying) {
+            // 文件重载核对需要同时读取原快照范围；普通 read 仍保持按需读取。
+            // 这一步位于目录版本检查之后，不能为核对未知版本而先调用旧 API。
+            before = snapshot(sim);
+            if (!Boolean.TRUE.equals(before.get("inspection_complete"))
+                    || !Boolean.TRUE.equals(catalog.get("inspection_complete"))) {
+                throw new IllegalStateException("Reload verification requires complete covered reads");
+            }
+        }
         // 不将世代或对象 key 混入旧快照，避免另存重载时把新实例当成内容差异。
-        Map<String, Object> after = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
+        Map<String, Object> after = verifying ? before
+                : fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
         Map<String, Object> result = fields("status", "ok", "before", before, "after", after,
                                            "catalog", catalog);
         Files.writeString(Path.of(RESULT), json(result), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 目录修改先完成版本、目标、预期状态与全部读取检查，再执行一次已准备的写入。
+     * prepare 之后的异常不能转为 rejected：此时写入或保存可能已生效。
+     */
+    private void modifyCatalog(Simulation sim) throws Exception {
+        Map<String, Object> before = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
+        CatalogRuntime.PreparedModification prepared;
+        boolean saving = ACTION.equals("file-catalog-modify");
+        try {
+            if (CATALOG_PLAN == null || CATALOG_REQUEST == null || MODIFICATION != null
+                    || SESSION_TOKEN.isEmpty() || !"modify".equals(CATALOG_REQUEST.get("action"))
+                    || (saving && OUTPUT.isEmpty()) || (!saving && !OUTPUT.isEmpty())) {
+                throw new IllegalArgumentException("Catalog modification requires a matching request and save mode");
+            }
+            // 1. 当前 server gate 与目标属性检查必须早于旧快照 API 和任何设置调用。
+            prepared = CatalogRuntime.prepareModification(sim, CATALOG_PLAN, CATALOG_REQUEST, SESSION_TOKEN);
+            before = snapshot(sim);
+            if (!Boolean.TRUE.equals(before.get("inspection_complete"))) {
+                throw new IllegalArgumentException("Modification requires a complete covered snapshot");
+            }
+            if (saving && Files.exists(Path.of(OUTPUT))) {
+                throw new IllegalArgumentException("Output already exists: " + OUTPUT);
+            }
+        } catch (IllegalArgumentException error) {
+            writeResult("rejected", before, before, error.getMessage());
+            return;
+        }
+
+        // 2. 这里只执行后端已经准备好的设置动作；失败继续抛出，让会话进入 uncertain。
+        Map<String, Object> catalog = prepared.apply();
+        Map<String, Object> after = snapshot(sim);
+        if (!Boolean.TRUE.equals(after.get("inspection_complete"))
+                || !Boolean.TRUE.equals(catalog.get("inspection_complete"))) {
+            throw new IllegalStateException("Modification readback is incomplete");
+        }
+        if (saving) {
+            // 3. 先回读成功再另存；保存后的属性不得偏离已验证值，重载由 Runner 独立完成。
+            sim.saveState(OUTPUT);
+            after = snapshot(sim);
+            Map<String, Object> saved = CatalogRuntime.inspect(sim, CATALOG_PLAN, catalogReadRequest(), SESSION_TOKEN);
+            if (!Boolean.TRUE.equals(after.get("inspection_complete"))
+                    || !Boolean.TRUE.equals(saved.get("inspection_complete"))
+                    || !sameValue(catalog.get("properties"), saved.get("properties"))) {
+                throw new IllegalStateException("Saved catalog values differ from verified readback");
+            }
+            catalog = saved;
+        }
+        Map<String, Object> result = fields("status", "ok", "before", before, "after", after,
+                "catalog_before", prepared.before, "catalog", catalog, "catalog_request", CATALOG_REQUEST);
+        Files.writeString(Path.of(RESULT), json(result), StandardCharsets.UTF_8);
+    }
+
+    /** 保存后仍在同一会话内读取全部计划属性；目标引用可以继续核对当前对象身份。 */
+    private Map<String, Object> catalogReadRequest() {
+        return fields("schema_version", 1L, "action", "read", "target", CATALOG_REQUEST.get("target"));
     }
 
     /** 保存执行状态、前后快照与原始修改请求；拒绝结果也保留可审阅证据。 */
@@ -132,6 +205,7 @@ public class BridgeFileMacro extends StarMacro {
                              Map<String, Object> after, String error) throws java.io.IOException {
         Map<String, Object> result = fields("status", status, "before", before, "after", after);
         if (MODIFICATION != null) result.put("modification", MODIFICATION);
+        if (CATALOG_REQUEST != null) result.put("catalog_request", CATALOG_REQUEST);
         if (error != null) result.put("error", error);
         Files.writeString(Path.of(RESULT), json(result), StandardCharsets.UTF_8);
     }

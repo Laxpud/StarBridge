@@ -18,7 +18,8 @@ import sys
 import time
 import uuid
 
-from file_bridge import digest, execute, prepare_catalog_read
+from file_bridge import (catalog_content, catalog_diff, digest, execute,
+                         prepare_catalog_modification, prepare_catalog_read)
 from modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
 
 
@@ -241,7 +242,8 @@ def operate(args, directory):
                     or output == Path(state['input'])):
                 raise ValueError('Output must be a new .sim file with an existing parent directory')
         try:
-            action = 'catalog-' + args.action if args.action in ('describe', 'read') else args.action
+            catalog_call = getattr(args, 'catalog_plan', None) is not None
+            action = 'catalog-' + args.action if catalog_call else args.action
             data, run = request(directory, state, action, args.timeout, output=output,
                                 name=getattr(args, 'name', ''), value=getattr(args, 'value', 0.0),
                                 unit=getattr(args, 'unit', ''), modification=getattr(args, 'modification', None),
@@ -249,8 +251,12 @@ def operate(args, directory):
                                 catalog_request=getattr(args, 'catalog_request', None))
             if data['status'] == 'rejected':
                 raise ModificationRejected(f'{data["error"]}; see {run / "result.json"}')
-            if args.action == 'modify':
+            if args.action == 'modify' and not catalog_call:
                 verify_modification(args.modification, data['before'], data['after'])
+            if args.action == 'modify' and catalog_call:
+                # 目录回读已由 Java 验证；此处仍要求完整结果，避免成功封套掩盖缺失字段。
+                catalog_content(data['catalog_before'], args.catalog_plan)
+                catalog_content(data['catalog'], args.catalog_plan)
             if args.action == 'set-scalar':
                 target = next(p for p in data['after']['parameters'] if p['name'] == args.name)
                 actual = target.get('raw_value')
@@ -262,14 +268,18 @@ def operate(args, directory):
                     raise RuntimeError('Saved file/path was not confirmed')
             result = {'session': str(directory), 'process': state['process'],
                       'request_result': str(run / 'result.json')}
-            if args.action in ('describe', 'read'):
+            if catalog_call:
                 # 目录结果独立封装；最小会话元数据不能冒充旧 Inspector 的完整快照。
                 result['catalog'] = data['catalog']
             else:
                 result['snapshot'] = data['after']
             if args.action == 'modify':
-                result.update(modification=args.modification,
-                              snapshot_diff=snapshot_diff(data['before'], data['after']))
+                result.update(modification=args.catalog_request if catalog_call else args.modification,
+                              snapshot=data['after'], snapshot_diff=snapshot_diff(data['before'], data['after']))
+                if catalog_call:
+                    result.update(catalog_before=data['catalog_before'],
+                                  catalog_diff=catalog_diff(data['catalog_before'], data['catalog'],
+                                                            args.catalog_plan))
             return result
         except ModificationRejected:
             # 宏已确认写入前拒绝，request 已清除活动标记；不把拒绝变成未知写入结果。
@@ -304,6 +314,8 @@ def main():
             command.add_argument('--output', type=Path, required=True)
         elif action == 'modify':
             command.add_argument('--request', type=Path, required=True)
+            command.add_argument('--catalog', type=Path)
+            command.add_argument('--execution', type=Path)
         elif action in ('describe', 'read'):
             command.add_argument('--catalog', type=Path, required=True)
             command.add_argument('--execution', type=Path, required=True)
@@ -319,7 +331,13 @@ def main():
         parser.error('--value must be finite')
     if args.action == 'modify':
         # 请求格式在写入活动标记前完成校验，格式错误不影响已有会话。
-        args.modification = load_request(args.request)
+        if args.catalog is not None or args.execution is not None:
+            if args.catalog is None or args.execution is None:
+                parser.error('Catalog modify requires both --catalog and --execution')
+            args.catalog_plan, args.catalog_request = prepare_catalog_modification(
+                args.catalog, args.execution, args.request)
+        else:
+            args.modification = load_request(args.request)
     elif args.action in ('describe', 'read'):
         # 目录、成员指纹与请求校验在获取会话活动标记之前完成；无效输入不会污染会话。
         args.catalog_plan, args.catalog_request = prepare_catalog_read(

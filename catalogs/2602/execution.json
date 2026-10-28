@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "target": {
     "release": "2602",
     "build": "21.02.007"
@@ -240,6 +240,49 @@
       "fingerprint": "d4f1602a0b47c2036f666b30432da921b0150242847b486a3742a2631d80b7aa",
       "parameter_types": [],
       "effect": "read"
+    },
+    "scalar.write_definition": {
+      "type": "star.common.ScalarPhysicalQuantity",
+      "member": "setDefinitionAndUnits(java.lang.String,star.common.Units)",
+      "signature": "public void setDefinitionAndUnits(String definition, Units units)",
+      "fingerprint": "c772fa29d5baf1b63847f51f65d508db52a9b837cde2821b95ea1e1f24419727",
+      "parameter_types": [
+        "java.lang.String",
+        "star.common.Units"
+      ],
+      "effect": "write"
+    },
+    "scalar.write_value": {
+      "type": "star.common.ScalarPhysicalQuantity",
+      "member": "setValueAndUnits(double,star.common.Units)",
+      "signature": "public void setValueAndUnits(double value, Units units)",
+      "fingerprint": "84cf6b026814c242fbdc6251cdae8c646e01af423057969e4b51067320b4108f",
+      "parameter_types": [
+        "double",
+        "star.common.Units"
+      ],
+      "effect": "write"
+    },
+    "function.write_definition": {
+      "type": "star.common.UserFieldFunction",
+      "member": "setDefinition(java.lang.String)",
+      "signature": "public void setDefinition(String newValue)",
+      "fingerprint": "23cfc64831e42183ed43be16740d7913ee55c667d4c67ed01bdd9271656a41cc",
+      "parameter_types": [
+        "java.lang.String"
+      ],
+      "effect": "write"
+    },
+    "tags.write": {
+      "type": "star.common.TagManager",
+      "member": "setTags(star.base.neo.ClientServerObject,java.util.Collection)",
+      "signature": "public void setTags(ClientServerObject cso, Collection<Tag> tags)",
+      "fingerprint": "bf670023ba2395c9b8a30e4f02528e00c09ec10de4e98a4c484fc94c3cf0bc77",
+      "parameter_types": [
+        "star.base.neo.ClientServerObject",
+        "java.util.Collection"
+      ],
+      "effect": "write"
     }
   },
   "types": {
@@ -394,8 +437,31 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "scalar.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       },
       "definition": {
         "adapter": "primitive",
@@ -460,8 +526,72 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "user_tags",
+          "pipeline": {
+            "root": "simulation",
+            "steps": [
+              {
+                "member": "root.manager",
+                "arguments": [
+                  {
+                    "class": "star.common.TagManager"
+                  }
+                ]
+              },
+              {
+                "member": "tags.write",
+                "arguments": [
+                  {
+                    "context": "object"
+                  },
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "quantity_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "scalar.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "scalar.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       }
     },
     "vector_parameter": {
@@ -556,8 +686,35 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "user_tags",
+          "pipeline": {
+            "root": "simulation",
+            "steps": [
+              {
+                "member": "root.manager",
+                "arguments": [
+                  {
+                    "class": "star.common.TagManager"
+                  }
+                ]
+              },
+              {
+                "member": "tags.write",
+                "arguments": [
+                  {
+                    "context": "object"
+                  },
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       }
     },
     "user_field_function": {
@@ -586,8 +743,24 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "primitive",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "function.write_definition",
+                "arguments": [
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       },
       "function_name": {
         "adapter": "primitive",
@@ -686,8 +859,35 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "user_tags",
+          "pipeline": {
+            "root": "simulation",
+            "steps": [
+              {
+                "member": "root.manager",
+                "arguments": [
+                  {
+                    "class": "star.common.TagManager"
+                  }
+                ]
+              },
+              {
+                "member": "tags.write",
+                "arguments": [
+                  {
+                    "context": "object"
+                  },
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       }
     },
     "region": {
@@ -770,8 +970,35 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "user_tags",
+          "pipeline": {
+            "root": "simulation",
+            "steps": [
+              {
+                "member": "root.manager",
+                "arguments": [
+                  {
+                    "class": "star.common.TagManager"
+                  }
+                ]
+              },
+              {
+                "member": "tags.write",
+                "arguments": [
+                  {
+                    "context": "object"
+                  },
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       }
     },
     "boundary": {
@@ -868,8 +1095,35 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "user_tags",
+          "pipeline": {
+            "root": "simulation",
+            "steps": [
+              {
+                "member": "root.manager",
+                "arguments": [
+                  {
+                    "class": "star.common.TagManager"
+                  }
+                ]
+              },
+              {
+                "member": "tags.write",
+                "arguments": [
+                  {
+                    "context": "object"
+                  },
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       }
     },
     "user_tag": {
@@ -940,8 +1194,35 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "write": {
+          "adapter": "user_tags",
+          "pipeline": {
+            "root": "simulation",
+            "steps": [
+              {
+                "member": "root.manager",
+                "arguments": [
+                  {
+                    "class": "star.common.TagManager"
+                  }
+                ]
+              },
+              {
+                "member": "tags.write",
+                "arguments": [
+                  {
+                    "context": "object"
+                  },
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       }
     }
   }

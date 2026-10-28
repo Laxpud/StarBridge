@@ -1,8 +1,8 @@
 # Modifier 单项修改
 
-[返回项目入口](README.cn.md) · [Inspector 快照](inspector.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
+[返回项目入口](README.cn.md) · [Inspector 快照](inspector.md) · [目录修改](catalog-modifier.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
-`modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。当前优先建立[版本目录与通用读写基础](../TODO.md)；Mesh Controls、Boundary Parameters、Selected Physics Settings 和 Simulation Operations 的修改纳入[后续目录覆盖扩展](roadmap.md#目录覆盖扩展与版本演进)。本页描述已实现的脚本契约，目录驱动修改接口尚未实现。
+`modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。当前优先建立[版本目录与通用读写基础](../TODO.md)；Mesh Controls、Boundary Parameters、Selected Physics Settings 和 Simulation Operations 的修改纳入[后续目录覆盖扩展](roadmap.md#目录覆盖扩展与版本演进)。本页描述不带目录参数的旧 schema 1 契约。带 `--catalog` 和 `--execution` 的 `modify` 已支持[目录 schema 2 修改](catalog-modifier.md)，两种请求分开解析；旧入口和 `set-scalar` 尚未迁入共享目录。
 
 ## 使用方式
 

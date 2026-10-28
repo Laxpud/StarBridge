@@ -2,6 +2,7 @@
 """调用本机 STAR 批处理宏，读取算例对象或按请求修改，另存后重新加载核对。"""
 
 import argparse
+from copy import deepcopy
 import hashlib
 import json
 import math
@@ -32,18 +33,89 @@ def prepare_catalog_read(catalog, execution, request, action):
     return prepare_read(catalog, execution, request, action)
 
 
+def prepare_catalog_modification(catalog, execution, request):
+    """在创建工作目录或活动标记前，校验目录修改请求并形成小型执行计划。"""
+    from core.execution import prepare_modification
+    return prepare_modification(catalog, execution, request)
+
+
+def catalog_readback(plan, request):
+    """将修改计划转成重载核对所需的只读计划；新加载不能沿用旧会话引用。"""
+    readonly = deepcopy(plan)
+    for properties in readonly['properties'].values():
+        for property_plan in properties.values():
+            property_plan.pop('write', None)
+
+    def locator(target):
+        """只移除目标契约明确规定的会话引用，不处理属性值中的同名字段。"""
+        result = {key: value for key, value in target.items() if key != 'reference'}
+        if 'parent' in result:
+            result['parent'] = locator(result['parent'])
+        return result
+
+    return readonly, {'schema_version': 1, 'action': 'read', 'target': locator(request['target'])}
+
+
+def catalog_content(catalog, plan, *, retain_references=False):
+    """提取目标和属性内容；重载时规范化引用，同会话 Diff 则保留对象身份。"""
+    if not catalog.get('inspection_complete'):
+        raise RuntimeError('Catalog modification verification requires complete property reads')
+
+    def reference(value):
+        """只去掉对象引用协议中的世代和 key；其他字典内容必须完整保留。"""
+        if (isinstance(value, dict) and set(value) == {'name', 'java_class', 'reference'}
+                and isinstance(value['reference'], dict)
+                and set(value['reference']) == {'session_token', 'key'}):
+            return {key: value[key] for key in ('name', 'java_class')}
+        return value
+
+    target = catalog['target']
+    properties = {}
+    for name, result in catalog['properties'].items():
+        if result.get('status') != 'ok':
+            raise RuntimeError(f'Catalog property was not read successfully: {name}')
+        value = result['value']
+        adapter = plan['properties'][target['type']][name]['adapter']
+        if retain_references:
+            pass
+        elif adapter == 'reference':
+            value = reference(value)
+        elif adapter == 'collection' and isinstance(value, list):
+            value = [reference(item) for item in value]
+        elif (adapter == 'query' and isinstance(value, dict)
+              and value.get('mode') == 'static' and isinstance(value.get('objects'), list)):
+            value = dict(value, objects=[reference(item) for item in value['objects']])
+        properties[name] = dict(result, value=value)
+    stable_target = {key: target[key] for key in ('type', 'name', 'java_class', 'locator')}
+    if retain_references:
+        stable_target['reference'] = target['reference']
+    return {'target': stable_target, 'properties': properties}
+
+
+def catalog_diff(before, after, plan):
+    """同会话记录 key 变化；跨加载只比较可重定位内容，不将新世代误报为修改。"""
+    same_session = before['runtime']['session_token'] == after['runtime']['session_token']
+    return snapshot_diff(catalog_content(before, plan, retain_references=same_session),
+                         catalog_content(after, plan, retain_references=same_session))
+
+
 def execute(star, source, directory, output=None, name="", value=0.0, unit="", *,
             action=None, host=None, port=None, expected_session="", timeout=None,
             client_userdir=None, modification=None, catalog_plan=None,
             catalog_request=None, session_token=None):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
-    catalog_call = (catalog_plan is not None or catalog_request is not None
-                    or action in ("catalog-read", "catalog-describe"))
-    if catalog_call and (catalog_plan is None or catalog_request is None
-                         or action not in ("catalog-read", "catalog-describe")
-                         or action != "catalog-" + catalog_request.get("action", "")
-                         or modification is not None or output is not None):
-        raise ValueError("Catalog reads require a matching plan, request and read-only action")
+    catalog_actions = {'catalog-read': 'read', 'catalog-describe': 'describe',
+                       'catalog-verify': 'read', 'catalog-modify': 'modify',
+                       'file-catalog-modify': 'modify'}
+    catalog_call = catalog_plan is not None or catalog_request is not None or action in catalog_actions
+    if catalog_call:
+        if (catalog_plan is None or not isinstance(catalog_request, dict)
+                or action not in catalog_actions
+                or catalog_request.get('action') != catalog_actions[action]
+                or modification is not None):
+            raise ValueError('Catalog operation requires a matching plan, request and action')
+        if (action == 'file-catalog-modify') != (output is not None):
+            raise ValueError('Only file-catalog-modify requires an output file')
     directory.mkdir(parents=True, exist_ok=False)
     result = directory / "result.json"
     template = Path(__file__).resolve().parents[1] / "java" / "BridgeFileMacro.java"
@@ -139,14 +211,20 @@ def main():
             parser.error("describe/read require --catalog, --execution and --request")
         catalog_plan, catalog_request = prepare_catalog_read(
             args.catalog, args.execution, args.request, args.action)
-    elif args.catalog is not None or args.execution is not None:
-        parser.error("--catalog and --execution are only supported by describe/read")
     elif args.action == "modify":
         if args.request is None or output is None:
             parser.error("modify requires --request and --output")
         if any(item is not None for item in [args.name, args.value, args.unit]):
             parser.error("modify does not accept --name, --value or --unit")
-        modification = load_request(args.request)
+        if args.catalog is not None or args.execution is not None:
+            if args.catalog is None or args.execution is None:
+                parser.error('Catalog modify requires both --catalog and --execution')
+            catalog_plan, catalog_request = prepare_catalog_modification(
+                args.catalog, args.execution, args.request)
+        else:
+            modification = load_request(args.request)
+    elif args.catalog is not None or args.execution is not None:
+        parser.error("--catalog and --execution are only supported by describe/read/modify")
     elif args.request is not None:
         parser.error("--request is only supported by modify, describe or read")
     if args.action == "set-scalar":
@@ -168,14 +246,33 @@ def main():
     try:
         data = execute(args.star, source, directory / "apply", output,
                        args.name or "", args.value or 0.0, args.unit or "",
-                       action=("catalog-" + args.action if catalog_plan is not None
+                       action=("file-catalog-modify" if catalog_plan is not None and args.action == 'modify'
+                               else "catalog-" + args.action if catalog_plan is not None
                                else "file-modify" if modification else None),
                        modification=modification, catalog_plan=catalog_plan,
                        catalog_request=catalog_request)
         if data["status"] == "rejected":
             raise ModificationRejected(f'{data["error"]}; see {directory / "apply" / "result.json"}')
         summary = {"input": str(source), "input_sha256": original, "action": args.action}
-        if catalog_plan is not None:
+        if catalog_plan is not None and args.action == 'modify':
+            # 2. 新目录写入先在宏中回读，再独立重载同一输出，同时核对旧快照与目录属性。
+            read_plan, read_request = catalog_readback(catalog_plan, catalog_request)
+            reopened = execute(args.star, output, directory / 'reopen', action='catalog-verify',
+                               catalog_plan=read_plan, catalog_request=read_request)
+            if reopened['status'] != 'ok':
+                raise RuntimeError(f'Catalog reload verification was rejected: {reopened.get("error")}')
+            if not same_value(content_snapshot(data['after']), content_snapshot(reopened['after'])):
+                raise RuntimeError('Reopened object snapshot differs from saved session')
+            if not same_value(catalog_content(data['catalog'], catalog_plan),
+                              catalog_content(reopened['catalog'], read_plan)):
+                raise RuntimeError('Reopened catalog values differ from saved session')
+            summary.update(output=str(output), modification=catalog_request,
+                           catalog_before=data['catalog_before'], catalog=reopened['catalog'],
+                           snapshot=reopened['after'], reopened_snapshot_match=True,
+                           reopened_catalog_match=True,
+                           snapshot_diff=snapshot_diff(data['before'], reopened['after']),
+                           catalog_diff=catalog_diff(data['catalog_before'], reopened['catalog'], catalog_plan))
+        elif catalog_plan is not None:
             summary["catalog"] = data["catalog"]
         elif modification:
             # 2. 新入口同时核对目标与全部已覆盖对象，保存前回读由宏完成。
