@@ -40,6 +40,7 @@
   "star.common.PhysicalQuantityParser",
   "star.common.PhysicalTimeStoppingCriterion",
   "star.common.PhysicsContinuum",
+  "star.common.ReferenceValueManager",
   "star.common.Region",
   "star.common.RegionManager",
   "star.common.RegionType",
@@ -60,6 +61,8 @@
   "star.common.ValueFunction",
   "star.common.VectorGlobalParameter",
   "star.common.VectorPhysicalQuantity",
+  "star.flow.Gravity",
+  "star.flow.GravityModel",
   "star.meshing.MeshOperation",
   "star.meshing.MeshOperationManager"
 ]

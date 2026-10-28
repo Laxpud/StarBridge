@@ -12,7 +12,7 @@
 
 当前为 **2602 版本目录与通用读写基础**，活动目标、任务和完成条件统一维护在 [TODO](../TODO.md)。
 
-文件与后台会话的 Inspector、首批 Modifier 已实现，当前使用说明仍以 [Inspector](inspector.md) 和 [Modifier](modifier.md) 为准。[离线候选目录工具](catalog.md)已可生成、合并和比较 API 描述，[目录描述与读取](catalog-runtime.md)已接入当前算例的版本检查、对象定位和按需读取。[首批目录修改](catalog-modifier.md)已支持表达式、标量常量和用户标签写入，复用预期旧状态检查、回读、双层 Diff 与文件另存重载。兼容 schema 1 `modify` 与 `set-scalar` 也已使用仓库随附目录和同一修改器，保留原请求与结果字段。Inspector schema 1 快照已通过独立布局迁入共享目录。接下来补齐操作描述、分项覆盖报告、其他写适配器、模型条件及结构操作；原 Modifier 阶段的全部扩展仍未完成。
+文件与后台会话的 Inspector、首批 Modifier 已实现，当前使用说明仍以 [Inspector](inspector.md) 和 [Modifier](modifier.md) 为准。[离线候选目录工具](catalog.md)已可生成、合并和比较 API 描述，[目录描述与读取](catalog-runtime.md)已接入当前算例的版本检查、对象定位和按需读取。[目录修改](catalog-modifier.md)已支持标量与向量表达式或常量、场函数布尔与枚举选项、重力向量和用户标签写入，复用预期旧状态检查、回读、双层 Diff 与文件另存重载；重力写入以声明式条件检查模型存在性。兼容 schema 1 `modify` 与 `set-scalar` 也已使用仓库随附目录和同一修改器，保留原请求与结果字段。Inspector schema 1 快照已通过独立布局迁入共享目录。接下来补齐操作描述、分项覆盖报告、其他写适配器、模型条件及结构操作；原 Modifier 阶段的全部扩展仍未完成。
 
 长期覆盖范围为算例本身所有可修改参数和选项，包括几何、网格、物理模型、边界条件、求解器、后处理和操作流程；客户端偏好、安装配置等不在范围内。目录是主要适配层，运行时发现负责补充和校验。架构及维护原则见[设计文档](../StarBridge.md#版本化对象属性与操作目录)。
 

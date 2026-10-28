@@ -233,7 +233,8 @@ class CatalogRuntime {
                 require(property.get("writable") instanceof Boolean, "Invalid writable implementation flag");
                 values.put(name, fields("adapter", adapter, "writable", property.get("writable"),
                                         "reason", string(property.get("reason"), "property.reason"),
-                                        "conditions_checked", false));
+                                        "conditions_checked", false,
+                                        "guards", property.getOrDefault("guards", java.util.List.of())));
                 continue;
             }
             // 3. 读取错误属于对应属性；未知适配器和未支持查询也不能伪装成空值。
@@ -263,21 +264,29 @@ class CatalogRuntime {
         private final String token, property, adapter;
         private final Object value;
         private final Invocation invocation;
+        private final java.util.Map<String, Object> writer;
         private boolean applied;
 
         PreparedModification(star.common.Simulation sim, java.util.Map<String, Object> plan,
                 java.util.Map<String, Object> readRequest, String token, String property,
                 String adapter, Object value, Invocation invocation,
-                java.util.Map<String, Object> before) {
+                java.util.Map<String, Object> writer, java.util.Map<String, Object> before) {
             this.sim = sim; this.plan = plan; this.readRequest = readRequest; this.token = token;
             this.property = property; this.adapter = adapter; this.value = value;
-            this.invocation = invocation; this.before = before;
+            this.invocation = invocation; this.writer = writer; this.before = before;
         }
 
-        /** 写入后核对目的属性和对象身份；此阶段的任何异常都表示结果可能已改变。 */
+        /**
+         * setter 前重新定位并核对 guards，写入后核对目的属性和对象身份。
+         * 这些检查不锁定 GUI；一旦进入 apply，任何异常都沿结果不确定路径处理，不能重试。
+         */
         public synchronized java.util.Map<String, Object> apply() throws Exception {
             if (applied) throw new IllegalStateException("Prepared modification has already been attempted");
             applied = true;
+            checkVersion(sim, plan, token);
+            Resolved current = locate(sim, object(plan.get("types"), "plan.types"),
+                    object(readRequest.get("target"), "read target"), token, 0);
+            checkGuards(sim, current, writer, token);
             invocation.invoke();
             java.util.Map<String, Object> after = inspect(sim, plan, readRequest, token);
             if (!Boolean.TRUE.equals(after.get("inspection_complete")))
@@ -286,7 +295,9 @@ class CatalogRuntime {
             if (!sameValue(before.get("target"), after.get("target")))
                 throw new IllegalStateException("Modification target identity changed");
             for (String key : java.util.List.of("name", "function_name", "value_type", "dimensions", "unit")) {
-                if (key.equals("unit") && (adapter.equals("scalar_expression") || adapter.equals("scalar_value"))) continue;
+                if (key.equals(property)) continue;
+                if (key.equals("unit") && (adapter.equals("scalar_expression") || adapter.equals("scalar_value")
+                        || adapter.equals("vector_expression") || adapter.equals("vector_value"))) continue;
                 java.util.Map<String, Object> original = object(before.get("properties"), "before.properties");
                 if (original.containsKey(key) && !sameValue(propertyValue(before, key), propertyValue(after, key)))
                     throw new IllegalStateException("Modification identity property changed: " + key);
@@ -308,15 +319,22 @@ class CatalogRuntime {
                 "Invalid catalog modification fields");
         java.util.Map<String, Object> target = object(request.get("target"), "request.target");
         java.util.Map<String, Object> readRequest = fields("schema_version", 1L, "action", "read", "target", target);
-        // inspect 先核对运行版本和引用，再读取本类型全部已配置属性。
-        java.util.Map<String, Object> before = inspect(sim, plan, readRequest, token);
-        require(Boolean.TRUE.equals(before.get("inspection_complete")), "Modification requires complete catalog reads");
+        // 1. 先核对版本、对象引用和声明式前提，避免不适用的数量读取被误当成普通写入。
+        checkVersion(sim, plan, token);
+        Resolved resolved = locate(sim, object(plan.get("types"), "plan.types"), target, token, 0);
         String typeId = string(target.get("type"), "target.type");
         String property = string(request.get("property"), "request.property");
         java.util.Map<String, Object> properties = object(object(plan.get("properties"), "plan.properties").get(typeId), "type properties");
         java.util.Map<String, Object> entry = object(properties.get(property), "modification property");
         require(Boolean.TRUE.equals(entry.get("writable")), "Property is not implemented for writing");
         java.util.Map<String, Object> writer = object(entry.get("write"), "property.write");
+        java.util.List<Object> checks = checkGuards(sim, resolved, writer, token);
+        // 2. 全部前提通过后读取本类型所有属性；expected 仍核对完整的标准回读值。
+        java.util.Map<String, Object> before = inspect(sim, plan, readRequest, token);
+        require(Boolean.TRUE.equals(before.get("inspection_complete")), "Modification requires complete catalog reads");
+        require(sameValue(identity(resolved.object, token), object(before.get("target"), "before.target").get("reference")),
+                "Modification target changed after precondition checks");
+        if (!checks.isEmpty()) before.put("checks", checks);
         String adapter = string(writer.get("adapter"), "write.adapter");
         Object expected = request.get("expected"), actual = propertyValue(before, property);
         if (adapter.equals("user_tags")) {
@@ -324,16 +342,26 @@ class CatalogRuntime {
             // 目标自身的 reference 已由 inspect 严格核对，不在此处削弱其身份前提。
             require(sameValue(tagState(expected), tagState(actual)), "Modification expected tags do not match");
         } else require(sameValue(expected, actual), "Modification expected value does not match");
-        Resolved resolved = locate(sim, object(plan.get("types"), "plan.types"), target, token, 0);
+        resolved = locate(sim, object(plan.get("types"), "plan.types"), target, token, 0);
         require(sameValue(identity(resolved.object, token), object(before.get("target"), "before.target").get("reference")),
                 "Modification target changed during preparation");
         Object value = request.get("value");
         java.util.Map<String, Object> values = new java.util.LinkedHashMap<>();
+        // 3. 校验目标数量或枚举状态并绑定参数；解析最终 setter 仍不触发写入。
         try {
-            if (adapter.equals("primitive")) {
+            if (adapter.equals("field_definition")) {
                 require(resolved.object instanceof star.common.UserFieldFunction,
-                        "Primitive definition writes require a user field function");
+                        "Field definition writes require a user field function");
                 require(value instanceof String && !((String) value).trim().isEmpty(), "Definition must be non-empty");
+                values.put("value", value);
+            } else if (adapter.equals("primitive")) {
+                // JSON 数值共享同一种语义，布尔和文本各自保持类型；数值精度由最终参数转换再核对。
+                require(value instanceof Boolean && actual instanceof Boolean
+                        || value instanceof String && actual instanceof String
+                        || value instanceof Number && actual instanceof Number,
+                        "Primitive value must match the current JSON scalar type");
+                if (value instanceof Number)
+                    require(Double.isFinite(((Number) value).doubleValue()), "Primitive value must be finite");
                 values.put("value", value);
             } else if (adapter.equals("scalar_expression") || adapter.equals("scalar_value")) {
                 Object raw = pipeline(sim, resolved.object, resolved.parent, object(entry.get("read"), "property.read"));
@@ -359,6 +387,45 @@ class CatalogRuntime {
                             "Scalar value must be finite");
                     values.put("number", input.get("value"));
                 }
+            } else if (adapter.equals("vector_expression") || adapter.equals("vector_value")) {
+                // 分量使用当前数量对象的原坐标约定；这里只更改定义或三个原始分量，不做坐标变换。
+                Object raw = pipeline(sim, resolved.object, resolved.parent, object(entry.get("read"), "property.read"));
+                require(raw instanceof star.common.VectorPhysicalQuantity, "Vector writes require a vector quantity");
+                star.common.VectorPhysicalQuantity quantity = (star.common.VectorPhysicalQuantity) raw;
+                finiteVector(quantity.getRawVector().toDoubleArray(), "Current vector");
+                java.util.Map<String, Object> input = object(value, "vector value");
+                String field = adapter.equals("vector_expression") ? "definition" : "components";
+                require(input.keySet().equals(java.util.Set.of(field, "unit")), "Invalid vector value fields");
+                require(input.get("unit") instanceof String, "Vector unit must be a string");
+                star.common.Units units = uniqueNamed(sim.getUnitsManager().getObjects(), (String) input.get("unit"), star.common.Units.class);
+                require(quantity.getUnits().compatible(units), "Incompatible result unit");
+                values.put("units", units);
+                if (adapter.equals("vector_expression")) {
+                    String definition = string(input.get("definition"), "vector definition");
+                    require(!definition.trim().isEmpty(), "Vector definition must be non-empty");
+                    double[] constant = vectorConstant(definition);
+                    require(constant != null || input.get("unit").equals(quantity.getUnits().getSIUnits().getPresentationName()),
+                            "Vector expressions require the SI result unit");
+                    values.put("definition", definition);
+                } else {
+                    vectorComponents(input.get("components"), "Vector components");
+                    // 保留输入 Number 给 convert 做精度检查，不能预先转成 double 后掩盖损失。
+                    java.util.List<?> items = list(input.get("components"), "Vector components");
+                    values.put("x", items.get(0)); values.put("y", items.get(1)); values.put("z", items.get(2));
+                }
+            } else if (adapter.equals("enum")) {
+                Object raw = pipeline(sim, resolved.object, resolved.parent, object(entry.get("read"), "property.read"));
+                require(raw instanceof star.common.EnumeratedOption<?>, "Enum writes require an EnumeratedOption");
+                String name = string(value, "enum value");
+                Enum<?> selected = null;
+                // 仅使用当前 option 返回的允许实例；不从用户输入推导任意枚举类或常量。
+                for (Enum<?> candidate : ((star.common.EnumeratedOption<?>) raw).getElements()) {
+                    if (!candidate.name().equals(name)) continue;
+                    require(selected == null, "Enum value is ambiguous: " + name);
+                    selected = candidate;
+                }
+                require(selected != null, "Enum value is not currently allowed: " + name);
+                values.put("value", selected);
             } else if (adapter.equals("user_tags")) {
                 Object raw = pipeline(sim, resolved.object, resolved.parent, object(entry.get("read"), "property.read"));
                 require(raw instanceof java.util.Collection<?>, "Tag read must return a collection");
@@ -375,10 +442,73 @@ class CatalogRuntime {
             java.util.Map<String, Object> fixedTarget = new java.util.LinkedHashMap<>(target);
             fixedTarget.put("reference", identity(resolved.object, token));
             java.util.Map<String, Object> fixedRead = fields("schema_version", 1L, "action", "read", "target", fixedTarget);
-            return new PreparedModification(sim, plan, fixedRead, token, property, adapter, value, setter, before);
+            return new PreparedModification(sim, plan, fixedRead, token, property, adapter, value, setter, writer, before);
         } catch (Exception error) {
             throw new IllegalArgumentException("Modification preparation failed: " + errorText(error), error);
         }
+    }
+
+    /**
+     * 顺序读取声明式前提并严格比较编码值，返回可审阅的已通过检查记录。
+     * 管线仍受只读 effect 限制；前提只约束 setter 调用前状态，不要求写入后继续成立。
+     */
+    private static java.util.List<Object> checkGuards(star.common.Simulation sim, Resolved resolved,
+            java.util.Map<String, Object> writer, String token) {
+        java.util.List<Object> checks = new java.util.ArrayList<>();
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (Object raw : list(writer.getOrDefault("guards", java.util.List.of()), "write.guards")) {
+            java.util.Map<String, Object> guard = object(raw, "write guard");
+            require(guard.keySet().equals(java.util.Set.of("id", "read", "adapter", "expected", "message")),
+                    "Invalid write guard fields");
+            String id = string(guard.get("id"), "guard.id");
+            require(ids.add(id), "Duplicate write guard: " + id);
+            String message = string(guard.get("message"), "guard.message");
+            try {
+                Object actual = encode(pipeline(sim, resolved.object, resolved.parent,
+                        object(guard.get("read"), "guard.read")), string(guard.get("adapter"), "guard.adapter"), token);
+                require(sameValue(guard.get("expected"), actual),
+                        "Write precondition failed [" + id + "]: " + message);
+                checks.add(fields("id", id, "expected", guard.get("expected"), "actual", actual));
+            } catch (Exception error) {
+                throw new IllegalArgumentException("Write precondition rejected [" + id + "]: "
+                        + message + " (" + errorText(error) + ")", error);
+            }
+        }
+        return checks;
+    }
+
+    /** 向量写入只接受三个有限原始分量，二维数据必须由调用者显式补全。 */
+    private static double[] finiteVector(double[] values, String location) {
+        require(values.length == 3, location + " must contain exactly three components");
+        for (double value : values) require(Double.isFinite(value), location + " must be finite");
+        return values;
+    }
+
+    /** 将 JSON 向量读成三个有限数；拒绝布尔、字符串和隐式缺省分量。 */
+    private static double[] vectorComponents(Object value, String location) {
+        java.util.List<?> input = list(value, location);
+        require(input.size() == 3, location + " must contain exactly three components");
+        double[] result = new double[3];
+        for (int index = 0; index < result.length; index++) {
+            require(input.get(index) instanceof Number, location + " must contain numbers");
+            result[index] = ((Number) input.get(index)).doubleValue();
+        }
+        return finiteVector(result, location);
+    }
+
+    /** STAR 2602 的三分量常量解析返回 DoubleVector；非纯常量返回 null。 */
+    private static double[] vectorConstant(String definition) {
+        star.base.neo.DoubleVector parsed = star.common.PhysicalQuantityParser.parseAsConstant(definition, 3);
+        return parsed == null ? null : finiteVector(parsed.toDoubleArray(), "Vector constant");
+    }
+
+    /** 浮点回读允许数量 setter 的舍入误差，所有参与比较的分量都必须有限。 */
+    private static boolean closeVector(double[] wanted, double[] actual) {
+        for (int index = 0; index < wanted.length; index++) {
+            double a = wanted[index], b = actual[index];
+            if (Math.abs(a - b) > Math.max(1e-12, 1e-12 * Math.max(Math.abs(a), Math.abs(b)))) return false;
+        }
+        return true;
     }
 
     /** 从完整目录结果中取一个成功的属性值，拒绝缺失、错误或伪造的空值。 */
@@ -484,6 +614,27 @@ class CatalogRuntime {
                     matches &= Double.isFinite(b) && Math.abs(a - b) <= Math.max(1e-12, 1e-12 * Math.max(Math.abs(a), Math.abs(b)));
                 }
             }
+        } else if (adapter.equals("vector_expression") || adapter.equals("vector_value")) {
+            java.util.Map<String, Object> input = object(wanted, "vector input"), output = object(actual, "vector output");
+            double[] readback = vectorComponents(output.get("components"), "Vector readback");
+            matches = sameValue(input.get("unit"), output.get("unit"));
+            if (adapter.equals("vector_expression")) {
+                String before = string(input.get("definition"), "vector definition");
+                String after = string(output.get("definition"), "vector readback definition");
+                boolean definitionMatches = before.equals(after);
+                if (!definitionMatches) {
+                    // 纯常量允许 STAR 调整空白或数字格式；动态表达式仍必须文本完全相同。
+                    double[] a = vectorConstant(before), b = vectorConstant(after);
+                    definitionMatches = a != null && b != null;
+                    if (definitionMatches)
+                        for (int index = 0; index < a.length; index++) definitionMatches &= a[index] == b[index];
+                }
+                matches &= definitionMatches;
+            } else matches &= closeVector(vectorComponents(input.get("components"), "Vector input"), readback);
+        } else if (adapter.equals("enum")) {
+            java.util.Map<String, Object> output = object(actual, "enum output");
+            matches = sameValue(wanted, output.get("selected"))
+                    && list(output.get("allowed"), "enum allowed").contains(wanted);
         } else if (adapter.equals("user_tags")) {
             java.util.List<String> names = new java.util.ArrayList<>();
             for (Object tag : tagState(actual)) names.add((String) object(tag, "tag").get("name"));
@@ -721,8 +872,10 @@ class CatalogRuntime {
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
-                "name", "type_name", "names", "enum_name")
+                "name", "type_name", "names", "enum_name", "presence")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
+        // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
+        if (adapter.equals("presence")) return value != null;
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {

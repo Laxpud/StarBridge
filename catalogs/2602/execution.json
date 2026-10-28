@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "target": {
     "release": "2602",
     "build": "21.02.007"
@@ -507,6 +507,86 @@
       "fingerprint": "fe6db1bfe777ffa26a9c34be0bd4fd11e5e2f0c8f3c8e6cd017bb2185a2da4f3",
       "parameter_types": [],
       "effect": "read"
+    },
+    "function.write_ignore_boundary_values": {
+      "type": "star.common.UserFieldFunction",
+      "member": "setIgnoreBoundaryValues(boolean)",
+      "signature": "public void setIgnoreBoundaryValues(boolean newValue)",
+      "fingerprint": "e641501c98eb39d46e2e70c3194b42edc37ffc4e0ddc31c7acfd21d2474d9dda",
+      "parameter_types": [
+        "boolean"
+      ],
+      "effect": "write"
+    },
+    "option.write_selected": {
+      "type": "star.common.EnumeratedOption",
+      "member": "setSelected(T)",
+      "signature": "public void setSelected(T value)",
+      "fingerprint": "d1746963103b2b27e32d8ca5eba116b41a142bda64cfdb6ba853769e0dc62320",
+      "parameter_types": [
+        "java.lang.Enum"
+      ],
+      "effect": "write"
+    },
+    "vector.write_definition": {
+      "type": "star.common.VectorPhysicalQuantity",
+      "member": "setDefinitionAndUnits(java.lang.String,star.common.Units)",
+      "signature": "public void setDefinitionAndUnits(String definition, Units units)",
+      "fingerprint": "c772fa29d5baf1b63847f51f65d508db52a9b837cde2821b95ea1e1f24419727",
+      "parameter_types": [
+        "java.lang.String",
+        "star.common.Units"
+      ],
+      "effect": "write"
+    },
+    "vector.write_value": {
+      "type": "star.common.VectorPhysicalQuantity",
+      "member": "setComponentsAndUnits(double,double,double,star.common.Units)",
+      "signature": "public void setComponentsAndUnits(double c0, double c1, double c2, Units units)",
+      "fingerprint": "0e69aa4dd6e9242162f766b70aef256a5c7912622bf1b56e0db004c6ba1fb06d",
+      "parameter_types": [
+        "double",
+        "double",
+        "double",
+        "star.common.Units"
+      ],
+      "effect": "write"
+    },
+    "continuum.model_manager": {
+      "type": "star.common.Continuum",
+      "member": "getModelManager()",
+      "signature": "public ModelManager getModelManager()",
+      "fingerprint": "49bfbe6b2010b41c47c5aa4240e868fff0b528038d0f8756faf3d86f8093edf5",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "model_manager.has_model": {
+      "type": "star.common.ModelManager",
+      "member": "hasModel(java.lang.Class)",
+      "signature": "public <T extends Model> T hasModel(Class<T> aClass)",
+      "fingerprint": "c953a4aae067315d71546fcc5d3857a9e4611b74d034251e51cd073ced16dd5b",
+      "parameter_types": [
+        "java.lang.Class"
+      ],
+      "effect": "read"
+    },
+    "physics_continuum.reference_values": {
+      "type": "star.common.PhysicsContinuum",
+      "member": "getReferenceValues()",
+      "signature": "public ReferenceValueManager getReferenceValues()",
+      "fingerprint": "d164ef58f4a790298a5790e7a4b08746e8b37ac391f96513b7d0eb4c42c23c55",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "condition_manager.get": {
+      "type": "star.common.ConditionManager",
+      "member": "get(java.lang.Class)",
+      "signature": "public <T extends ClientServerObject> T get(Class<T> aClass)",
+      "fingerprint": "37e8a9e9353f3d0d5be4e244115274bc546afe1fa5f61ad15b6706370d3becee",
+      "parameter_types": [
+        "java.lang.Class"
+      ],
+      "effect": "read"
     }
   },
   "types": {
@@ -658,6 +738,23 @@
         "steps": [
           {
             "member": "simulation.field_functions",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "physics_continuum": {
+      "java_class": "star.common.PhysicsContinuum",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.continua",
             "arguments": []
           },
           {
@@ -878,8 +975,31 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "通过向量表达式写入器核对当前预期值后修改定义与单位",
+        "write": {
+          "adapter": "vector_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "vector.quantity",
+                "arguments": []
+              },
+              {
+                "member": "vector.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       },
       "definition": {
         "adapter": "primitive",
@@ -973,6 +1093,49 @@
             ]
           }
         }
+      },
+      "quantity_value": {
+        "adapter": "vector",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "vector.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "通过向量分量写入器核对当前预期值后修改三个分量与单位",
+        "write": {
+          "adapter": "vector_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "vector.quantity",
+                "arguments": []
+              },
+              {
+                "member": "vector.write_value",
+                "arguments": [
+                  {
+                    "context": "x"
+                  },
+                  {
+                    "context": "y"
+                  },
+                  {
+                    "context": "z"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       }
     },
     "user_field_function": {
@@ -1002,9 +1165,9 @@
           ]
         },
         "writable": true,
-        "reason": "Write implementation is available; current preconditions are checked before modification",
+        "reason": "通过场函数定义写入器检查当前预期值并修改定义",
         "write": {
-          "adapter": "primitive",
+          "adapter": "field_definition",
           "pipeline": {
             "root": "object",
             "steps": [
@@ -1063,8 +1226,28 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "通过已确认的类型化写入器核对当前预期值后修改",
+        "write": {
+          "adapter": "enum",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "function.value_type",
+                "arguments": []
+              },
+              {
+                "member": "option.write_selected",
+                "arguments": [
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       },
       "ignore_boundary_values": {
         "adapter": "primitive",
@@ -1077,8 +1260,24 @@
             }
           ]
         },
-        "writable": false,
-        "reason": "Catalog write execution is not implemented yet"
+        "writable": true,
+        "reason": "通过已确认的类型化写入器核对当前预期值后修改",
+        "write": {
+          "adapter": "primitive",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "function.write_ignore_boundary_values",
+                "arguments": [
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       },
       "sync_name": {
         "adapter": "primitive",
@@ -1618,6 +1817,184 @@
               }
             ]
           }
+        }
+      }
+    },
+    "physics_continuum": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "gravity": {
+        "adapter": "vector",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "physics_continuum.reference_values",
+              "arguments": []
+            },
+            {
+              "member": "condition_manager.get",
+              "arguments": [
+                {
+                  "class": "star.flow.Gravity"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "先确认重力模型已启用，再核对当前预期值并修改重力向量",
+        "write": {
+          "adapter": "vector_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "physics_continuum.reference_values",
+                "arguments": []
+              },
+              {
+                "member": "condition_manager.get",
+                "arguments": [
+                  {
+                    "class": "star.flow.Gravity"
+                  }
+                ]
+              },
+              {
+                "member": "vector.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "gravity_model_enabled",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "continuum.model_manager",
+                    "arguments": []
+                  },
+                  {
+                    "member": "model_manager.has_model",
+                    "arguments": [
+                      {
+                        "class": "star.flow.GravityModel"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "adapter": "presence",
+              "expected": true,
+              "message": "GravityModel must be enabled before modifying gravity"
+            }
+          ]
+        }
+      },
+      "gravity_value": {
+        "adapter": "vector",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "physics_continuum.reference_values",
+              "arguments": []
+            },
+            {
+              "member": "condition_manager.get",
+              "arguments": [
+                {
+                  "class": "star.flow.Gravity"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "先确认重力模型已启用，再核对当前预期值并修改重力向量",
+        "write": {
+          "adapter": "vector_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "physics_continuum.reference_values",
+                "arguments": []
+              },
+              {
+                "member": "condition_manager.get",
+                "arguments": [
+                  {
+                    "class": "star.flow.Gravity"
+                  }
+                ]
+              },
+              {
+                "member": "vector.write_value",
+                "arguments": [
+                  {
+                    "context": "x"
+                  },
+                  {
+                    "context": "y"
+                  },
+                  {
+                    "context": "z"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "gravity_model_enabled",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "continuum.model_manager",
+                    "arguments": []
+                  },
+                  {
+                    "member": "model_manager.has_model",
+                    "arguments": [
+                      {
+                        "class": "star.flow.GravityModel"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "adapter": "presence",
+              "expected": true,
+              "message": "GravityModel must be enabled before modifying gravity"
+            }
+          ]
         }
       }
     }

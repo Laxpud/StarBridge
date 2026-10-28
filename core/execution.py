@@ -15,11 +15,15 @@ from .catalog import CatalogError, _keys, _pinned_member, _require, load, read_j
 
 
 ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum', 'query',
-            'name', 'type_name', 'names', 'enum_name'}
+            'name', 'type_name', 'names', 'enum_name', 'presence'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
+    'field_definition': {'value'},
+    'enum': {'value'},
     'scalar_expression': {'definition', 'units'},
     'scalar_value': {'number', 'units'},
+    'vector_expression': {'definition', 'units'},
+    'vector_value': {'x', 'y', 'z', 'units'},
     'user_tags': {'value'},
 }
 JAVA_TYPE = re.compile(r'[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\[\])*\Z')
@@ -90,10 +94,16 @@ def _member(catalog, identifier, entry):
              and all(isinstance(x, str) and JAVA_TYPE.fullmatch(x) for x in parameters),
              f'Invalid reflection parameter types: {identifier}')
     documented = anchor.partition('(')[2][:-1]
-    expected = [_parameter_type(catalog, declaration, name)
-                for name in documented.split(',')] if documented else []
-    # 这里只接收可直接对应的声明，不把类型变量 T 自动当 Object。
-    # 需要不明确的泛型擦除或静态工厂时必须扩展契约并重新验证。
+    # 枚举 setter 的 T 擦除为首个上界 Enum；只对已确认的声明应用此规则。
+    # 类声明和官方类型链接必须同时证明上界，其他泛型仍拒绝猜测。
+    if ref['type'] == 'star.common.EnumeratedOption' and anchor == 'setSelected(T)':
+        owner = catalog['types'][ref['type']]
+        _require('EnumeratedOption<T extends Enum<T> & Localizable & SerializableEnum>' in owner['signature'],
+                 'Unconfirmed EnumeratedOption generic bound')
+        expected = [_parameter_type(catalog, owner, 'java.lang.Enum')]
+    else:
+        expected = [_parameter_type(catalog, declaration, name)
+                    for name in documented.split(',')] if documented else []
     _require(parameters == expected, f'Unresolved or mismatched method parameters: {identifier}')
     return {'owner': _binary_class(catalog, ref['type']),
             'name': declaration['name'], 'parameter_types': parameters, 'effect': entry['effect']}
@@ -146,7 +156,7 @@ def load_execution(catalog_path, execution_path):
     catalog = load(catalog_path)
     rules = read_json(execution_path)
     _keys(rules, 'schema_version target members types properties', 'execution')
-    _require(type(rules['schema_version']) is int and rules['schema_version'] in (1, 2),
+    _require(type(rules['schema_version']) is int and rules['schema_version'] in (1, 2, 3),
              'Unsupported execution schema_version')
     _require(rules['target'] == catalog['target'], 'Execution catalog version mismatch')
     _require(isinstance(rules['members'], dict) and bool(rules['members']), 'Missing execution members')
@@ -154,7 +164,7 @@ def load_execution(catalog_path, execution_path):
     for identifier, member in rules['members'].items():
         _text(identifier, 'member ID')
         methods[identifier] = _member(catalog, identifier, member)
-        _require(rules['schema_version'] == 2 or methods[identifier]['effect'] == 'read',
+        _require(rules['schema_version'] >= 2 or methods[identifier]['effect'] == 'read',
                  'Execution schema 1 cannot contain write methods')
 
     # 1. 先校验全部类型和定位管线，再核对父类型引用与循环。
@@ -202,19 +212,46 @@ def load_execution(catalog_path, execution_path):
                      f'Property has no parent context: {identifier}.{name}')
             properties[identifier][name] = {**entry, 'read': read}
             if 'write' in entry:
-                _require(rules['schema_version'] == 2, 'Writes require execution schema 2')
+                _require(rules['schema_version'] >= 2, 'Writes require execution schema 2 or later')
                 write = entry['write']
-                _keys(write, 'adapter pipeline', identifier + '.' + name + '.write')
+                fields = 'adapter pipeline' + (' guards' if 'guards' in write else '')
+                _keys(write, fields, identifier + '.' + name + '.write')
+                if rules['schema_version'] == 2:
+                    _require('guards' not in write and write['adapter'] in
+                             ('primitive', 'scalar_expression', 'scalar_value', 'user_tags'),
+                             'Typed writers and guards require execution schema 3')
+                    # schema 2 的 primitive 专指场函数定义，升级不能放宽旧契约。
+                    if write['adapter'] == 'primitive':
+                        write = {**write, 'adapter': 'field_definition'}
                 _require(isinstance(write['adapter'], str) and write['adapter'] in WRITE_ADAPTERS,
                          'Unsupported write adapter')
-                expected_reader = {'primitive': 'primitive', 'scalar_expression': 'quantity',
-                                   'scalar_value': 'quantity', 'user_tags': 'collection'}[write['adapter']]
+                expected_reader = {'primitive': 'primitive', 'field_definition': 'primitive',
+                                   'scalar_expression': 'quantity', 'scalar_value': 'quantity',
+                                   'vector_expression': 'vector', 'vector_value': 'vector',
+                                   'enum': 'enum', 'user_tags': 'collection'}[write['adapter']]
                 _require(entry['adapter'] == expected_reader, 'Read and write adapters do not agree')
                 compiled = _pipeline(catalog, methods, write['pipeline'], identifier + '.' + name + '.write',
                                      write_adapter=write['adapter'])
                 _require(compiled['root'] != 'parent' or types[identifier]['parent_type'] is not None,
                          f'Write property has no parent context: {identifier}.{name}')
-                properties[identifier][name]['write'] = {**write, 'pipeline': compiled}
+                guards = []
+                _require(isinstance(write.get('guards', []), list), 'Write guards must be a list')
+                for guard in write.get('guards', []):
+                    _keys(guard, 'id read adapter expected message', 'write guard')
+                    _text(guard['id'], 'guard.id')
+                    _text(guard['message'], 'guard.message')
+                    _require(guard['id'] not in {g['id'] for g in guards}, 'Duplicate write guard')
+                    _require(isinstance(guard['adapter'], str) and guard['adapter'] in ADAPTERS,
+                             'Unsupported guard adapter')
+                    _json_value(guard['expected'])
+                    guard_read = _pipeline(catalog, methods, guard['read'], 'guard.' + guard['id'])
+                    _require(guard_read['root'] != 'parent' or types[identifier]['parent_type'] is not None,
+                             'Guard has no parent context')
+                    guards.append({**guard, 'read': guard_read})
+                properties[identifier][name]['write'] = {**write, 'pipeline': compiled, 'guards': guards}
+                # describe 去除执行管线后仍可展示前提；不把描述当作已完成运行检查。
+                properties[identifier][name]['guards'] = [
+                    {key: guard[key] for key in ('id', 'expected', 'message')} for guard in guards]
     fingerprint = json.dumps(rules, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
     return {'schema_version': 1, 'target': catalog['target'],
             'catalog_id': hashlib.sha256(fingerprint.encode('utf-8')).hexdigest(),
@@ -311,9 +348,42 @@ def prepare_modification(catalog_path, execution_path, request_path):
     _json_value(request['expected'])
     _json_value(request['value'])
     adapter, value = prop['write']['adapter'], request['value']
-    if adapter == 'primitive':
+    if adapter == 'field_definition':
         _require(isinstance(value, str) and bool(value.strip()), 'Definition must be a non-empty string')
         _require(isinstance(request['expected'], str), 'Expected definition must be a string')
+    elif adapter == 'primitive':
+        old = request['expected']
+        _require(type(value) in (str, bool, int, float), 'Primitive value must be a JSON scalar')
+        _require(type(old) is type(value) or
+                 (type(old) in (int, float) and type(value) in (int, float)),
+                 'Primitive value must match the expected JSON scalar type')
+    elif adapter == 'enum':
+        _text(value, 'enum value')
+        _keys(request['expected'], 'selected allowed', 'expected enum')
+        old = request['expected']
+        _require(isinstance(old['allowed'], list) and all(isinstance(v, str) and v for v in old['allowed'])
+                 and len(old['allowed']) == len(set(old['allowed'])), 'Invalid expected enum choices')
+        _require(old['selected'] is None or old['selected'] in old['allowed'], 'Invalid expected enum selection')
+        _require(value in old['allowed'], 'Enum value is not among expected allowed choices')
+    elif adapter in ('vector_expression', 'vector_value'):
+        field = 'definition' if adapter == 'vector_expression' else 'components'
+        _keys(value, field + ' unit', 'vector value')
+        _require(isinstance(value['unit'], str), 'Vector unit must be a string')
+        if field == 'definition':
+            _require(isinstance(value[field], str) and bool(value[field].strip()),
+                     'Vector definition must be a non-empty string')
+        else:
+            _require(isinstance(value[field], list) and len(value[field]) == 3
+                     and all(type(v) in (int, float) and math.isfinite(v) for v in value[field]),
+                     'Vector components must contain three finite numbers')
+        old = request['expected']
+        _keys(old, 'definition unit components', 'expected vector')
+        _require(isinstance(old['definition'], str) and isinstance(old['unit'], str),
+                 'Expected vector requires definition and unit')
+        _require(isinstance(old['components'], list) and len(old['components']) == 3
+                 and all((type(v) in (int, float) and math.isfinite(v)) or
+                         (isinstance(v, str) and v in ('NaN', 'Infinity', '-Infinity'))
+                         for v in old['components']), 'Invalid expected vector components')
     elif adapter in ('scalar_expression', 'scalar_value'):
         field = 'definition' if adapter == 'scalar_expression' else 'value'
         _keys(value, field + ' unit', 'scalar value')
