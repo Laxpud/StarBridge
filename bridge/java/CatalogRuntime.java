@@ -1,0 +1,414 @@
+/**
+ * 在已核对版本的 STAR 会话中执行目录裁剪后的定位和读取管线。
+ * 本类作为同文件辅助类追加到 BridgeFileMacro 源码；计划由 Python 校验，
+ * 请求只能选择目录属性，不能提供 Java 类、方法或任意调用片段。
+ */
+class CatalogRuntime {
+    /** 返回当前 server 的版本与 Runner 会话世代；不使用保存文件的原始版本。 */
+    public static java.util.Map<String, Object> metadata(
+            star.common.Simulation sim, String sessionToken) {
+        require(sessionToken != null && !sessionToken.isEmpty(), "Session token is required");
+        return fields("release", string(sim.getCurrentVersion(), "runtime.release"),
+                      "build", string(sim.getReleaseNumber(), "runtime.build"),
+                      "session_token", sessionToken);
+    }
+
+    /**
+     * 先核对版本和目标身份，再描述或读取选定属性；单项读取失败保留其他结果。
+     * 返回值只含 JSON 可表示的数据。这里的完整性只针对本次选择，不代表整个算例。
+     */
+    public static java.util.Map<String, Object> inspect(
+            star.common.Simulation sim, java.util.Map<String, Object> plan,
+            java.util.Map<String, Object> request, String sessionToken) {
+        // 1. 目录中的任何方法都必须在当前 server 版本匹配后才有机会执行。
+        java.util.Map<String, Object> runtime = metadata(sim, sessionToken);
+        require((plan.get("schema_version") instanceof Integer || plan.get("schema_version") instanceof Long)
+                && ((Number) plan.get("schema_version")).longValue() == 1L,
+                "Unsupported execution plan schema_version");
+        java.util.Map<String, Object> version = object(plan.get("target"), "plan.target");
+        require(runtime.get("release").equals(version.get("release"))
+                && runtime.get("build").equals(version.get("build")),
+                "Catalog version mismatch: expected " + version + ", got " + runtime);
+        String action = string(request.get("action"), "request.action");
+        require(action.equals("describe") || action.equals("read"), "Unsupported catalog action");
+        String catalogId = string(plan.get("catalog_id"), "plan.catalog_id");
+        java.util.Map<String, Object> target = object(request.get("target"), "request.target");
+        java.util.Map<String, Object> types = object(plan.get("types"), "plan.types");
+        Resolved resolved = locate(sim, types, target, sessionToken, 0);
+        String typeId = string(target.get("type"), "target.type");
+        java.util.Map<String, Object> propertiesByType = object(plan.get("properties"), "plan.properties");
+        java.util.Map<String, Object> available = object(propertiesByType.get(typeId), "type properties");
+        java.util.List<String> selected = selectedProperties(request, available);
+
+        // 2. 描述只交出目录适配状态；它不为了判断“可写”而尝试调用 setter。
+        java.util.Map<String, Object> result = fields(
+                "target", fields("type", typeId, "name", resolved.object.getPresentationName(),
+                    "java_class", resolved.object.getClass().getName(),
+                    "reference", identity(resolved.object, sessionToken),
+                    "locator", locator(target)),
+                "catalog_id", catalogId, "runtime", runtime);
+        java.util.Map<String, Object> values = new java.util.LinkedHashMap<>();
+        boolean complete = true;
+        for (String name : selected) {
+            java.util.Map<String, Object> property = object(available.get(name), "property " + name);
+            String adapter = string(property.get("adapter"), "property.adapter");
+            if (action.equals("describe")) {
+                require(Boolean.FALSE.equals(property.get("writable")),
+                        "Read-only runtime cannot advertise writable properties");
+                values.put(name, fields("adapter", adapter, "writable", false,
+                                        "reason", string(property.get("reason"), "property.reason")));
+                continue;
+            }
+            // 3. 读取错误属于对应属性；未知适配器和未支持查询也不能伪装成空值。
+            try {
+                Object raw = pipeline(sim, resolved.object, resolved.parent,
+                                      object(property.get("read"), "property.read"));
+                values.put(name, fields("status", "ok", "value", encode(raw, adapter, sessionToken)));
+            } catch (Exception error) {
+                complete = false;
+                values.put(name, fields("status", "error", "error", errorText(error)));
+            }
+        }
+        result.put("properties", values);
+        result.put("inspection_complete", complete);
+        return result;
+    }
+
+    /** 保存本次定位得到的对象及父对象，使父路径只解析一次后用于属性管线。 */
+    private static final class Resolved {
+        final star.base.neo.ClientServerObject object;
+        final star.base.neo.ClientServerObject parent;
+        Resolved(star.base.neo.ClientServerObject object, star.base.neo.ClientServerObject parent) {
+            this.object = object;
+            this.parent = parent;
+        }
+    }
+
+    /**
+     * 从当前管理器枚举后按类型和名称唯一定位，随后核对会话内引用。
+     * key 只用于当前会话重新定位的核对，不证明对象在保存重载或删除重建后仍是同一实例。
+     */
+    private static Resolved locate(star.common.Simulation sim, java.util.Map<String, Object> types,
+            java.util.Map<String, Object> target, String sessionToken, int depth) {
+        require(depth < 32, "Target parent nesting is too deep");
+        String typeId = string(target.get("type"), "target.type");
+        String name = string(target.get("name"), "target.name");
+        java.util.Map<String, Object> type = object(types.get(typeId), "target type " + typeId);
+        star.base.neo.ClientServerObject parent = null;
+        Object parentType = type.get("parent_type");
+        if (parentType != null) {
+            java.util.Map<String, Object> parentTarget = object(target.get("parent"), "target.parent");
+            require(parentType.equals(parentTarget.get("type")), "Target parent type mismatch");
+            parent = locate(sim, types, parentTarget, sessionToken, depth + 1).object;
+        } else {
+            require(!target.containsKey("parent"), "Unexpected parent for target type " + typeId);
+        }
+        try {
+            Class<?> expectedClass = javaType(string(type.get("java_class"), "type.java_class"));
+            require(star.base.neo.ClientServerObject.class.isAssignableFrom(expectedClass),
+                    "Target type is not a STAR object");
+            Object value = pipeline(sim, null, parent, object(type.get("locate"), "type.locate"));
+            require(value instanceof java.util.Collection<?>, "Locator must return a collection");
+            star.base.neo.ClientServerObject found = null;
+            for (Object item : (java.util.Collection<?>) value) {
+                if (!expectedClass.isInstance(item)) continue;
+                star.base.neo.ClientServerObject candidate = (star.base.neo.ClientServerObject) item;
+                if (!name.equals(candidate.getPresentationName())) continue;
+                require(found == null, "Target is ambiguous: " + typeId + "/" + name);
+                found = candidate;
+            }
+            require(found != null, "Target is missing: " + typeId + "/" + name);
+            if (target.containsKey("reference")) {
+                java.util.Map<String, Object> reference = object(target.get("reference"), "target.reference");
+                require(sessionToken.equals(reference.get("session_token")), "Object reference session mismatch");
+                require(found.getObjectKeyAsString().equals(reference.get("key")), "Object reference key mismatch");
+            }
+            return new Resolved(found, parent);
+        } catch (Exception error) {
+            throw new IllegalArgumentException("Catalog target resolution failed: " + errorText(error), error);
+        }
+    }
+
+    /** 去掉各层的会话引用，仅保留文件重载后可重新解析的显式名称、类型和父路径。 */
+    private static java.util.Map<String, Object> locator(java.util.Map<String, Object> target) {
+        java.util.Map<String, Object> result = fields("type", target.get("type"), "name", target.get("name"));
+        if (target.containsKey("parent")) {
+            result.put("parent", locator(object(target.get("parent"), "target.parent")));
+        }
+        return result;
+    }
+
+    /** 按明确参数类查找 public 方法；每一步的返回值是下一步的 receiver。 */
+    private static Object pipeline(star.common.Simulation sim, Object object, Object parent,
+                                  java.util.Map<String, Object> pipeline) throws Exception {
+        String root = string(pipeline.get("root"), "pipeline.root");
+        Object receiver;
+        switch (root) {
+            case "simulation": receiver = sim; break;
+            case "object": receiver = object; break;
+            case "parent": receiver = parent; break;
+            default: throw new IllegalArgumentException("Unsupported pipeline root: " + root);
+        }
+        for (Object raw : list(pipeline.get("steps"), "pipeline.steps")) {
+            java.util.Map<String, Object> call = object(raw, "pipeline step");
+            Class<?> owner = javaType(string(call.get("owner"), "step.owner"));
+            require(receiver != null && owner.isInstance(receiver), "Pipeline receiver type mismatch");
+            java.util.List<?> names = list(call.get("parameter_types"), "step.parameter_types");
+            java.util.List<?> specs = list(call.get("arguments"), "step.arguments");
+            require(names.size() == specs.size(), "Pipeline argument count mismatch");
+            Class<?>[] parameterTypes = new Class<?>[names.size()];
+            Object[] arguments = new Object[names.size()];
+            for (int index = 0; index < names.size(); index++) {
+                parameterTypes[index] = javaType(string(names.get(index), "parameter type"));
+                java.util.Map<String, Object> spec = object(specs.get(index), "argument binding");
+                require(spec.size() == 1, "Argument binding must contain exactly one source");
+                Object value;
+                if (spec.containsKey("class")) {
+                    value = javaType(string(spec.get("class"), "class argument"));
+                } else if (spec.containsKey("literal")) {
+                    value = spec.get("literal");
+                } else if (spec.containsKey("context")) {
+                    String context = string(spec.get("context"), "context argument");
+                    require(context.equals("object") || context.equals("parent"), "Unknown argument context");
+                    value = context.equals("object") ? object : parent;
+                } else {
+                    throw new IllegalArgumentException("Unknown argument binding");
+                }
+                arguments[index] = convert(value, parameterTypes[index]);
+            }
+            java.lang.reflect.Method method = owner.getMethod(string(call.get("name"), "step.name"), parameterTypes);
+            require(!java.lang.reflect.Modifier.isStatic(method.getModifiers()), "Static pipeline calls are unsupported");
+            // 不放宽 Java 访问权限；公开声明不可访问时，目录需要明确改用可访问的声明类。
+            try {
+                receiver = method.invoke(receiver, arguments);
+            } catch (java.lang.reflect.InvocationTargetException error) {
+                Throwable cause = error.getCause();
+                if (cause instanceof Exception) throw (Exception) cause;
+                if (cause instanceof Error) throw (Error) cause;
+                throw error;
+            }
+        }
+        return receiver;
+    }
+
+    /** 将计划中的类名解析为精确类型；数组递归解析，嵌套类须使用 JVM 二进制名称。 */
+    private static Class<?> javaType(String name) throws ClassNotFoundException {
+        switch (name) {
+            case "boolean": return boolean.class;
+            case "byte": return byte.class;
+            case "short": return short.class;
+            case "int": return int.class;
+            case "long": return long.class;
+            case "float": return float.class;
+            case "double": return double.class;
+            case "char": return char.class;
+            case "void": return void.class;
+            default:
+                if (name.endsWith("[]")) {
+                    return java.lang.reflect.Array.newInstance(javaType(name.substring(0, name.length() - 2)), 0).getClass();
+                }
+                return Class.forName(name, false, CatalogRuntime.class.getClassLoader());
+        }
+    }
+
+    /** 精确检查参数类型和整数范围，避免反射调用时静默截断或选择另一重载。 */
+    private static Object convert(Object value, Class<?> type) {
+        if (!type.isPrimitive()) {
+            require(value == null || type.isInstance(value), "Reference argument type mismatch: " + type.getName());
+            return value;
+        }
+        if (type == boolean.class) {
+            require(value instanceof Boolean, "Boolean argument required");
+            return value;
+        }
+        if (type == char.class) {
+            require(value instanceof String && ((String) value).length() == 1, "Single-character argument required");
+            return ((String) value).charAt(0);
+        }
+        require(value instanceof Number, "Numeric argument required: " + type.getName());
+        Number number = (Number) value;
+        require(Double.isFinite(number.doubleValue()), "Numeric argument must be finite");
+        java.math.BigDecimal decimal = new java.math.BigDecimal(number.toString());
+        if (type == double.class) {
+            double result = number.doubleValue();
+            require(decimal.compareTo(java.math.BigDecimal.valueOf(result)) == 0,
+                    "Double argument would lose precision");
+            return result;
+        }
+        if (type == float.class) {
+            float result = number.floatValue();
+            require(Float.isFinite(result), "Float argument is out of range");
+            require(decimal.compareTo(new java.math.BigDecimal(Float.toString(result))) == 0,
+                    "Float argument would lose precision");
+            return result;
+        }
+        try {
+            if (type == long.class) return decimal.longValueExact();
+            if (type == int.class) return decimal.intValueExact();
+            if (type == short.class) return decimal.shortValueExact();
+            if (type == byte.class) return decimal.byteValueExact();
+        } catch (ArithmeticException error) {
+            throw new IllegalArgumentException("Integral argument is fractional or out of range", error);
+        }
+        throw new IllegalArgumentException("Unsupported primitive argument: " + type.getName());
+    }
+
+    /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
+    private static Object encode(Object value, String adapter, String sessionToken) {
+        require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query")
+                .contains(adapter), "Unsupported value adapter: " + adapter);
+        if (value == null) return null;
+        switch (adapter) {
+            case "primitive": return primitive(value);
+            case "reference":
+                require(value instanceof star.base.neo.ClientServerObject, "Reference adapter requires a STAR object");
+                return reference((star.base.neo.ClientServerObject) value, sessionToken);
+            case "collection":
+                require(value instanceof java.util.Collection<?>, "Collection adapter requires a collection");
+                return collection((java.util.Collection<?>) value, sessionToken);
+            case "quantity":
+                require(value instanceof star.common.ScalarPhysicalQuantity, "Quantity adapter requires a scalar quantity");
+                star.common.ScalarPhysicalQuantity scalar = (star.common.ScalarPhysicalQuantity) value;
+                return fields("definition", scalar.getDefinition(),
+                    "unit", scalar.getUnits().getPresentationName(),
+                    "si_unit", scalar.getUnits().getSIUnits().getPresentationName(),
+                    "raw_value", primitive(scalar.getRawValue()), "si_value", primitive(scalar.getSIValue()));
+            case "vector":
+                require(value instanceof star.common.VectorPhysicalQuantity, "Vector adapter requires a vector quantity");
+                star.common.VectorPhysicalQuantity vector = (star.common.VectorPhysicalQuantity) value;
+                // 原始分量沿 STAR 当前数量对象的坐标约定返回，不进行坐标系变换。
+                java.util.List<Object> components = new java.util.ArrayList<>();
+                for (double component : vector.getRawVector().toDoubleArray()) components.add(primitive(component));
+                return fields("definition", vector.getDefinition(), "unit", vector.getUnits().getPresentationName(),
+                              "components", components);
+            case "enum":
+                require(value instanceof star.common.EnumeratedOption<?>, "Enum adapter requires an EnumeratedOption");
+                star.common.EnumeratedOption<?> option = (star.common.EnumeratedOption<?>) value;
+                java.util.List<String> allowed = new java.util.ArrayList<>();
+                for (Enum<?> element : option.getElements()) allowed.add(element.name());
+                // getElements 返回当前允许集合；保留 STAR 提供的编辑器显示顺序。
+                Enum<?> selected = option.getSelectedElement();
+                return fields("selected", selected == null ? null : selected.name(), "allowed", allowed);
+            case "query": return query(value, sessionToken);
+            default: throw new IllegalArgumentException("Unsupported value adapter: " + adapter);
+        }
+    }
+
+    /** 查询保留规则本身；未知谓词明确失败，不能把动态规则变成一次性的对象列表。 */
+    private static Object query(Object value, String sessionToken) {
+        require(value instanceof star.base.query.ManagerWithQuery<?>, "Query adapter requires a ManagerWithQuery");
+        star.base.query.ManagerWithQuery<?> manager = (star.base.query.ManagerWithQuery<?>) value;
+        star.base.query.Query query = manager.getQuery();
+        if (query == null) {
+            return fields("mode", "static", "objects", collection(manager.getObjects(), sessionToken));
+        }
+        Object predicate = query.getPredicate();
+        java.util.Map<String, Object> rule;
+        // 只编码公开且已核对 getter 的谓词；组合谓词等需要后续单独适配。
+        if (predicate != null && predicate.getClass() == star.base.query.NamePredicate.class) {
+            star.base.query.NamePredicate name = (star.base.query.NamePredicate) predicate;
+            rule = fields("type", "name", "operator", name.getOperator().name(), "value", name.getName());
+        } else if (predicate != null && predicate.getClass() == star.base.query.TypePredicate.class) {
+            star.base.query.TypePredicate type = (star.base.query.TypePredicate) predicate;
+            rule = fields("type", "java_type", "operator", type.getOperator().name(), "value", type.getType().getName());
+        } else {
+            throw new IllegalArgumentException("Unsupported query predicate: "
+                    + (predicate == null ? "null" : predicate.getClass().getName()));
+        }
+        java.util.List<String> modifiers = new java.util.ArrayList<>();
+        for (star.base.query.Query.Modifier modifier : query.getModifiers()) modifiers.add(modifier.name());
+        java.util.Collections.sort(modifiers);
+        return fields("mode", "query", "predicate", rule, "modifiers", modifiers);
+    }
+
+    /** 保留 JSON 基础类型；非有限数值使用显式字符串，避免生成非法 JSON。 */
+    private static Object primitive(Object value) {
+        if (value == null || value instanceof String || value instanceof Boolean) return value;
+        if (value instanceof Character) return value.toString();
+        if (value instanceof Number) {
+            if ((value instanceof Double && !Double.isFinite((Double) value))
+                    || (value instanceof Float && !Float.isFinite((Float) value))) return value.toString();
+            return value;
+        }
+        throw new IllegalArgumentException("Unsupported primitive value: " + value.getClass().getName());
+    }
+
+    /** 将对象集合转换为稳定的引用列表；此顺序只用于输出，不能解释为操作执行顺序。 */
+    private static java.util.List<Object> collection(java.util.Collection<?> source, String sessionToken) {
+        java.util.List<Object> result = new java.util.ArrayList<>();
+        for (Object value : source) {
+            result.add(value instanceof star.base.neo.ClientServerObject
+                    ? reference((star.base.neo.ClientServerObject) value, sessionToken) : primitive(value));
+        }
+        result.sort(java.util.Comparator.comparing(value -> value == null ? "null" : value.getClass().getName() + ":" + value));
+        return result;
+    }
+
+    /** 对象引用始终含会话世代；名称及 Java 类型用于解释和重新定位，不充当永久 ID。 */
+    private static java.util.Map<String, Object> reference(star.base.neo.ClientServerObject value, String sessionToken) {
+        return fields("name", value.getPresentationName(), "java_class", value.getClass().getName(),
+                      "reference", identity(value, sessionToken));
+    }
+
+    /** 会话内对象 key 只能与 Runner 的会话世代一起使用。 */
+    private static java.util.Map<String, Object> identity(star.base.neo.ClientServerObject value, String sessionToken) {
+        return fields("session_token", sessionToken, "key", value.getObjectKeyAsString());
+    }
+
+    /** 默认读取该类型的全部已适配属性；显式列表禁止重复和未知名称。 */
+    private static java.util.List<String> selectedProperties(java.util.Map<String, Object> request,
+                                                            java.util.Map<String, Object> available) {
+        java.util.List<String> result = new java.util.ArrayList<>();
+        if (!request.containsKey("properties")) {
+            result.addAll(available.keySet());
+        } else {
+            for (Object value : list(request.get("properties"), "request.properties")) {
+                String name = string(value, "property ID");
+                require(available.containsKey(name), "Unknown property: " + name);
+                require(!result.contains(name), "Duplicate property: " + name);
+                result.add(name);
+            }
+        }
+        java.util.Collections.sort(result);
+        return result;
+    }
+
+    /** 将反射包装异常展开为稳定错误说明，不把底层失败变成空值或成功状态。 */
+    private static String errorText(Throwable error) {
+        while (error instanceof java.lang.reflect.InvocationTargetException && error.getCause() != null) {
+            error = error.getCause();
+        }
+        return error.getClass().getSimpleName() + ": " + String.valueOf(error.getMessage());
+    }
+
+    /** 构造保持字段顺序的 JSON 对象，供宏自身的 JSON 编码器输出。 */
+    private static java.util.Map<String, Object> fields(Object... values) {
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        for (int index = 0; index < values.length; index += 2) result.put((String) values[index], values[index + 1]);
+        return result;
+    }
+
+    /** 对计划和请求的容器边界做防御检查；具体字段白名单仍由 Python 编译器负责。 */
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<String, Object> object(Object value, String location) {
+        require(value instanceof java.util.Map<?, ?>, "Object required at " + location);
+        return (java.util.Map<String, Object>) value;
+    }
+
+    /** 要求列表，防止计划字段类型错误落入隐式转换或单项循环。 */
+    private static java.util.List<?> list(Object value, String location) {
+        require(value instanceof java.util.List<?>, "Array required at " + location);
+        return (java.util.List<?>) value;
+    }
+
+    /** 协议标识符和对象名称必须是非空字符串，不接受 null 的隐式文本形式。 */
+    private static String string(Object value, String location) {
+        require(value instanceof String && !((String) value).isEmpty(), "Non-empty string required at " + location);
+        return (String) value;
+    }
+
+    /** 在任何读取前拒绝无效前提；读取阶段的异常由属性结果单独记录。 */
+    private static void require(boolean condition, String message) {
+        if (!condition) throw new IllegalArgumentException(message);
+    }
+}

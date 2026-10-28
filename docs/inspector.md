@@ -1,8 +1,10 @@
 # Inspector 对象快照
 
-[返回项目入口](README.cn.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
+[返回项目入口](README.cn.md) · [目录描述与读取](catalog-runtime.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
 Inspector 读取算例对象清单、关键属性和归属关系。文件 `inspect` 的 `summary.json.snapshot` 与后台会话 `inspect` 的 `snapshot` 使用相同格式。设置与保存操作中的 `before`、`after` 也使用此格式；旧 `set-scalar` 的自动 Diff 和重新加载核对仍只覆盖参数；新 [Modifier](modifier.md) 使用同一快照记录全部已覆盖字段的 Diff，并在文件重新加载后比较对象内容。
+
+新增的目录 `describe/read` 通过共享映射按需访问当前对象，契约及覆盖见[目录描述与读取](catalog-runtime.md)。其结果使用独立 `catalog` 字段，包含当前 server 版本、会话引用和逐属性状态。本页的旧 `inspect` 仍按固定字段生成快照，尚未全部迁入目录；两种结果的 `inspection_complete` 各自只说明其声明的读取范围。
 
 ```bash
 python3 bridge/runner/file_bridge.py inspect 'Base.sim~' \
@@ -55,4 +57,4 @@ Inspector 不调用报告求值、网格生成、求解或工作流执行。当�
 
 2026-10-28，本机 Linux、STAR-CCM+ 2602 Build 21.02.007 的 `Base.sim~` 已实际读取：32 个标量参数、165 个场函数（3 个用户场函数）、6 个标签、1 个连续体及 18 个模型、2 个区域及 17 个边界、3 个接口、4 个网格操作、6 个报告、15 个监视器和 4 个停止准则。文件及后台会话读取均没有 `read_errors`；除工作副本的名称和路径外，对象快照一致，连续两次会话快照完全一致，服务只加载一次算例。原文件与工作副本 SHA256 未变化，参数原有字段与旧版读取结果一致。验证服务已关闭。
 
-该算例没有 Simulation Operations，工作流非空、嵌套循环及子工作流分支尚未实测；向量参数、其他参数类型、读取错误分支及其他 STAR 版本也尚未实测。Java API 已对照本机安装目录的 `doc/client/html`；实际覆盖以本页字段表和上述验证范围为准。
+该算例没有 Simulation Operations，工作流非空、嵌套循环及子工作流分支尚未实测；上述固定快照验证也未覆盖向量参数、其他参数类型、读取错误分支及其他 STAR 版本。目录入口已使用另建工作副本验证向量与逐属性错误，见其[独立验证范围](catalog-runtime.md#验证范围与剩余工作)，不将该结果计为全部旧快照迁移完成。Java API 已对照本机安装目录的 `doc/client/html`；实际覆盖以各入口声明的字段及验证范围为准。

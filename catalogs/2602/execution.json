@@ -1,0 +1,948 @@
+{
+  "schema_version": 1,
+  "target": {
+    "release": "2602",
+    "build": "21.02.007"
+  },
+  "members": {
+    "simulation.parameters": {
+      "type": "star.common.Simulation",
+      "member": "getGlobalParameterManager()",
+      "signature": "public GlobalParameterManager getGlobalParameterManager()",
+      "fingerprint": "6f3af5c2156b445aaaa0989282b843dc5f3df161b4d2adc84f047c6ad5cc2f79",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "simulation.field_functions": {
+      "type": "star.common.Simulation",
+      "member": "getFieldFunctionManager()",
+      "signature": "public FieldFunctionManager getFieldFunctionManager()",
+      "fingerprint": "82e647ba19d381219b66cc7e3a6b4c3205a351006b505b0a2198e15051ea3e08",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "simulation.regions": {
+      "type": "star.common.Simulation",
+      "member": "getRegionManager()",
+      "signature": "public RegionManager getRegionManager()",
+      "fingerprint": "ca7a1066a378ec78eb23051a03533ae3de64a1f7c53cf60e0f09f694121cf97a",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "root.manager": {
+      "type": "star.common.RootObject",
+      "member": "get(java.lang.Class)",
+      "signature": "public <T extends ClientServerObject> T get(Class<T> aClass)",
+      "fingerprint": "37e8a9e9353f3d0d5be4e244115274bc546afe1fa5f61ad15b6706370d3becee",
+      "parameter_types": [
+        "java.lang.Class"
+      ],
+      "effect": "read"
+    },
+    "manager.objects": {
+      "type": "star.base.neo.ClientServerObjectManager",
+      "member": "getObjects()",
+      "signature": "public Collection<T> getObjects()",
+      "fingerprint": "25bbd44d36de5feba1633320a423e78dd42666d93ec3ccf451a49a0c99ab9695",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "object.name": {
+      "type": "star.base.neo.ClientServerObject",
+      "member": "getPresentationName()",
+      "signature": "public String getPresentationName()",
+      "fingerprint": "02a3412b739062eff552a99da7f00bf1cabf464766068b58747ce3f1f32e2cda",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "scalar.quantity": {
+      "type": "star.common.ScalarGlobalParameter",
+      "member": "getQuantity()",
+      "signature": "public ScalarPhysicalQuantity getQuantity()",
+      "fingerprint": "b38c9a61d2ba39f6c8b59750e88ace5b408f2abc6794bce1bcb5525158af2da7",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "scalar.definition": {
+      "type": "star.common.ScalarPhysicalQuantity",
+      "member": "getDefinition()",
+      "signature": "public String getDefinition()",
+      "fingerprint": "fb19e9f77690619fda74eca11d74a0281b72a848efc22d23a9ba4e532b335d6a",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "vector.quantity": {
+      "type": "star.common.VectorGlobalParameter",
+      "member": "getQuantity()",
+      "signature": "public VectorPhysicalQuantity getQuantity()",
+      "fingerprint": "7b14e3e0f1dee1eff7da5a7cef4f0a6674ce392acf1697ce6b524c8bb3cf3b9e",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "vector.definition": {
+      "type": "star.common.VectorPhysicalQuantity",
+      "member": "getDefinition()",
+      "signature": "public String getDefinition()",
+      "fingerprint": "fb19e9f77690619fda74eca11d74a0281b72a848efc22d23a9ba4e532b335d6a",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "quantity.units": {
+      "type": "star.common.ValueFunction",
+      "member": "getUnits()",
+      "signature": "public Units getUnits()",
+      "fingerprint": "28e643a5c1bc26e69f1e70dda3b60f59e88ebdd94f526481182dae79cfdde1ba",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "function.definition": {
+      "type": "star.common.UserFieldFunction",
+      "member": "getDefinition()",
+      "signature": "@StarBeanProperty(display=\"Definition\", hint=\"Function definition\", editor=ExpressionPropertyEditor.class, booleanValues=@BooleanValue(key=\"AllowGrouping\",value=false)) public String getDefinition()",
+      "fingerprint": "b55482ee45455d2c724835bb748dee638955e371659bcf7fd955af68a4a271b8",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "function.name": {
+      "type": "star.common.UserFieldFunction",
+      "member": "getFunctionName()",
+      "signature": "@StarBeanProperty(display=\"Function Name\",hint=\"Function name for use in other definitions\",booleanValues={@BooleanValue(key=\"oneline\",value=true),@BooleanValue(key=\"AllowGrouping\",value=false)}) public String getFunctionName()",
+      "fingerprint": "169c22b906adc7fd35564d25e744952347984f7e50f3256a1f492eae0a004945",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "function.dimensions": {
+      "type": "star.common.UserFieldFunction",
+      "member": "getDimensions()",
+      "signature": "@StarBeanProperty(display=\"Dimensions\", link=\"DimensionsVector\", hint=\"Physical dimensions\", readOnly=false) public Dimensions getDimensions()",
+      "fingerprint": "80901e52e9a39fb70c2b1efd9919679490d61685fe7f97cda47b4719fb112417",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "function.value_type": {
+      "type": "star.common.FieldFunction",
+      "member": "getTypeOption()",
+      "signature": "public FieldFunctionTypeOption getTypeOption()",
+      "fingerprint": "f324ba5e937faf473f58e7b84cb65bc40fadb6bb09da380c9f42ad9aa5557adf",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "function.ignore_boundary_values": {
+      "type": "star.common.UserFieldFunction",
+      "member": "getIgnoreBoundaryValues()",
+      "signature": "@StarBeanProperty(display=\"Ignore Boundary Values\", hint=\"Use the cell value at a boundary face even if the boundary face has a value\", expert=true, booleanValues=@BooleanValue(key=\"AllowGrouping\",value=false)) public boolean getIgnoreBoundaryValues()",
+      "fingerprint": "b529952292ce18b3115e24d5d90b23597756949a46b19cbee1de3bc8d347ef42",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "function.sync_name": {
+      "type": "star.common.UserFieldFunction",
+      "member": "getSyncName()",
+      "signature": "@StarBeanProperty(display=\"Synchronize Function Name\", hint=\"Synchronize the presentation name with the function name\", expert=true) public boolean getSyncName()",
+      "fingerprint": "e7ea04cd3184734670fe46cb6687d0c3bbf8a9a61a5065ad93f549790e4aeb8c",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "dimensions.text": {
+      "type": "star.common.Dimensions",
+      "member": "toString()",
+      "signature": "public String toString()",
+      "fingerprint": "8bfcccee5a618e42b100bb36eef92d855cc2a8d7e78fd2d4a2ca9441b549cb22",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "region.boundaries": {
+      "type": "star.common.Region",
+      "member": "getBoundaryManager()",
+      "signature": "public BoundaryManager getBoundaryManager()",
+      "fingerprint": "4298422117be793b90a9cb6ccf7cf8839ee72bd996377a6b35b33248d43a7982",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "region.physics_continuum": {
+      "type": "star.common.Region",
+      "member": "getPhysicsContinuum()",
+      "signature": "public PhysicsContinuum getPhysicsContinuum()",
+      "fingerprint": "efcf8e1c9088d7939840936d760ceb6bd445237360878dfc78901b5b3752cc64",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "region.type": {
+      "type": "star.common.Region",
+      "member": "getRegionType()",
+      "signature": "@StarBeanProperty(display=\"Type\", hint=\"Region type\", index=4, editor=ConditionTypeEditor.class) public RegionType getRegionType()",
+      "fingerprint": "5f776192fdbcb4a1f93029d595b80f68675f6e8439d8eff020c0cffcdf93fe33",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "region.index": {
+      "type": "star.common.Region",
+      "member": "getIndex()",
+      "signature": "@StarBeanProperty(readOnly=true, index=0, display=\"Index\", hint=\"A unique number to distinguish the region from others\", booleanValues=@BooleanValue(key=\"AllowGrouping\",value=false)) public int getIndex()",
+      "fingerprint": "414cfeacd881ea092f548860531f3b3666dfb09662ac96fdf4d01d03ffc7551c",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "boundary.type": {
+      "type": "star.common.Boundary",
+      "member": "getBoundaryType()",
+      "signature": "@StarBeanProperty(display=\"Type\", hint=\"Boundary type\", index=3, editor=ConditionTypeEditor.class) public BoundaryType getBoundaryType()",
+      "fingerprint": "4527e35242336660d1c7b4c05ff2f386eb4ac9f51b67bd759f551726799a30da",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "boundary.region": {
+      "type": "star.common.Boundary",
+      "member": "getRegion()",
+      "signature": "public Region getRegion()",
+      "fingerprint": "34a35103a28d5dd455a9c8c415793638493c262092c442a35365b87d068988bf",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "boundary.index": {
+      "type": "star.common.Boundary",
+      "member": "getIndex()",
+      "signature": "@StarBeanProperty(index=0, readOnly=true, display=\"Index\", hint=\"A unique number to distinguish the boundary from others\", booleanValues=@BooleanValue(key=\"AllowGrouping\",value=false)) public int getIndex()",
+      "fingerprint": "8bc53e0e5ff4906cd1c889762a4bf87baa7f08eb7d0b926072cf1785777d2134",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "boundary.allow_per_part_values": {
+      "type": "star.common.Boundary",
+      "member": "getAllowPerPartValues()",
+      "signature": "@StarBeanProperty(display=\"Allow Per-Surface Values\", hint=\"Allow assignment of values per geometric entity\", expert=true) public boolean getAllowPerPartValues()",
+      "fingerprint": "38425143062860879149288c0c579cf93cbdb4012954d9d929ff9d7f3399954b",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "tags.read": {
+      "type": "star.common.TagManager",
+      "member": "getTags(star.base.neo.ClientServerObject)",
+      "signature": "public Collection<Tag> getTags(ClientServerObject cso)",
+      "fingerprint": "320332eee29213e5601e347d20843a1bca6922f8b3d600a772f95d31db903ed1",
+      "parameter_types": [
+        "star.base.neo.ClientServerObject"
+      ],
+      "effect": "read"
+    },
+    "simulation.reports": {
+      "type": "star.common.Simulation",
+      "member": "getReportManager()",
+      "signature": "public ReportManager getReportManager()",
+      "fingerprint": "b0a8bdab6c81319ceaf3c1fc4992c22994388010e5e36085719eccb8c362eb4a",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "report.parts": {
+      "type": "star.base.report.AnalysisReport",
+      "member": "getParts()",
+      "signature": "public PartGroup getParts()",
+      "fingerprint": "d4f1602a0b47c2036f666b30432da921b0150242847b486a3742a2631d80b7aa",
+      "parameter_types": [],
+      "effect": "read"
+    }
+  },
+  "types": {
+    "scalar_parameter": {
+      "java_class": "star.common.ScalarGlobalParameter",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.parameters",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "vector_parameter": {
+      "java_class": "star.common.VectorGlobalParameter",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.parameters",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "user_field_function": {
+      "java_class": "star.common.UserFieldFunction",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.field_functions",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "region": {
+      "java_class": "star.common.Region",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.regions",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "boundary": {
+      "java_class": "star.common.Boundary",
+      "parent_type": "region",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "region.boundaries",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "user_tag": {
+      "java_class": "star.common.UserTag",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "root.manager",
+            "arguments": [
+              {
+                "class": "star.common.TagManager"
+              }
+            ]
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "volume_average_report": {
+      "java_class": "star.base.report.VolumeAverageReport",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.reports",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    }
+  },
+  "properties": {
+    "scalar_parameter": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "quantity": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "scalar.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "definition": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "scalar.quantity",
+              "arguments": []
+            },
+            {
+              "member": "scalar.definition",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "unit": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "scalar.quantity",
+              "arguments": []
+            },
+            {
+              "member": "quantity.units",
+              "arguments": []
+            },
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "tags": {
+        "adapter": "collection",
+        "read": {
+          "root": "simulation",
+          "steps": [
+            {
+              "member": "root.manager",
+              "arguments": [
+                {
+                  "class": "star.common.TagManager"
+                }
+              ]
+            },
+            {
+              "member": "tags.read",
+              "arguments": [
+                {
+                  "context": "object"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      }
+    },
+    "vector_parameter": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "quantity": {
+        "adapter": "vector",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "vector.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "definition": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "vector.quantity",
+              "arguments": []
+            },
+            {
+              "member": "vector.definition",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "unit": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "vector.quantity",
+              "arguments": []
+            },
+            {
+              "member": "quantity.units",
+              "arguments": []
+            },
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "tags": {
+        "adapter": "collection",
+        "read": {
+          "root": "simulation",
+          "steps": [
+            {
+              "member": "root.manager",
+              "arguments": [
+                {
+                  "class": "star.common.TagManager"
+                }
+              ]
+            },
+            {
+              "member": "tags.read",
+              "arguments": [
+                {
+                  "context": "object"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      }
+    },
+    "user_field_function": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "definition": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "function.definition",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "function_name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "function.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "dimensions": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "function.dimensions",
+              "arguments": []
+            },
+            {
+              "member": "dimensions.text",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "value_type": {
+        "adapter": "enum",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "function.value_type",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "ignore_boundary_values": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "function.ignore_boundary_values",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "sync_name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "function.sync_name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "tags": {
+        "adapter": "collection",
+        "read": {
+          "root": "simulation",
+          "steps": [
+            {
+              "member": "root.manager",
+              "arguments": [
+                {
+                  "class": "star.common.TagManager"
+                }
+              ]
+            },
+            {
+              "member": "tags.read",
+              "arguments": [
+                {
+                  "context": "object"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      }
+    },
+    "region": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "region_type": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "region.type",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "physics_continuum": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "region.physics_continuum",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "index": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "region.index",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "tags": {
+        "adapter": "collection",
+        "read": {
+          "root": "simulation",
+          "steps": [
+            {
+              "member": "root.manager",
+              "arguments": [
+                {
+                  "class": "star.common.TagManager"
+                }
+              ]
+            },
+            {
+              "member": "tags.read",
+              "arguments": [
+                {
+                  "context": "object"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      }
+    },
+    "boundary": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "boundary_type": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "boundary.type",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "region": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "boundary.region",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "index": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "boundary.index",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "allow_per_part_values": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "boundary.allow_per_part_values",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "tags": {
+        "adapter": "collection",
+        "read": {
+          "root": "simulation",
+          "steps": [
+            {
+              "member": "root.manager",
+              "arguments": [
+                {
+                  "class": "star.common.TagManager"
+                }
+              ]
+            },
+            {
+              "member": "tags.read",
+              "arguments": [
+                {
+                  "context": "object"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      }
+    },
+    "user_tag": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      }
+    },
+    "volume_average_report": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "parts": {
+        "adapter": "query",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "report.parts",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      },
+      "tags": {
+        "adapter": "collection",
+        "read": {
+          "root": "simulation",
+          "steps": [
+            {
+              "member": "root.manager",
+              "arguments": [
+                {
+                  "class": "star.common.TagManager"
+                }
+              ]
+            },
+            {
+              "member": "tags.read",
+              "arguments": [
+                {
+                  "context": "object"
+                }
+              ]
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "Catalog write execution is not implemented yet"
+      }
+    }
+  }
+}

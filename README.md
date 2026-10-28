@@ -13,6 +13,8 @@
 
 StarBridge is in early development. The Inspector reads simulation objects, key properties, and relationships through both file and background-session entry points. The Modifier can update existing scalar-parameter and user-field-function definitions and replace existing user-tag assignments, with expected-state checks and readback. File changes are saved to a new simulation and reloaded for verification; session changes remain in memory until an explicit save. A background-session prototype also reuses one loaded STAR server for successive requests. Each request starts a temporary Java client; a persistent Java adapter, GUI integration, MCP, and working memory remain future work.
 
+Catalog-driven `describe` and `read` commands now check the running server version, locate objects, and read selected properties through reviewed mappings and shared type adapters. They return separate catalog results with session-scoped references and per-property status. Catalog writes and migration of the existing snapshot and modification commands are still in progress.
+
 The proposed system combines structured simulation access, workflow Skills, persistent working memory, and long-lived background or GUI simulation sessions. See the [design document](StarBridge.md) for scope and boundaries.
 
 ## Getting started
@@ -29,7 +31,8 @@ Supply your own compatible simulation file and a new work directory. For repeate
 
 | Document | Purpose |
 |---|---|
-| [Offline catalog tools](docs/catalog.md) | Generate versioned API candidates, merge reviewed semantics, and compare declarations; runtime integration is pending |
+| [Catalog describe/read](docs/catalog-runtime.md) | Read selected properties with server-version checks, session references, and per-property errors |
+| [Offline catalog tools](docs/catalog.md) | Generate versioned API candidates, merge reviewed semantics, and compare declarations |
 | [Modifier guide](docs/modifier.md) | Single-object requests, expected-state checks, readback, and save behavior |
 | [Inspector snapshot](docs/inspector.md) | Object coverage, snapshot fields, read errors, and validation limits |
 | [File Bridge guide](docs/bridge-file.md) | File operations, requirements, and implementation limits |

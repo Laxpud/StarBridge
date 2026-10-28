@@ -29,16 +29,26 @@ public class BridgeFileMacro extends StarMacro {
     private static final String UNIT = __UNIT__;
     private static final double VALUE = __VALUE__;
     private static final Map<String, Object> MODIFICATION = __MODIFICATION__;
+    private static final Map<String, Object> CATALOG_PLAN = __CATALOG_PLAN__;
+    private static final Map<String, Object> CATALOG_REQUEST = __CATALOG_REQUEST__;
+    private static final String SESSION_TOKEN = __SESSION_TOKEN__;
 
     @Override
     public void execute() {
         try {
             Simulation sim = getActiveSimulation();
-            // 1. 核对服务身份并读取当前状态；预期旧值在同一客户端内、写入前检查。
+            // 1. 先核对服务身份；目录版本检查必须早于旧快照或任何目录属性访问。
             if (!EXPECTED_SESSION.isEmpty()
                     && !Path.of(sim.getSessionPath()).toRealPath().equals(
                         Path.of(EXPECTED_SESSION).toRealPath())) {
                 throw new IllegalArgumentException("Unexpected simulation session: " + sim.getSessionPath());
+            }
+            if (ACTION.equals("catalog-read") || ACTION.equals("catalog-describe")) {
+                readCatalog(sim);
+                return;
+            }
+            if (CATALOG_PLAN != null || CATALOG_REQUEST != null) {
+                throw new IllegalArgumentException("Catalog payload requires a catalog read action");
             }
             if (!List.of("inspect", "set-scalar", "save", "file-set", "modify", "file-modify").contains(ACTION)) {
                 throw new IllegalArgumentException("Unknown action: " + ACTION);
@@ -88,6 +98,33 @@ public class BridgeFileMacro extends StarMacro {
         } catch (Exception error) {
             throw new RuntimeException("StarBridge macro failed: " + error, error);
         }
+    }
+
+    /**
+     * 执行目录描述或按需读取，独立保留会话元数据与目录结果。
+     * 本分支没有写入或保存动作；版本和定位的明确拒绝不使会话进入未知修改状态。
+     */
+    private void readCatalog(Simulation sim) throws java.io.IOException {
+        Map<String, Object> before = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
+        Map<String, Object> catalog;
+        try {
+            if (CATALOG_PLAN == null || CATALOG_REQUEST == null || MODIFICATION != null
+                    || !OUTPUT.isEmpty() || SESSION_TOKEN.isEmpty()
+                    || !ACTION.equals("catalog-" + CATALOG_REQUEST.get("action"))) {
+                throw new IllegalArgumentException("Catalog reads require a matching plan, request and read-only action");
+            }
+            // CatalogRuntime 先精确核对当前服务版本，再定位对象和读取选定属性。
+            catalog = CatalogRuntime.inspect(sim, CATALOG_PLAN, CATALOG_REQUEST, SESSION_TOKEN);
+        } catch (IllegalArgumentException error) {
+            Map<String, Object> after = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
+            writeResult("rejected", before, after, error.getMessage());
+            return;
+        }
+        // 不将世代或对象 key 混入旧快照，避免另存重载时把新实例当成内容差异。
+        Map<String, Object> after = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
+        Map<String, Object> result = fields("status", "ok", "before", before, "after", after,
+                                           "catalog", catalog);
+        Files.writeString(Path.of(RESULT), json(result), StandardCharsets.UTF_8);
     }
 
     /** 保存执行状态、前后快照与原始修改请求；拒绝结果也保留可审阅证据。 */

@@ -11,6 +11,10 @@ import re
 import signal
 import subprocess
 import sys
+import uuid
+
+# 直接运行脚本时 Python 只加入 runner 目录；显式加入仓库根以复用共享 Core。
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from modifier import (ModificationRejected, content_snapshot, java_literal, load_request,
                       same_value, snapshot_diff, verify_modification)
@@ -22,10 +26,24 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def prepare_catalog_read(catalog, execution, request, action):
+    """在创建文件工作目录或会话活动标记之前，校验目录并裁剪本次只读计划。"""
+    from core.execution import prepare_read
+    return prepare_read(catalog, execution, request, action)
+
+
 def execute(star, source, directory, output=None, name="", value=0.0, unit="", *,
             action=None, host=None, port=None, expected_session="", timeout=None,
-            client_userdir=None, modification=None):
+            client_userdir=None, modification=None, catalog_plan=None,
+            catalog_request=None, session_token=None):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
+    catalog_call = (catalog_plan is not None or catalog_request is not None
+                    or action in ("catalog-read", "catalog-describe"))
+    if catalog_call and (catalog_plan is None or catalog_request is None
+                         or action not in ("catalog-read", "catalog-describe")
+                         or action != "catalog-" + catalog_request.get("action", "")
+                         or modification is not None or output is not None):
+        raise ValueError("Catalog reads require a matching plan, request and read-only action")
     directory.mkdir(parents=True, exist_ok=False)
     result = directory / "result.json"
     template = Path(__file__).resolve().parents[1] / "java" / "BridgeFileMacro.java"
@@ -38,18 +56,29 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
         "__NAME__": name,
         "__UNIT__": unit,
         "__VALUE__": value,
+        # 文件模式每次加载都有独立世代；后台会话传入持久 token，不跨重载复用引用。
+        "__SESSION_TOKEN__": session_token or uuid.uuid4().hex,
     }
     # 修改请求单独留存；Java 容器源码由已校验 JSON 生成，不接收任意 Java 片段。
     if modification is not None:
         (directory / "request.json").write_text(
             json.dumps(modification, ensure_ascii=False, indent=2) + "\n")
+    if catalog_call:
+        (directory / "catalog-plan.json").write_text(
+            json.dumps(catalog_plan, ensure_ascii=False, indent=2) + "\n")
+        (directory / "catalog-request.json").write_text(
+            json.dumps(catalog_request, ensure_ascii=False, indent=2) + "\n")
+    containers = {"__MODIFICATION__": modification, "__CATALOG_PLAN__": catalog_plan,
+                  "__CATALOG_REQUEST__": catalog_request}
     text = template.read_text()
     # 一次替换原模板中的占位符，避免用户文本被后续占位符替换再次解释。
-    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|OUTPUT|NAME|UNIT|VALUE|MODIFICATION)__",
-                  lambda match: java_literal(modification) if match.group() == "__MODIFICATION__"
+    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|OUTPUT|NAME|UNIT|VALUE|MODIFICATION|CATALOG_PLAN|CATALOG_REQUEST|SESSION_TOKEN)__",
+                  lambda match: java_literal(containers[match.group()]) if match.group() in containers
                   else json.dumps(replacements[match.group()], ensure_ascii=True),
                   text)
-    macro.write_text(text)
+    # STAR 当前只接收一个宏源文件；辅助类与宏一起编译，不依赖同目录自动找类。
+    runtime = template.with_name("CatalogRuntime.java").read_text()
+    macro.write_text(text + "\n" + runtime)
     command = [star, "-noretry", "-nbuserdir",
                str(client_userdir or directory / "star-user")]
     if host is not None:
@@ -79,7 +108,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
         raise RuntimeError(f"STAR did not complete the macro; see {directory / 'star.log'}")
     data = json.loads(result.read_text())
     if data.get("status") != "ok" and not (
-            modification is not None and data.get("status") == "rejected"):
+            (modification is not None or catalog_call) and data.get("status") == "rejected"):
         raise RuntimeError(f"Invalid macro result: {result}")
     return data
 
@@ -88,7 +117,7 @@ def main():
     """处理文件操作请求；输出目录必须全新，已有文件不被覆盖。"""
     parser = argparse.ArgumentParser(
         description="Inspect simulation objects or modify and verify a saved copy.")
-    parser.add_argument("action", choices=["inspect", "set-scalar", "modify"])
+    parser.add_argument("action", choices=["inspect", "describe", "read", "set-scalar", "modify"])
     parser.add_argument("input", type=Path)
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--star", default="starccm+")
@@ -97,19 +126,29 @@ def main():
     parser.add_argument("--value", type=float)
     parser.add_argument("--unit")
     parser.add_argument("--request", type=Path)
+    parser.add_argument("--catalog", type=Path)
+    parser.add_argument("--execution", type=Path)
     args = parser.parse_args()
     source = args.input.resolve(strict=True)
     directory = args.work_dir.resolve()
     output = args.output.resolve() if args.output else None
     modification = None
-    if args.action == "modify":
+    catalog_plan = catalog_request = None
+    if args.action in ("describe", "read"):
+        if any(item is None for item in (args.catalog, args.execution, args.request)):
+            parser.error("describe/read require --catalog, --execution and --request")
+        catalog_plan, catalog_request = prepare_catalog_read(
+            args.catalog, args.execution, args.request, args.action)
+    elif args.catalog is not None or args.execution is not None:
+        parser.error("--catalog and --execution are only supported by describe/read")
+    elif args.action == "modify":
         if args.request is None or output is None:
             parser.error("modify requires --request and --output")
         if any(item is not None for item in [args.name, args.value, args.unit]):
             parser.error("modify does not accept --name, --value or --unit")
         modification = load_request(args.request)
     elif args.request is not None:
-        parser.error("--request is only supported by modify")
+        parser.error("--request is only supported by modify, describe or read")
     if args.action == "set-scalar":
         if output is None or args.name is None or args.value is None or args.unit is None:
             parser.error("set-scalar requires --output, --name, --value and --unit")
@@ -121,7 +160,7 @@ def main():
         if not output.parent.is_dir():
             parser.error("--output parent directory must exist")
     elif any(item is not None for item in [output, args.name, args.value, args.unit]):
-        parser.error("inspect does not accept modification arguments")
+        parser.error("Read-only actions do not accept modification arguments")
     directory.mkdir(parents=True, exist_ok=False)
 
     # 1. 为本次调用记录原文件摘要；不复制或重命名用户原始文件。
@@ -129,11 +168,16 @@ def main():
     try:
         data = execute(args.star, source, directory / "apply", output,
                        args.name or "", args.value or 0.0, args.unit or "",
-                       action="file-modify" if modification else None, modification=modification)
+                       action=("catalog-" + args.action if catalog_plan is not None
+                               else "file-modify" if modification else None),
+                       modification=modification, catalog_plan=catalog_plan,
+                       catalog_request=catalog_request)
         if data["status"] == "rejected":
             raise ModificationRejected(f'{data["error"]}; see {directory / "apply" / "result.json"}')
         summary = {"input": str(source), "input_sha256": original, "action": args.action}
-        if modification:
+        if catalog_plan is not None:
+            summary["catalog"] = data["catalog"]
+        elif modification:
             # 2. 新入口同时核对目标与全部已覆盖对象，保存前回读由宏完成。
             verify_modification(modification, data["before"], data["after"])
             reopened = execute(args.star, output, directory / "reopen")["after"]
@@ -174,6 +218,9 @@ def main():
     # 部分读取仍保留成功字段与原文件核对结果，同时提示调用方检查错误位置。
     if not data["after"].get("inspection_complete", True):
         print("StarBridge warning: Inspection is incomplete; check snapshot read_errors.",
+              file=sys.stderr)
+    if not data.get("catalog", {}).get("inspection_complete", True):
+        print("StarBridge warning: Catalog inspection is incomplete; check property errors.",
               file=sys.stderr)
     print(directory / "summary.json")
 

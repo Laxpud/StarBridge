@@ -18,7 +18,7 @@ import sys
 import time
 import uuid
 
-from file_bridge import digest, execute
+from file_bridge import digest, execute, prepare_catalog_read
 from modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
 
 
@@ -112,17 +112,23 @@ def terminate_owned(state):
 
 
 def request(directory, state, action, timeout, *, output=None, name='', value=0.0, unit='',
-            modification=None):
+            modification=None, catalog_plan=None, catalog_request=None):
     """连接已登记的服务并校验目标文件身份；修改失败不自动重试。"""
     if not alive(state):
         raise RuntimeError('Managed server is not running; refusing to connect to its old port')
+    # 旧管理会话升级时在持锁请求中只补一次世代标识；对象 key 必须与该 token 配对。
+    if not state.get('session_token'):
+        state['session_token'] = uuid.uuid4().hex
+        write_json(directory / 'session.json', state)
     identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
     run = directory / 'requests' / identifier
     write_json(directory / 'session.json', dict(state, active_request=identifier))
     data = execute(state['star'], None, run, output, name, value, unit,
                    action=action, host=state['host'], port=state['port'],
                    expected_session=state['current_file'], timeout=timeout,
-                   client_userdir=directory / 'client-settings', modification=modification)
+                   client_userdir=directory / 'client-settings', modification=modification,
+                   catalog_plan=catalog_plan, catalog_request=catalog_request,
+                   session_token=state['session_token'])
     if not alive(state):
         raise RuntimeError('Server exited or changed identity during request')
     if digest(Path(state['input'])) != state['input_sha256']:
@@ -164,7 +170,8 @@ def start(args, directory):
         state = {'schema_version': 1, 'state': 'starting', 'host': 'localhost',
                  'port': args.port, 'star': star, 'input': str(source),
                  'input_sha256': original, 'working_copy': str(working),
-                 'current_file': str(working), 'modified': None, 'active_request': None}
+                 'current_file': str(working), 'modified': None, 'active_request': None,
+                 'session_token': uuid.uuid4().hex}
         with (directory / 'server.log').open('w') as log:
             process = subprocess.Popen(command, cwd=directory, env=environment,
                                        stdin=subprocess.DEVNULL, stdout=log,
@@ -234,9 +241,12 @@ def operate(args, directory):
                     or output == Path(state['input'])):
                 raise ValueError('Output must be a new .sim file with an existing parent directory')
         try:
-            data, run = request(directory, state, args.action, args.timeout, output=output,
+            action = 'catalog-' + args.action if args.action in ('describe', 'read') else args.action
+            data, run = request(directory, state, action, args.timeout, output=output,
                                 name=getattr(args, 'name', ''), value=getattr(args, 'value', 0.0),
-                                unit=getattr(args, 'unit', ''), modification=getattr(args, 'modification', None))
+                                unit=getattr(args, 'unit', ''), modification=getattr(args, 'modification', None),
+                                catalog_plan=getattr(args, 'catalog_plan', None),
+                                catalog_request=getattr(args, 'catalog_request', None))
             if data['status'] == 'rejected':
                 raise ModificationRejected(f'{data["error"]}; see {run / "result.json"}')
             if args.action == 'modify':
@@ -251,7 +261,12 @@ def operate(args, directory):
                 if not output.is_file() or Path(data['after']['session_path']).resolve() != output:
                     raise RuntimeError('Saved file/path was not confirmed')
             result = {'session': str(directory), 'process': state['process'],
-                      'request_result': str(run / 'result.json'), 'snapshot': data['after']}
+                      'request_result': str(run / 'result.json')}
+            if args.action in ('describe', 'read'):
+                # 目录结果独立封装；最小会话元数据不能冒充旧 Inspector 的完整快照。
+                result['catalog'] = data['catalog']
+            else:
+                result['snapshot'] = data['after']
             if args.action == 'modify':
                 result.update(modification=args.modification,
                               snapshot_diff=snapshot_diff(data['before'], data['after']))
@@ -272,7 +287,7 @@ def main():
         raise RuntimeError('Session prototype currently supports Linux only')
     parser = argparse.ArgumentParser(description='Manage a persistent local STAR simulation server.')
     commands = parser.add_subparsers(dest='action', required=True)
-    for action in ['start', 'status', 'inspect', 'set-scalar', 'modify', 'save', 'stop']:
+    for action in ['start', 'status', 'inspect', 'describe', 'read', 'set-scalar', 'modify', 'save', 'stop']:
         command = commands.add_parser(action)
         command.add_argument('--session-dir', type=Path, required=True)
         if action != 'status':
@@ -289,6 +304,10 @@ def main():
             command.add_argument('--output', type=Path, required=True)
         elif action == 'modify':
             command.add_argument('--request', type=Path, required=True)
+        elif action in ('describe', 'read'):
+            command.add_argument('--catalog', type=Path, required=True)
+            command.add_argument('--execution', type=Path, required=True)
+            command.add_argument('--request', type=Path, required=True)
         elif action == 'stop':
             command.add_argument('--discard', action='store_true')
     args = parser.parse_args()
@@ -301,11 +320,18 @@ def main():
     if args.action == 'modify':
         # 请求格式在写入活动标记前完成校验，格式错误不影响已有会话。
         args.modification = load_request(args.request)
+    elif args.action in ('describe', 'read'):
+        # 目录、成员指纹与请求校验在获取会话活动标记之前完成；无效输入不会污染会话。
+        args.catalog_plan, args.catalog_request = prepare_catalog_read(
+            args.catalog, args.execution, args.request, args.action)
     directory = args.session_dir.resolve()
     result = start(args, directory) if args.action == 'start' else operate(args, directory)
     # 部分对象读取失败不意味着会话身份不确定；保留可用快照，并显式提示缺失内容。
     if not result.get('snapshot', {}).get('inspection_complete', True):
         print('StarBridge warning: Inspection is incomplete; check snapshot read_errors.',
+              file=sys.stderr)
+    if not result.get('catalog', {}).get('inspection_complete', True):
+        print('StarBridge warning: Catalog inspection is incomplete; check property errors.',
               file=sys.stderr)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
