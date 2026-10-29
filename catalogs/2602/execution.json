@@ -633,6 +633,57 @@
         "star.base.query.Query"
       ],
       "effect": "write"
+    },
+    "model_part.values": {
+      "type": "star.common.ModelPart",
+      "member": "getValues()",
+      "signature": "public PhysicsValueManager getValues()",
+      "fingerprint": "53ef1961ca3a8b3e8a051be428453852e12b2e326469849d3af9915eaada562d",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "profile.method": {
+      "type": "star.common.Profile",
+      "member": "getMethod()",
+      "signature": "@StarBeanProperty(display=\"Method\", hint=\"Profile Method\") public ProfileMethod getMethod()",
+      "fingerprint": "0484ae69401d712afca386f62f769b762c21c5f5d8e780cd2c1150111ae21262",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "tensor.is_3d": {
+      "type": "star.common.TensorProfile",
+      "member": "is3D()",
+      "signature": "public boolean is3D()",
+      "fingerprint": "a04847e39b39e1bd258899f3f70fe9436c840d9421eba5ac4e2fc18bd811dd1b",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "tensor.dimension": {
+      "type": "star.common.CompositeSymmetricTensorProfileMethod",
+      "member": "getProfileNum()",
+      "signature": "public int getProfileNum()",
+      "fingerprint": "a6e346e922f9675f9e831515e2f27cc0e2cdf9aa46b90007ddd5717bf8c664e7",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "tensor.component": {
+      "type": "star.common.CompositeSymmetricTensorProfileMethod",
+      "member": "getProfile(int,int)",
+      "signature": "public abstract ScalarProfile getProfile(int i, int j)",
+      "fingerprint": "a4163ecd2a01b9b2d8f2ab2dae35690eae7e1b6d41f5a798fbf81c071b47bd4e",
+      "parameter_types": [
+        "int",
+        "int"
+      ],
+      "effect": "read"
+    },
+    "constant_profile.quantity": {
+      "type": "star.common.ConstantScalarProfileMethod",
+      "member": "getQuantity()",
+      "signature": "public ScalarPhysicalQuantity getQuantity()",
+      "fingerprint": "b38c9a61d2ba39f6c8b59750e88ace5b408f2abc6794bce1bcb5525158af2da7",
+      "parameter_types": [],
+      "effect": "read"
     }
   },
   "types": {
@@ -801,6 +852,23 @@
         "steps": [
           {
             "member": "simulation.continua",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "tensor_profile": {
+      "java_class": "star.common.TensorProfile",
+      "parent_type": "region",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "model_part.values",
             "arguments": []
           },
           {
@@ -2132,6 +2200,2592 @@
               "adapter": "presence",
               "expected": true,
               "message": "GravityModel must be enabled before modifying gravity"
+            }
+          ]
+        }
+      }
+    },
+    "tensor_profile": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前张量 Profile 配置，不切换方法或改变坐标约定"
+      },
+      "tensor": {
+        "adapter": "tensor_profile",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取当前张量 Profile 配置，不切换方法或改变坐标约定"
+      },
+      "basis": {
+        "adapter": "tensor_basis",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取当前张量 Profile 配置，不切换方法或改变坐标约定"
+      },
+      "profile_method": {
+        "adapter": "java_class",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前张量 Profile 配置，不切换方法或改变坐标约定"
+      },
+      "xx": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 0
+                },
+                {
+                  "literal": 0
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 0
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 0
+                      },
+                      {
+                        "literal": 0
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "xx_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 0
+                },
+                {
+                  "literal": 0
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 0
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 0
+                      },
+                      {
+                        "literal": 0
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "xy": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 0
+                },
+                {
+                  "literal": 1
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 0
+                  },
+                  {
+                    "literal": 1
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 0
+                      },
+                      {
+                        "literal": 1
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "xy_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 0
+                },
+                {
+                  "literal": 1
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 0
+                  },
+                  {
+                    "literal": 1
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 0
+                      },
+                      {
+                        "literal": 1
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "xz": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 0
+                },
+                {
+                  "literal": 2
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 0
+                  },
+                  {
+                    "literal": 2
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 0
+                      },
+                      {
+                        "literal": 2
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "xz_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 0
+                },
+                {
+                  "literal": 2
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 0
+                  },
+                  {
+                    "literal": 2
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 0
+                      },
+                      {
+                        "literal": 2
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "yx": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 1
+                },
+                {
+                  "literal": 0
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 1
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 1
+                      },
+                      {
+                        "literal": 0
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "yx_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 1
+                },
+                {
+                  "literal": 0
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 1
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 1
+                      },
+                      {
+                        "literal": 0
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "yy": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 1
+                },
+                {
+                  "literal": 1
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 1
+                  },
+                  {
+                    "literal": 1
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 1
+                      },
+                      {
+                        "literal": 1
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "yy_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 1
+                },
+                {
+                  "literal": 1
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 1
+                  },
+                  {
+                    "literal": 1
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 1
+                      },
+                      {
+                        "literal": 1
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "yz": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 1
+                },
+                {
+                  "literal": 2
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 1
+                  },
+                  {
+                    "literal": 2
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 1
+                      },
+                      {
+                        "literal": 2
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "yz_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 1
+                },
+                {
+                  "literal": 2
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 1
+                  },
+                  {
+                    "literal": 2
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 1
+                      },
+                      {
+                        "literal": 2
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "zx": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 2
+                },
+                {
+                  "literal": 0
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 2
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 2
+                      },
+                      {
+                        "literal": 0
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "zx_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 2
+                },
+                {
+                  "literal": 0
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 2
+                  },
+                  {
+                    "literal": 0
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 2
+                      },
+                      {
+                        "literal": 0
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "zy": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 2
+                },
+                {
+                  "literal": 1
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 2
+                  },
+                  {
+                    "literal": 1
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 2
+                      },
+                      {
+                        "literal": 1
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "zy_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 2
+                },
+                {
+                  "literal": 1
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 2
+                  },
+                  {
+                    "literal": 1
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 2
+                      },
+                      {
+                        "literal": 1
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "zz": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 2
+                },
+                {
+                  "literal": 2
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 2
+                  },
+                  {
+                    "literal": 2
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 2
+                      },
+                      {
+                        "literal": 2
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "zz_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "tensor.component",
+              "arguments": [
+                {
+                  "literal": 2
+                },
+                {
+                  "literal": 2
+                }
+              ]
+            },
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "只修改当前常量分量；保留张量方法、维度与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "tensor.component",
+                "arguments": [
+                  {
+                    "literal": 2
+                  },
+                  {
+                    "literal": 2
+                  }
+                ]
+              },
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "three_dimensional_tensor",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "tensor.is_3d",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": true,
+              "message": "Tensor component writes require a three-dimensional profile"
+            },
+            {
+              "id": "composite_tensor_dimension",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.dimension",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": 3,
+              "message": "Tensor component writes require a supported 3 by 3 composite method"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "tensor.component",
+                    "arguments": [
+                      {
+                        "literal": 2
+                      },
+                      {
+                        "literal": 2
+                      }
+                    ]
+                  },
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
             }
           ]
         }

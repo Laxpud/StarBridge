@@ -304,7 +304,8 @@ class CatalogRuntime {
             verifyWritten(adapter, value, propertyValue(after, property));
             if (!sameValue(before.get("target"), after.get("target")))
                 throw new IllegalStateException("Modification target identity changed");
-            for (String key : java.util.List.of("name", "function_name", "value_type", "dimensions", "unit")) {
+            for (String key : java.util.List.of("name", "function_name", "value_type", "dimensions", "unit",
+                    "profile_method", "coordinate_system", "local_orientation", "basis")) {
                 if (key.equals(property)) continue;
                 if (key.equals("unit") && (adapter.equals("scalar_expression") || adapter.equals("scalar_value")
                         || adapter.equals("vector_expression") || adapter.equals("vector_value"))) continue;
@@ -1083,14 +1084,14 @@ class CatalogRuntime {
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
-                "name", "type_name", "names", "enum_name", "presence")
+                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
         // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
         if (adapter.equals("presence")) return value != null;
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {
-            require(!java.util.List.of("type_name", "names", "enum_name").contains(adapter),
+            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis").contains(adapter),
                     "Metadata adapter requires a non-null value: " + adapter);
             return null;
         }
@@ -1101,6 +1102,7 @@ class CatalogRuntime {
                 require(value instanceof star.base.neo.ClientServerObject, "Name adapter requires a STAR object");
                 return ((star.base.neo.ClientServerObject) value).getPresentationName();
             case "type_name": return value.getClass().getSimpleName();
+            case "java_class": return value.getClass().getName();
             case "names":
                 require(value instanceof java.util.Collection<?>, "Names adapter requires a collection");
                 java.util.List<String> names = new java.util.ArrayList<>();
@@ -1143,8 +1145,80 @@ class CatalogRuntime {
                 Enum<?> selected = option.getSelectedElement();
                 return fields("selected", selected == null ? null : selected.name(), "allowed", allowed);
             case "query": return query(value, sessionToken);
+            case "tensor_profile": return tensorProfile(value, sessionToken);
+            case "tensor_basis": return tensorState(value, sessionToken).basis;
             default: throw new IllegalArgumentException("Unsupported value adapter: " + adapter);
         }
+    }
+
+    /** 保存一次无参 getter 取得的方法和方向信息；分量读取复用同一个已验证方法对象。 */
+    private static final class TensorState {
+        final star.common.CompositeSymmetricTensorProfileMethod matrix;
+        final boolean full;
+        final java.util.Map<String, Object> basis;
+        TensorState(star.common.CompositeSymmetricTensorProfileMethod matrix, boolean full,
+                java.util.Map<String, Object> basis) {
+            this.matrix = matrix; this.full = full; this.basis = basis;
+        }
+    }
+
+    /**
+     * 读取当前三维张量的存储方式、维度和方向，不访问任何标量分量或 quantity。
+     * 带 Class 参数的 getMethod 会切换当前方法，因此这里只使用无参 getter。
+     */
+    private static TensorState tensorState(Object value, String token) {
+        require(value instanceof star.common.TensorProfile, "Tensor adapter requires a TensorProfile");
+        star.common.TensorProfile profile = (star.common.TensorProfile) value;
+        star.common.ProfileMethod method = profile.getMethod();
+        require(profile.is3D(), "Unsupported tensor profile: only 3D profiles are supported");
+        // 1. full 方法继承 symmetric 基类，必须先按 full 判型，避免丢掉上三角独立分量。
+        boolean full = method instanceof star.common.CompositeTensorProfileMethod;
+        require(full || method instanceof star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem,
+                "Unsupported tensor profile method: " + (method == null ? "null" : method.getClass().getName()));
+        star.common.CompositeSymmetricTensorProfileMethod matrix = (star.common.CompositeSymmetricTensorProfileMethod) method;
+        // getProfileNum 来自该公开基类，表示矩阵维数，不是 full/symmetric 的独立分量总数。
+        require(matrix.getProfileNum() == 3, "Unsupported tensor profile dimension: expected 3");
+
+        // 2. 方向只从实际方法类型公开的 getter 读取；局部方向不能被等价替换成坐标系。
+        star.base.neo.ClientServerObject coordinateSystem = null;
+        star.base.neo.ClientServerObject localOrientation = null;
+        if (method instanceof star.common.CompositeTensorProfileMethodWithCoordinateSystem)
+            coordinateSystem = ((star.common.CompositeTensorProfileMethodWithCoordinateSystem) method).getCoordinateSystem();
+        else if (method instanceof star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem)
+            coordinateSystem = ((star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem) method).getCoordinateSystem();
+        if (method instanceof star.common.AnisotropicTensorProfileMethod)
+            localOrientation = ((star.common.AnisotropicTensorProfileMethod) method).getLocalOrientation();
+        java.util.Map<String, Object> basis = fields("java_class", profile.getClass().getName(), "method", method.getClass().getName(),
+                "dimensions", profile.getDimensions().toString(), "is_3d", true, "shape", java.util.List.of(3, 3),
+                "storage", full ? "full" : "symmetric_lower", "coordinate_system", encode(coordinateSystem, "reference", token),
+                "local_orientation", encode(localOrientation, "reference", token));
+        return new TensorState(matrix, full, basis);
+    }
+
+    /** 在已核对的 basis 后添加当前独立常量分量；非常量方法明确失败，不自动切换。 */
+    private static Object tensorProfile(Object value, String token) {
+        TensorState state = tensorState(value, token);
+        // full 按行输出九项；对称存储仅输出下三角六项，不补写镜像或二维缺失分量。
+        java.util.List<Object> components = new java.util.ArrayList<>();
+        String axes = "XYZ";
+        for (int row = 0; row < 3; row++) {
+            for (int column = 0; column < 3; column++) {
+                if (!state.full && column > row) continue;
+                String name = "" + axes.charAt(row) + axes.charAt(column);
+                star.common.ScalarProfile component = state.matrix.getProfile(row, column);
+                require(component != null, "Unsupported tensor component: missing " + name);
+                star.common.ProfileMethod componentMethod = component.getMethod();
+                require(componentMethod instanceof star.common.ConstantScalarProfileMethod,
+                        "Unsupported tensor component method for " + name + ": "
+                        + (componentMethod == null ? "null" : componentMethod.getClass().getName()));
+                components.add(fields("name", name, "row", row, "column", column,
+                        "method", componentMethod.getClass().getName(), "quantity", encode(
+                                ((star.common.ConstantScalarProfileMethod) componentMethod).getQuantity(), "quantity", token)));
+            }
+        }
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(state.basis);
+        result.put("components", components);
+        return result;
     }
 
     /** 查询保留规则本身；未知谓词明确失败，不能把动态规则变成一次性的对象列表。 */

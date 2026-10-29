@@ -15,7 +15,8 @@ from .catalog import CatalogError, _keys, _pinned_member, _require, load, read_j
 
 
 ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum', 'query',
-            'name', 'type_name', 'names', 'enum_name', 'presence'}
+            'name', 'type_name', 'names', 'enum_name', 'presence', 'java_class',
+            'tensor_profile', 'tensor_basis'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
     'field_definition': {'value'},
@@ -122,8 +123,10 @@ def _pipeline(catalog, methods, pipeline, where, *, write_adapter=None):
     """将已核对的方法 ID 编译为调用序列；每一步的接收对象来自上一步结果。"""
     _keys(pipeline, 'root steps', where)
     _require(pipeline['root'] in ('simulation', 'object', 'parent'), f'Invalid pipeline root: {where}')
-    _require(isinstance(pipeline['steps'], list) and bool(pipeline['steps']),
-             f'Pipeline requires at least one call: {where}')
+    # 只读空管线返回根对象本身，供 Profile 等值适配器读取已经定位的对象。
+    # 写入仍必须包含显式 setter，不能把恒等读取误当作修改成功。
+    _require(isinstance(pipeline['steps'], list) and (write_adapter is None or bool(pipeline['steps'])),
+             f'Pipeline steps must be a list; write pipelines cannot be empty: {where}')
     compiled = []
     for index, step in enumerate(pipeline['steps']):
         _keys(step, 'member arguments', where)

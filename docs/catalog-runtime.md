@@ -66,7 +66,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 本页描述与读取请求的格式版本为整数 `1`；目录修改使用独立的 schema 2 契约。顶层必需字段为 `schema_version`、`action`、`target`，可选字段为 `properties`；未知字段会被拒绝。`properties` 是不重复、非空的属性 ID 数组，省略时选择该类型当前映射中的全部属性，不能据此理解为整个 STAR 对象的全部属性。未映射属性在启动客户端或写入会话活动标记前拒绝。
 
-`target` 使用目录的类型 ID 和精确显示名称。当前定位器从指定管理器枚举对象，按 Java 类型过滤后要求名称唯一匹配。边界还必须提供所属区域：
+`target` 使用目录的类型 ID 和精确显示名称。当前定位器从指定管理器枚举对象，按 Java 类型过滤后要求名称唯一匹配。边界和 `tensor_profile` 还必须提供所属区域；例如边界请求：
 
 ```json
 {
@@ -122,6 +122,7 @@ python3 bridge/runner/session_bridge.py describe \
 | `user_field_function` | `name`、`definition`、`function_name`、`dimensions`、`value_type`、`ignore_boundary_values`、`sync_name`、`tags` |
 | `region` | `name`、`region_type`、`physics_continuum`、`index`、`tags` |
 | `boundary` | `name`、`boundary_type`、`region`、`index`、`allow_per_part_values`、`tags` |
+| `tensor_profile` | `name`、`profile_method`、`tensor`、`basis`；`xx`、`xy`、`xz`、`yx`、`yy`、`yz`、`zx`、`zy`、`zz` 及各自的 `_value` 属性 |
 | `user_tag` | `name` |
 | `volume_average_report` | `name`、`parts`、`tags`、`field_function` |
 
@@ -132,6 +133,7 @@ python3 bridge/runner/session_bridge.py describe \
 | `primitive` | 字符串、布尔或数值；非有限数值转成显式字符串 |
 | `name` | 单个 STAR 对象的显示名称；可选关联允许 `null` |
 | `type_name` | 非空对象的 Java 简单类名 |
+| `java_class` | 非空对象的完整 Java 类名，用于实际 Profile 方法及方法条件检查 |
 | `names` | STAR 对象集合的排序名称数组；空集合返回 `[]`，集合为 `null` 则报错 |
 | `enum_name` | 非空 Java 枚举的常量名称 |
 | `presence` | `null` 为 `false`，非空返回值为 `true`；用于已声明的对象存在性条件，不判断其他模型状态 |
@@ -139,10 +141,22 @@ python3 bridge/runner/session_bridge.py describe \
 | `collection` | 基础值或对象引用的稳定列表；输出顺序不是操作执行顺序 |
 | `quantity` | 标量数量的 `definition`、`unit`、`si_unit`、`raw_value`、`si_value`；两种数值分别使用对应单位 |
 | `vector` | `definition`、`unit`、`components`；保持 STAR 数量对象的分量约定，不变换坐标系 |
+| `tensor_profile` | 当前受支持三维张量的元数据、方向引用和独立分量；见下文 |
+| `tensor_basis` | 同一张量的元数据和方向引用，不读取标量分量或 quantity |
 | `enum` | `selected` 和当前 API 返回的 `allowed` 集合，不以枚举类全部常量替代当前允许值 |
 | `query` | 静态模式为 `mode: static` 和 `objects`；动态模式为 `mode: query`、`predicate` 和 `modifiers` |
 
 动态查询保留规则本身，不求值成当时匹配的对象列表。当前编码 `NamePredicate`、`TypePredicate`、`CompoundPredicate` 和 `TagPredicate`，分别返回 `type: name`、`java_type`、`compound` 或 `tag`。复合规则保留有序 `predicates`，标签规则的 `value` 是名称、实际 Java 类和会话引用。读取从深度 `0` 开始，最多允许深度 `16`、总计 `256` 个谓词节点；未知谓词或超限逐属性报错，不执行 `asJournal()` 生成的代码。此入口不求报告值、不生成网格、不运行求解或工作流。静态/动态选择写入以及标签旧引用与新定位对象的区别见[对象引用与选择](catalog-modifier.md#对象引用与选择)。
+
+### 张量读取格式
+
+`tensor_profile` 从指定父区域的 `getValues().getObjects()` 枚举并筛选 `TensorProfile`，按显示名称唯一定位。`profile_method` 返回当前方法的完整 Java 类名，可用于诊断不支持的方法。选择 `properties: ["name", "profile_method"]` 不要求读取分量；完整 `tensor` 读取失败仍保留其他属性的独立结果。
+
+`tensor` 包含 `java_class`、`method`、`dimensions`、`is_3d`、`shape`、`storage`、`coordinate_system`、`local_orientation` 和 `components`。`dimensions` 保留 STAR 量纲文本，`shape` 当前固定为 `[3,3]`；两种方向字段使用名称、实际 Java 类与会话引用表示，没有对应关联时为 `null`。它们表示原张量的坐标约定，不代表已转换到全局坐标系。
+
+`CompositeTensorProfileMethod` 按 `storage: full` 输出九项，顺序为 `XX, XY, XZ, YX, YY, YZ, ZX, ZY, ZZ`；`AnisotropicTensorProfileMethod` 读取 `local_orientation`，带 CoordinateSystem 的子类读取 `coordinate_system`。`CompositeSymmetricTensorProfileMethodWithCoordinateSystem` 按 `storage: symmetric_lower` 输出 `XX, YX, YY, ZX, ZY, ZZ` 六项。每项含大写 `name`、从 `0` 开始的 `row`/`column`、当前分量 `method`，以及完整标量 `quantity`；对称方法不补齐镜像项。
+
+`basis` 与上述元数据和方向字段相同，但不含 `components`，也不访问各分量的 quantity。`tensor` 要求所有独立分量的当前方法为 `ConstantScalarProfileMethod`；不支持的方法或二维数据返回属性错误，不猜测缺失分量。读取始终使用无参 `getMethod()`，禁止通过带 Class 参数的重载暗中改变当前方法。独立分量属性及其 `_value` 属性均返回标量数量；写入边界与对称别名见[张量分量修改](catalog-modifier.md#张量-profile-分量)。对称六分量分支已实现，但尚未通过真实算例验收。
 
 ## 人工执行映射
 
@@ -150,13 +164,13 @@ python3 bridge/runner/session_bridge.py describe \
 
 映射格式版本当前为 `4`，加载器兼容仅含读取管线的 schema 1 和原有写入 schema 2/3；顶层包含 `target`、`members`、`types`、`properties`。每个 member 锁定候选声明的签名和指纹，并声明反射参数类型及 `effect: read` 或 `effect: write`。定位和读取管线只允许 `read`；写入管线仅最后一步允许 `write`，读取计划会移除写入管线。当前只接收已核对的 public 实例方法，不开放字段、构造器、静态调用或通过 `setAccessible()` 访问非 public 方法。参数类型必须能由候选材料证明，裸泛型变量 `T` 不能冒充可加载类；枚举 setter `EnumeratedOption.setSelected(T)` 仅在候选类声明和官方类型链接证明其首个上界为 `Enum` 时，使用已核对的泛型擦除规则。其他未解析泛型仍拒绝猜测；嵌套类按已核对类型页转换为 JVM 名称。
 
-类型的 `locate` 和属性的 `read` 都是调用管线：`root` 可为 `simulation`、当前 `object` 或 `parent`，后续每一步以上一步返回值作为接收对象。参数来源只能是已核对的类字面量、JSON 标量 `literal` 或当前 `object`/`parent` 上下文，数量和类型必须与指定方法相符。对象定位管线最终必须返回集合，父类型关系须明确且不能成环。
+类型的 `locate` 和属性的 `read` 都是调用管线：`root` 可为 `simulation`、当前 `object` 或 `parent`，后续每一步以上一步返回值作为接收对象。参数来源只能是已核对的类字面量、JSON 标量 `literal` 或当前 `object`/`parent` 上下文，数量和类型必须与指定方法相符。只读管线允许 `steps: []`，直接将所选 root 传给适配器；张量 `tensor`/`basis` 使用此形式读取当前对象。写入管线仍要求非空并以受控 setter 结束。对象定位管线最终必须返回集合，父类型关系须明确且不能成环。
 
 schema 3 新增通用 `primitive`、`enum`、`vector_expression` 和 `vector_value` 写适配器，并将场函数定义命名为 `field_definition`；schema 2 的旧 `primitive` 加载时规范化为 `field_definition`。`write.guards` 使用同样受 `effect: read` 限制的管线，在修改准备和 setter 前检查；读计划移除写入执行管线，只保留可供 `describe` 展示的条件摘要。schema 4 新增 `reference` 与 `object_selection`：`value_types` 限定允许的关联类型，引用写入的 `value_guards` 在新关联上检查；对象选择以 `pipelines.static` 和 `pipelines.query` 分别声明最终 setter，每次请求只选一条。请求版本仍为读取 schema 1、修改 schema 2，详细值格式与条件行为见[目录修改](catalog-modifier.md#写入条件)。
 
 运行时先用 `getCurrentVersion()` 和 `getReleaseNumber()` 读取当前 server 版本，与目录精确匹配，不使用文件保存版本，也不截断版本后缀。离线 `check --install` 只核对安装材料，不能代替这项会话检查。
 
-Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作为 setter 或访问路径；`readOnly` 元数据也不能替代实际条件检查。现有写入流程核对预期旧状态、类型、单位、允许枚举值、向量分量及标签并回读；重力模型存在性和报告新关联的标量场函数类型已配置为声明式条件，其他模型条件与适配器仍待补齐，新增路径的实际验证状态见[修改验证范围](catalog-modifier.md#验证范围与迁移边界)。写入参数、单次 setter 尝试及失败契约见[目录修改](catalog-modifier.md)。
+Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作为 setter 或访问路径；`readOnly` 元数据也不能替代实际条件检查。现有写入流程核对预期旧状态、类型、单位、允许枚举值、向量分量及标签并回读；重力模型存在性、报告新关联的标量场函数类型以及张量三维形状和分量方法已配置为声明式条件，其他模型条件与适配器仍待补齐，新增路径的实际验证状态见[修改验证范围](catalog-modifier.md#验证范围与迁移边界)。写入参数、单次 setter 尝试及失败契约见[目录修改](catalog-modifier.md)。
 
 ## 验证范围与剩余工作
 
@@ -166,4 +180,4 @@ Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作�
 
 工作副本另存后独立加载，向量全部已配属性与会话读取一致，新的文件加载 token 与此前会话不同。原始 `Base.sim~` 的摘要保持不变，验证服务已关闭。运行产物位于本地 `outputs/catalog-runtime-20261028/`，不进入源码版本管理。
 
-新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。操作描述、覆盖报告、其他类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。
+张量 Profile 已在单相多孔区域完成三维各向异性九分量读取、代表性分量写入与方法条件拒绝，并核对会话保存、文件修改和独立重载一致；具体实测与未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。操作描述、覆盖报告、其他类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。

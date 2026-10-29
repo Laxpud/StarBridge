@@ -25,7 +25,7 @@ cmp catalogs/2602/generated/catalog.json outputs/catalog-2602/generated/catalog.
 
 生成器从同一安装的 `star/RELEASE_NOTES` 和 `star/version_info.properties` 读取产品版本与 Build，并核对两者的 Build 一致。类型清单来自 `type-search-index.js`；类型页提供类声明、成员签名、注解和继承引用。当前解析器面向安装附带的 HTML5 Javadoc，不读取 JAR 字节码，不执行 Java 反射。
 
-`selection.json` 是完整 Java 类型名数组，当前包含 79 个根类型，为已配读写属性、类型适配器及原有修改语义提供声明材料。生成器自动加入继承列表中引用的本地声明类型。需要扫描全部 `star.*` 索引类型时，用 `--all` 替代 `--selection`；输出会明显增大。索引中的类型包括辅助 API，不应将类型总数当作算例可配置对象总数。未命名包与 `com.siemens.*` 类型尚未纳入生成范围。
+`selection.json` 是完整 Java 类型名数组，当前包含 97 个根类型，为已配读写属性、类型适配器及原有修改语义提供声明材料。生成器自动加入继承列表中引用的本地声明类型。需要扫描全部 `star.*` 索引类型时，用 `--all` 替代 `--selection`；输出会明显增大。索引中的类型包括辅助 API，不应将类型总数当作算例可配置对象总数。未命名包与 `com.siemens.*` 类型尚未纳入生成范围。
 
 所有文件输出都要求目标文件不存在，防止覆盖人工规则或此前结果。重复生成使用另一个输出路径。临时或自行生成的候选文件放在被 Git 忽略的 `outputs/` 中；用于默认运行的 2602 候选文件随仓库版本管理。更新该文件时，从匹配安装重新生成并核对差异，不能手改生成内容代替生成器。
 
@@ -84,7 +84,7 @@ python3 tools/catalog/catalog.py describe \
 
 值类型的 `kind` 可为 `number`、`boolean`、`string`、`enum`、`quantity`、`expression`、`vector`、`tensor`、`reference`、`collection`、`query` 或 `void`。`unit`、`dimensions`、`reference_type` 使用字符串或 `null`；`null` 表示尚未静态确定，不表示无量纲。`enum_values` 是字符串数组。动态查询必须保留查询语义，不能只记录查询当时选中的对象；已实现的读取适配与谓词范围见[运行时值格式](catalog-runtime.md#已配置属性与值格式)。
 
-`overrides.json` 的成员引用及条件说明用于维护者核对修改语义，还不是可执行调用计划：它们不编码完整参数绑定、返回值传递或运行时定位。此离线格式仍强制这些 binding 的 `read_implemented`、`write_implemented`、`verified` 为 `false`，且离线描述结果标记 `runtime_state: not_checked`。已审阅的读写调用管线单独维护在 `execution.json`，其 schema 4 支持按值类型的写适配器、对象引用与选择，以及主目标/关联值的声明式只读条件，兼容 schema 1/2/3；实际执行与验证边界见[运行时说明](catalog-runtime.md)。旧脚本已验证的修改能力不会自动计入目录执行覆盖。
+`overrides.json` 的成员引用及条件说明用于维护者核对修改语义，还不是可执行调用计划：它们不编码完整参数绑定、返回值传递或运行时定位。此离线格式仍强制这些 binding 的 `read_implemented`、`write_implemented`、`verified` 为 `false`，且离线描述结果标记 `runtime_state: not_checked`。已审阅的读写调用管线单独维护在 `execution.json`，其 schema 4 支持按值类型的写适配器、对象引用与选择，以及主目标/关联值的声明式只读条件，兼容 schema 1/2/3；新增张量读取与分量标量写入继续使用 schema 4，不新增整张量 setter。实际执行与验证边界见[运行时说明](catalog-runtime.md)。旧脚本已验证的修改能力不会自动计入目录执行覆盖。
 
 ## 版本比较
 
@@ -103,6 +103,6 @@ python3 tools/catalog/catalog.py diff \
 
 ## 当前验证边界
 
-本机 2602 Build 21.02.007 的全部 23,171 个 `star.*` 索引类型已生成并通过目录结构与继承引用校验，包含 154,743 个声明成员和 9,939 个属性候选。当前 79 个根类型及其继承依赖共生成 156 个类型、2,234 个声明成员和 137 个属性候选；随附候选文件与本轮两次独立生成结果逐字节一致，既有类型记录保持不变。初始选择也已核对重复生成结果，并与 2510 Build 20.06.007 的同范围目录比较；这不代表 2510 算例读写获得支持。安装版本不匹配、人工规则版本不匹配以及成员指纹失效均已确认拒绝。
+本机 2602 Build 21.02.007 的全部 23,171 个 `star.*` 索引类型已生成并通过目录结构与继承引用校验，包含 154,743 个声明成员和 9,939 个属性候选。当前 97 个根类型及其继承依赖共生成 175 个类型、2,357 个声明成员和 144 个属性候选，新增材料用于 TensorProfile、当前方法、分量数量及方向读取；随附候选文件与本轮两次独立生成结果逐字节一致，全部既有类型记录保持不变。初始选择也已核对重复生成结果，并与 2510 Build 20.06.007 的同范围目录比较；这不代表 2510 算例读写获得支持。安装版本不匹配、人工规则版本不匹配以及成员指纹失效均已确认拒绝。
 
 实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。修改兼容层见 [Modifier](modifier.md)，快照目录和验收见 [Inspector](inspector.md)。通用模型条件、操作描述、分项覆盖报告及剩余覆盖仍见 [TODO](../TODO.md)。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。
