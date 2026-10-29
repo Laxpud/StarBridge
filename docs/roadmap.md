@@ -26,7 +26,7 @@
 
 原 Modifier 未完成项纳入此阶段，保留其读取、检查和回读要求：
 
-- Mesh Controls：完善网格控制的属性、单位、引用和修改约束。
+- Mesh Controls：已有有向自动源网格 Base Size 通过通用标量入口完成范围、单位、引用和重载验证；继续扩展其他网格控制。
 - Boundary Parameters：明确区域、边界、Profile 方法与属性的定位及切换关系。
 - Selected Physics Settings：完善模型启停、依赖、物性和求解设置的读写。
 - Simulation Operations：完善工作流、操作类型、结构关系和修改后的保存验证。

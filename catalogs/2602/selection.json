@@ -8,6 +8,7 @@
   "star.automation.SubWorkflowAutomationBlock",
   "star.base.neo.ClientServerObject",
   "star.base.neo.ClientServerObjectManager",
+  "star.base.neo.ScalarRange",
   "star.base.query.AbstractQuery",
   "star.base.query.CommentOperator",
   "star.base.query.CommentPredicate",
@@ -43,6 +44,7 @@
   "star.common.BoundaryInterface",
   "star.common.BoundaryManager",
   "star.common.BoundaryType",
+  "star.common.BoundedScalarInput",
   "star.common.CompositeSymmetricTensorProfileMethod",
   "star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem",
   "star.common.CompositeTensorProfileMethod",
@@ -87,6 +89,7 @@
   "star.common.RootObject",
   "star.common.ScalarGlobalParameter",
   "star.common.ScalarPhysicalQuantity",
+  "star.common.ScalarPhysicalQuantityInput",
   "star.common.ScalarProfile",
   "star.common.ScalarProfileWithDynamicMethods",
   "star.common.Simulation",
@@ -127,6 +130,13 @@
   "star.material.SingleComponentMaterialModel",
   "star.material.Solid",
   "star.material.SolidModel",
+  "star.meshing.AutoMeshDefaultValuesManager",
+  "star.meshing.AutoMeshOperation",
+  "star.meshing.BaseSize",
   "star.meshing.MeshOperation",
-  "star.meshing.MeshOperationManager"
+  "star.meshing.MeshOperationManager",
+  "star.sweptmesher.DirectedAutoSourceMesh",
+  "star.sweptmesher.DirectedMeshOperation",
+  "star.sweptmesher.DirectedSurfaceMeshBase",
+  "star.sweptmesher.DirectedSurfaceMeshBaseManager"
 ]

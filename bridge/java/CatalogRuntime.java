@@ -236,7 +236,8 @@ class CatalogRuntime {
                                         "guards", property.getOrDefault("guards", java.util.List.of()),
                                         "preserved_properties", property.getOrDefault("preserved_properties", java.util.List.of()),
                                         "value_types", property.getOrDefault("value_types", java.util.List.of()),
-                                        "value_guards", property.getOrDefault("value_guards", java.util.List.of()));
+                                        "value_guards", property.getOrDefault("value_guards", java.util.List.of()),
+                                        "value_bounds", property.getOrDefault("value_bounds", false));
                 description.putAll(describeConditions(sim, resolved, property, sessionToken));
                 if (description.get("target_condition_status").equals("error")) complete = false;
                 values.put(name, description);
@@ -601,6 +602,73 @@ class CatalogRuntime {
     }
 
     /**
+     * 保存候选标量及其只读管线；每次检查都重新读取数量和范围，不缓存 GUI 可改变的范围。
+     * quantityKey 固定准备阶段的数量身份，防止新建同名数量替代即将写入的原对象。
+     */
+    private static final class ScalarBoundsCheck {
+        private final String quantityKey, definition;
+        private final star.common.Units requestUnits;
+        private final java.util.Map<String, Object> quantityRead, boundsRead;
+
+        ScalarBoundsCheck(String quantityKey, String definition, star.common.Units requestUnits,
+                java.util.Map<String, Object> quantityRead, java.util.Map<String, Object> boundsRead) {
+            this.quantityKey = quantityKey; this.definition = definition; this.requestUnits = requestUnits;
+            this.quantityRead = quantityRead; this.boundsRead = boundsRead;
+        }
+
+        /** 只修改两个普通临时 input；验证、求值和单位换算均不向原 quantity 写入。 */
+        java.util.Map<String, Object> check(star.common.Simulation sim, Resolved resolved) throws Exception {
+            // 1. 两条映射管线必须返回同一数量的 input；范围数值按原 input 的单位解释。
+            Object rawQuantity = pipeline(sim, resolved.object, resolved.parent, quantityRead);
+            require(rawQuantity instanceof star.common.ScalarPhysicalQuantity,
+                    "Scalar bounds require a scalar quantity");
+            star.common.ScalarPhysicalQuantity quantity = (star.common.ScalarPhysicalQuantity) rawQuantity;
+            require(quantityKey.equals(quantity.getObjectKeyAsString()), "Scalar bounds quantity identity changed");
+            Object rawInput = pipeline(sim, resolved.object, resolved.parent, boundsRead);
+            require(rawInput instanceof star.common.BoundedScalarInput,
+                    "Scalar bounds require a BoundedScalarInput");
+            star.common.BoundedScalarInput original = (star.common.BoundedScalarInput) rawInput;
+            require(original.getQuantity() != null
+                    && quantityKey.equals(original.getQuantity().getObjectKeyAsString()),
+                    "Scalar bounds input belongs to another quantity");
+            star.common.Units originalUnits = original.getUnits();
+            java.util.Map<String, Object> checked = scalarBounds(original);
+            require(quantity.getUnits() != null && quantity.getUnits().compatible(requestUnits)
+                    && originalUnits.compatible(requestUnits), "Incompatible scalar bounds unit");
+            Double constant = star.common.PhysicalQuantityParser.parseAsConstant(definition);
+            require(constant == null || Double.isFinite(constant), "Scalar constant must be finite");
+            require(constant != null || requestUnits.getPresentationName().equals(
+                    quantity.getUnits().getSIUnits().getPresentationName()),
+                    "Scalar expressions require the SI result unit");
+
+            // 2. 普通副本不携带 BoundedScalarInput 的可变 range；表达式切换单位不能影响原范围。
+            star.common.ScalarPhysicalQuantityInput candidate = new star.common.ScalarPhysicalQuantityInput(original);
+            candidate.setDefinition(definition);
+            candidate.setUnitsNoRescale(requestUnits);
+            String validation = candidate.validate();
+            require(validation == null || validation.isEmpty(), "Scalar bounds preview validation failed: " + validation);
+            double si = quantity.previewValue(candidate);
+            require(Double.isFinite(si), "Scalar bounds preview must be finite");
+
+            // 3. previewValue 总是返回 SI；普通副本保留 absolute/delta 约定，换回范围的原始单位。
+            // range.getUnits() 可以为 null，不能据此把 range 的数值误判为 SI。
+            star.common.ScalarPhysicalQuantityInput converted = new star.common.ScalarPhysicalQuantityInput(original);
+            converted.setDefinition(Double.toString(si));
+            converted.setUnitsNoRescale(originalUnits.getSIUnits());
+            converted.setUnits(originalUnits);
+            Double rangeValue = converted.isConstantValue();
+            require(rangeValue != null && Double.isFinite(rangeValue), "Scalar bounds conversion must be finite");
+            star.base.neo.ScalarRange range = original.getRange();
+            require(range.contains(rangeValue.doubleValue()), "Scalar value is outside the allowed range");
+            require(!range.isIntegral() || rangeValue.doubleValue() == Math.rint(rangeValue.doubleValue()),
+                    "Scalar range requires an integral value");
+            checked.put("preview_si_value", si);
+            checked.put("range_value", rangeValue);
+            return checked;
+        }
+    }
+
+    /**
      * 保存已经完成预检查的单项修改；apply 只允许执行一次，失败后不得自动重试。
      * before/after 使用目录读取封套，旧完整快照与保存流程仍由调用方负责。
      */
@@ -614,6 +682,7 @@ class CatalogRuntime {
         private final Invocation invocation;
         private final java.util.Map<String, Object> writer;
         private final java.util.List<ReferenceBinding> bindings;
+        private final ScalarBoundsCheck boundsCheck;
         private boolean applied;
 
         public java.util.Map<String, Object> before() { return before; }
@@ -622,11 +691,12 @@ class CatalogRuntime {
                 java.util.Map<String, Object> readRequest, String token, String property,
                 String adapter, Object value, Invocation invocation,
                 java.util.Map<String, Object> writer, java.util.Map<String, Object> before,
-                java.util.List<ReferenceBinding> bindings) {
+                java.util.List<ReferenceBinding> bindings, ScalarBoundsCheck boundsCheck) {
             this.sim = sim; this.plan = plan; this.readRequest = readRequest; this.token = token;
             this.property = property; this.adapter = adapter; this.value = value;
             this.invocation = invocation; this.writer = writer; this.before = before;
             this.bindings = java.util.List.copyOf(bindings);
+            this.boundsCheck = boundsCheck;
         }
 
         /**
@@ -645,6 +715,9 @@ class CatalogRuntime {
                 Resolved referenced = locate(sim, object(plan.get("types"), "plan.types"), binding.target, token, 0);
                 checkGuards(sim, referenced, fields("guards", binding.guards), token);
             }
+            // 范围和表达式依赖可能在准备后变化；紧贴唯一 setter 再读取并预览一次。
+            // 此处失败仍属于 apply 的结果不确定路径，调用方不能自动重试 setter。
+            if (boundsCheck != null) boundsCheck.check(sim, current);
             invocation.invoke();
             java.util.Map<String, Object> after = inspect(sim, plan, readRequest, token);
             if (!Boolean.TRUE.equals(after.get("inspection_complete")))
@@ -720,6 +793,7 @@ class CatalogRuntime {
         java.util.Map<String, Object> values = new java.util.LinkedHashMap<>();
         java.util.List<ReferenceBinding> bindings = new java.util.ArrayList<>();
         java.util.Map<String, Object> writePipeline = null;
+        ScalarBoundsCheck boundsCheck = null;
         Object wantedReadback = value;
         // 3. 校验目标数量或枚举状态并绑定参数；解析最终 setter 仍不触发写入。
         try {
@@ -760,6 +834,14 @@ class CatalogRuntime {
                     require(input.get("value") instanceof Number && Double.isFinite(((Number) input.get("value")).doubleValue()),
                             "Scalar value must be finite");
                     values.put("number", input.get("value"));
+                }
+                if (writer.containsKey("bounds")) {
+                    String definition = adapter.equals("scalar_expression")
+                            ? (String) values.get("definition")
+                            : Double.toString(((Number) values.get("number")).doubleValue());
+                    boundsCheck = new ScalarBoundsCheck(quantity.getObjectKeyAsString(), definition, units,
+                            object(entry.get("read"), "property.read"), object(writer.get("bounds"), "write.bounds"));
+                    before.put("bounds_check", boundsCheck.check(sim, resolved));
                 }
             } else if (adapter.equals("vector_expression") || adapter.equals("vector_value")) {
                 // 分量使用当前数量对象的原坐标约定；这里只更改定义或三个原始分量，不做坐标变换。
@@ -871,7 +953,8 @@ class CatalogRuntime {
             java.util.Map<String, Object> fixedTarget = new java.util.LinkedHashMap<>(target);
             fixedTarget.put("reference", identity(resolved.object, token));
             java.util.Map<String, Object> fixedRead = fields("schema_version", 1L, "action", "read", "target", fixedTarget);
-            return new PreparedModification(sim, plan, fixedRead, token, property, adapter, wantedReadback, setter, writer, before, bindings);
+            return new PreparedModification(sim, plan, fixedRead, token, property, adapter, wantedReadback,
+                    setter, writer, before, bindings, boundsCheck);
         } catch (Exception error) {
             throw new IllegalArgumentException("Modification preparation failed: " + errorText(error), error);
         }
@@ -1468,17 +1551,35 @@ class CatalogRuntime {
         throw new IllegalArgumentException("Unsupported primitive argument: " + type.getName());
     }
 
+    /**
+     * 读取原 input 单位下的范围；有限端点用 contains 检查实际成员资格。
+     * 端点成员资格不试图恢复退化空区间内部保存的开闭标志；无有限界返回 null。
+     */
+    private static java.util.Map<String, Object> scalarBounds(star.common.BoundedScalarInput input) {
+        star.base.neo.ScalarRange range = input.getRange();
+        star.common.Units units = input.getUnits();
+        require(range != null && units != null, "Scalar bounds require a range and input unit");
+        double minimum = range.getMin(), maximum = range.getMax();
+        require(!Double.isNaN(minimum) && !Double.isNaN(maximum), "Scalar bounds endpoints must not be NaN");
+        return fields("input_unit", units.getPresentationName(),
+                "minimum", Double.isFinite(minimum) ? minimum : null,
+                "maximum", Double.isFinite(maximum) ? maximum : null,
+                "minimum_included", Double.isFinite(minimum) ? range.contains(minimum) : null,
+                "maximum_included", Double.isFinite(maximum) ? range.contains(maximum) : null,
+                "integral", range.isIntegral());
+    }
+
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
-                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state")
+                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state", "scalar_bounds")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
         // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
         if (adapter.equals("presence")) return value != null;
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {
-            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state").contains(adapter),
+            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state", "scalar_bounds").contains(adapter),
                     "Metadata adapter requires a non-null value: " + adapter);
             return null;
         }
@@ -1515,6 +1616,10 @@ class CatalogRuntime {
                     "unit", scalar.getUnits().getPresentationName(),
                     "si_unit", scalar.getUnits().getSIUnits().getPresentationName(),
                     "raw_value", primitive(scalar.getRawValue()), "si_value", primitive(scalar.getSIValue()));
+            case "scalar_bounds":
+                require(value instanceof star.common.BoundedScalarInput,
+                        "Scalar bounds adapter requires a BoundedScalarInput");
+                return scalarBounds((star.common.BoundedScalarInput) value);
             case "vector":
                 require(value instanceof star.common.VectorPhysicalQuantity, "Vector adapter requires a vector quantity");
                 star.common.VectorPhysicalQuantity vector = (star.common.VectorPhysicalQuantity) value;

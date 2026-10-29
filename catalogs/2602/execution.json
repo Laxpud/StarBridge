@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "target": {
     "release": "2602",
     "build": "21.02.007"
@@ -808,6 +808,38 @@
       "fingerprint": "cd5f9f36aa8fd8ad8e9a5ef4651031d80379ec268dca2d4acc6ecd20e05fe09e",
       "parameter_types": [],
       "effect": "read"
+    },
+    "directed_mesh.sources": {
+      "type": "star.sweptmesher.DirectedMeshOperation",
+      "member": "getDirectedSurfaceMeshBaseManager()",
+      "signature": "public DirectedSurfaceMeshBaseManager getDirectedSurfaceMeshBaseManager()",
+      "fingerprint": "74061ba461c42ba5d071cfdf6a3375dc2425ffa33e7a2858be28706927129439",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "directed_source.defaults": {
+      "type": "star.sweptmesher.DirectedAutoSourceMesh",
+      "member": "getDefaultValues()",
+      "signature": "public AutoMeshDefaultValuesManager getDefaultValues()",
+      "fingerprint": "c5230de387483e9ec574aef862904579ac53c7f5d976732871486ff6ac9b063d",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "scalar_quantity.input": {
+      "type": "star.common.ScalarPhysicalQuantity",
+      "member": "getInput()",
+      "signature": "@StarBeanProperty(display=\"Value\", hint=\"Scalar value\", autolink=false) public ScalarPhysicalQuantityInput getInput()",
+      "fingerprint": "7861ecff59a2a00579e25dee776038b1fbfb2615e4317704b829224d17cd4e32",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "units.dimensions": {
+      "type": "star.common.Units",
+      "member": "getDimensions()",
+      "signature": "@StarBeanProperty(readOnly=true, booleanValues=@BooleanValue(key=\"suppressCustomEditor\",value=true), display=\"Dimensions\", hint=\"Physical dimensions\") public Dimensions getDimensions()",
+      "fingerprint": "6717df97bce8bacebdd1afc2dd7cdbbce67836a7d2ef0cc3635c8cb151001853",
+      "parameter_types": [],
+      "effect": "read"
     }
   },
   "types": {
@@ -1125,6 +1157,61 @@
         "steps": [
           {
             "member": "model_part.values",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "directed_mesh_operation": {
+      "java_class": "star.sweptmesher.DirectedMeshOperation",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "root.manager",
+            "arguments": [
+              {
+                "class": "star.meshing.MeshOperationManager"
+              }
+            ]
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "directed_auto_source_mesh": {
+      "java_class": "star.sweptmesher.DirectedAutoSourceMesh",
+      "parent_type": "directed_mesh_operation",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "directed_mesh.sources",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "mesh_scalar_control": {
+      "java_class": "star.common.ScalarPhysicalQuantity",
+      "parent_type": "directed_auto_source_mesh",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "directed_source.defaults",
             "arguments": []
           },
           {
@@ -6503,6 +6590,256 @@
           ]
         }
       }
+    },
+    "directed_mesh_operation": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取定向网格操作名称，不重命名或执行网格"
+      },
+      "index": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "mesh_operation.index",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取操作排序位置，不重排操作"
+      },
+      "input_parts": {
+        "adapter": "query",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "mesh_operation.input_parts",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前输入零件选择规则，不求网格或更改选择"
+      },
+      "source_meshes": {
+        "adapter": "collection",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "directed_mesh.sources",
+              "arguments": []
+            },
+            {
+              "member": "manager.objects",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "枚举已存在的源网格对象，不创建源网格"
+      }
+    },
+    "directed_auto_source_mesh": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取已有自动源网格名称"
+      },
+      "mesh_operation": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取所属定向网格操作身份"
+      },
+      "default_values": {
+        "adapter": "collection",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "directed_source.defaults",
+              "arguments": []
+            },
+            {
+              "member": "manager.objects",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "枚举当前默认控制对象；列表可以包含非标量配置，不按名称推定类型"
+      }
+    },
+    "mesh_scalar_control": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取已有默认标量控制的名称"
+      },
+      "source_mesh": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "保持所属自动源网格对象身份"
+      },
+      "dimensions": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "quantity.units",
+              "arguments": []
+            },
+            {
+              "member": "units.dimensions",
+              "arguments": []
+            },
+            {
+              "member": "dimensions.text",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取单位的物理量纲，不改变其维数"
+      },
+      "range": {
+        "adapter": "scalar_bounds",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "scalar_quantity.input",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取有范围输入的当前单位、有限端点、端点成员资格和整数约束；普通无范围输入明确报错"
+      },
+      "quantity": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": true,
+        "reason": "修改现有有范围标量控制，先用临时输入预览常量或表达式并检查实际范围，不生成网格",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "bounds": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "scalar_quantity.input",
+                "arguments": []
+              }
+            ]
+          },
+          "preserved_properties": [
+            "name",
+            "source_mesh",
+            "dimensions"
+          ]
+        }
+      },
+      "quantity_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": true,
+        "reason": "修改现有有范围标量控制，先用临时输入预览常量或表达式并检查实际范围，不生成网格",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "bounds": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "scalar_quantity.input",
+                "arguments": []
+              }
+            ]
+          },
+          "preserved_properties": [
+            "name",
+            "source_mesh",
+            "dimensions"
+          ]
+        }
+      }
     }
   },
   "operations": {
@@ -6637,6 +6974,9 @@
     "material_coefficient": {},
     "tensor_axis": {},
     "boundary_scalar_profile": {},
-    "boundary_vector_profile": {}
+    "boundary_vector_profile": {},
+    "directed_mesh_operation": {},
+    "directed_auto_source_mesh": {},
+    "mesh_scalar_control": {}
   }
 }

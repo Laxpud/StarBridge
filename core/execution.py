@@ -19,7 +19,8 @@ ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum'
             'tensor_profile', 'tensor_basis', 'tensor_method_state',
             'tensor_components', 'tensor_method_basis', 'tensor_layout_valid',
             'tensor_axes', 'tensor_axis_basis',
-            'material_coefficient_basis', 'material_coefficient_state', 'material_method_state'}
+            'material_coefficient_basis', 'material_coefficient_state', 'material_method_state',
+            'scalar_bounds'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
     'field_definition': {'value'},
@@ -287,7 +288,7 @@ def load_execution(catalog_path, execution_path):
     catalog = load(catalog_path)
     rules = read_json(execution_path)
     _require(isinstance(rules, dict), 'Execution rules must be an object')
-    _require(type(rules.get('schema_version')) is int and rules['schema_version'] in (1, 2, 3, 4, 5, 6),
+    _require(type(rules.get('schema_version')) is int and rules['schema_version'] in (1, 2, 3, 4, 5, 6, 7),
              'Unsupported execution schema_version')
     _keys(rules, 'schema_version target members types properties'
           + (' operations' if rules['schema_version'] >= 5 else ''), 'execution')
@@ -343,7 +344,7 @@ def load_execution(catalog_path, execution_path):
             read = _pipeline(catalog, methods, entry['read'], identifier + '.' + name)
             _require(read['root'] != 'parent' or types[identifier]['parent_type'] is not None,
                      f'Property has no parent context: {identifier}.{name}')
-            properties[identifier][name] = {**entry, 'read': read}
+            properties[identifier][name] = {**entry, 'read': read, 'value_bounds': False}
             if 'write' in entry:
                 _require(rules['schema_version'] >= 2, 'Writes require execution schema 2 or later')
                 write = entry['write']
@@ -357,6 +358,14 @@ def load_execution(catalog_path, execution_path):
                 _require(rules['schema_version'] >= 6 or 'preserved_properties' not in write,
                          'Writer preserved_properties require execution schema 6')
                 fields += ' preserved_properties' if 'preserved_properties' in write else ''
+                # 范围读取只属于 schema 7 的标量 writer；它读取对应数量的 input，
+                # 不接受请求注入的上下文或任何写入方法。
+                if 'bounds' in write:
+                    _require(rules['schema_version'] >= 7,
+                             'Writer bounds require execution schema 7')
+                    _require(write.get('adapter') in ('scalar_expression', 'scalar_value'),
+                             'Writer bounds require a scalar write adapter')
+                    fields += ' bounds'
                 _keys(write, fields, identifier + '.' + name + '.write')
                 # 本列表只增加写后不变项，不替代运行时内置的身份字段核对。
                 # 引用本类型的完整读取属性，既不能跨类型取值，也不能把写入目标声明为不变项。
@@ -398,6 +407,13 @@ def load_execution(catalog_path, execution_path):
                                  has_parent=types[identifier]['parent_type'] is not None)
                 writer = {**write, 'guards': guards, 'preserved_properties': preserved}
                 writer.update({'pipelines': compiled} if selection else {'pipeline': compiled['single']})
+                if 'bounds' in write:
+                    bounds = _pipeline(catalog, methods, write['bounds'],
+                                       identifier + '.' + name + '.write.bounds')
+                    _require(bounds['root'] != 'parent' or types[identifier]['parent_type'] is not None,
+                             f'Writer bounds have no parent context: {identifier}.{name}')
+                    writer['bounds'] = bounds
+                    properties[identifier][name]['value_bounds'] = True
                 if related:
                     _require(isinstance(write['value_types'], list) and bool(write['value_types'])
                              and all(isinstance(t, str) and t in types for t in write['value_types'])
