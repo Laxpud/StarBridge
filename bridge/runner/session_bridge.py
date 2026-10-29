@@ -18,10 +18,13 @@ import sys
 import time
 import uuid
 
-from file_bridge import (catalog_content, catalog_diff, digest, execute,
+# 脚本与包导入采用同一模块身份，确保不同入口能捕获同一个拒绝异常类型。
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from bridge.runner.file_bridge import (catalog_content, catalog_diff, digest, execute,
                          prepare_catalog_modification, prepare_catalog_read, prepare_legacy,
                          prepare_snapshot)
-from modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
+from bridge.runner.modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
 from core.catalog_bundle import bundle_target, check_plan_targets, session_target
 
 

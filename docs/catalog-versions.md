@@ -28,6 +28,8 @@ python3 bridge/runner/session_bridge.py start example-2510.sim \
 
 本地计划错配在输出目录或会话活动标记写入前拒绝，现有会话保持原状态。Java 还会在实际调用前核对正在运行的 server，选择正确目录不能代替 server 检查。`status` 与 `stop --discard` 不依赖目录加载，使目录不可用时仍能查询和清理本工具创建的服务。目录选择不会转换 `.sim` 文件格式，也不保证较旧 STAR 能打开较新版本保存的文件。
 
+[MCP 与共享 JSON CLI](mcp.md) 使用相同绑定：`open_session` 接收 `release` 和匹配的 `star`，后续工具自动加载该会话的随附目录；`get_capabilities` 则要求明确指定离线 `release`。两版的代表性 MCP 调用与持久化验证见 [MCP 验证范围](mcp.md#验证范围)。
+
 ## 版本材料与覆盖
 
 2510 的 140 个根类型及继承依赖包含 225 个类型、2,864 个声明成员和 167 个注解属性候选。其初次版本验收时的 99 个实际调用映射均有本版本声明依据；与 2602 对应映射相比，`function.dimensions`、`field_function.dimensions` 和 `profile.dimensions` 的 Javadoc 注解不同，已分别锁定 2510 的签名和指纹。其余对应成员指纹相同。后续工作流选择映射使用两版各自成员指纹，2510 暂无该新增路径的真实运行证据。该比较只说明本次已选调用材料，不证明全部 API 或运行语义兼容。

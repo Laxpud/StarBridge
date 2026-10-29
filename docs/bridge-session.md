@@ -84,7 +84,7 @@ python3 bridge/runner/session_bridge.py stop \
 | `client-settings/` | 当前会话的临时客户端配置与缓存 |
 | `session.lock` | Bridge 请求互斥锁 |
 
-[session_bridge.py](../bridge/runner/session_bridge.py) 管理生命周期；[file_bridge.py](../bridge/runner/file_bridge.py) 生成宏并运行客户端；两者共用 [BridgeFileMacro.java](../bridge/java/BridgeFileMacro.java)。这些是原型脚本，尚未封装为正式 `starbridge` CLI 或 MCP 服务。
+[session_bridge.py](../bridge/runner/session_bridge.py) 管理生命周期；[file_bridge.py](../bridge/runner/file_bridge.py) 生成宏并运行客户端；两者共用 [BridgeFileMacro.java](../bridge/java/BridgeFileMacro.java)。[共享 Core Service](../core/service.py) 已将这些能力接入 [JSON CLI 与 MCP](mcp.md)，本页的原脚本命令继续可用。
 
 ## 已确认的范围
 

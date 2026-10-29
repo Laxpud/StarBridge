@@ -55,7 +55,7 @@ public class BridgeFileMacro extends StarMacro {
                     return;
                 }
             }
-            if (ACTION.equals("catalog-read") || ACTION.equals("catalog-describe") || ACTION.equals("catalog-verify")) {
+            if (ACTION.equals("catalog-find") || ACTION.equals("catalog-read") || ACTION.equals("catalog-describe") || ACTION.equals("catalog-verify")) {
                 readCatalog(sim);
                 return;
             }
@@ -107,7 +107,9 @@ public class BridgeFileMacro extends StarMacro {
                 throw new IllegalArgumentException("Catalog reads require a matching plan, request and read-only action");
             }
             // CatalogRuntime 先精确核对当前服务版本，再定位对象和读取选定属性。
-            catalog = CatalogRuntime.inspect(sim, CATALOG_PLAN, CATALOG_REQUEST, SESSION_TOKEN);
+            catalog = ACTION.equals("catalog-find")
+                    ? CatalogRuntime.find(sim, CATALOG_PLAN, CATALOG_REQUEST, SESSION_TOKEN)
+                    : CatalogRuntime.inspect(sim, CATALOG_PLAN, CATALOG_REQUEST, SESSION_TOKEN);
         } catch (IllegalArgumentException error) {
             Map<String, Object> after = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
             writeResult("rejected", before, after, error.getMessage());

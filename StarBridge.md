@@ -269,11 +269,11 @@ NWSEControls
 
 ## MCP
 
-MCP 是 Agent 操作 STAR-CCM+ 的主要结构化接口，调用共享 Core API。对外接口按能力组织，不为每种对象的每个属性创建独立 Tool。以下名称均为草案，尚未实现：
+MCP 是 Agent 操作 STAR-CCM+ 的主要结构化接口，调用共享 Core API。对外接口按能力组织，不为每种对象的每个属性创建独立 Tool。以下入口已通过本机 stdio 提供，安装、参数、资源和验证边界见 [MCP 与共享 Core API](docs/mcp.md)：
 
-| 能力 | 拟议入口 | 职责 |
+| 能力 | 入口 | 职责 |
 |---|---|---|
-| 查询目录能力 | `starbridge.get_capabilities` | 返回版本匹配情况、目录能力和适配状态 |
+| 查询目录能力 | `starbridge.get_capabilities` | 返回明确版本的离线目录能力和适配状态；当前 server 匹配由实际算例调用检查 |
 | 查找对象 | `starbridge.find_objects` | 按类型、名称或关系定位当前会话中的对象 |
 | 描述对象 | `starbridge.describe_object` | 返回属性、操作、值类型和当前可用条件 |
 | 读取属性 | `starbridge.read_properties` | 通过 Inspector 按需读取指定对象的属性 |
@@ -281,7 +281,7 @@ MCP 是 Agent 操作 STAR-CCM+ 的主要结构化接口，调用共享 Core API�
 
 算例操作明确绑定目标会话；类型、属性和操作使用目录标识，实例使用对象定位契约。具体对象的易用别名可以复用这些能力，但不能形成另一套独立的版本适配逻辑。
 
-会话打开、状态查询、保存和关闭，以及网格生成、求解和工作记忆访问，分别通过相应 Core 能力接入。它们不因统一配置修改接口而合并为同一种操作。
+会话打开、状态查询、快照、保存和关闭已由独立工具接入共享 Core。网格生成、求解和工作记忆访问仍待实现，后续分别通过对应执行与记忆能力接入，不合并进统一配置修改接口。当前不提供 HTTP 服务或 GUI 会话接管。
 
 ---
 
@@ -334,16 +334,16 @@ StarBridge 将 Java API 描述、运行时实例和修改请求分别转换为�
 
 ## CLI
 
-CLI 用于开发、调试和自动化脚本，与 MCP 使用同一 Core API、Inspector、Modifier 和版本目录。以下命令仅展示拟议形式：
+CLI 用于开发、调试和自动化脚本，与 MCP 使用同一 Core API、Inspector、Modifier 和版本目录。当前 JSON CLI 直接接收与 MCP 工具相同的参数对象：
 
 ```bash
-starbridge capabilities --session SESSION
-starbridge describe OBJECT_REF --session SESSION
-starbridge read OBJECT_REF --session SESSION --properties PROPERTY_ID
-starbridge modify --session SESSION --request change.json
+python3 starbridge.py contract
+python3 starbridge.py get_capabilities --arguments capabilities.json
+python3 starbridge.py read_properties --arguments read.json
+python3 starbridge.py modify --arguments change.json
 ```
 
-文件模式保留加载、另存与重载核对的调用方式，会话模式明确绑定已加载算例。各类对象的读写通过目录中的属性和操作标识表达；当前实际可用的脚本命令以[目录描述与读取](docs/catalog-runtime.md)、[目录修改](docs/catalog-modifier.md)、[文件](docs/bridge-file.md)和[后台会话](docs/bridge-session.md)说明为准。
+参数文件中的算例、会话和输出路径必须为绝对路径，契约见 [MCP 与共享 Core API](docs/mcp.md#同源-json-cli)。文件模式继续保留加载、另存与重载核对的原脚本调用方式，会话模式明确绑定已加载算例。各类对象的读写通过目录中的属性和操作标识表达；既有入口以[目录描述与读取](docs/catalog-runtime.md)、[目录修改](docs/catalog-modifier.md)、[文件](docs/bridge-file.md)和[后台会话](docs/bridge-session.md)说明为准。
 
 ---
 

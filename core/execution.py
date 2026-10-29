@@ -468,6 +468,11 @@ def _target(plan, target, depth=0):
 
 
 def prepare_read(catalog_path, execution_path, request_path, action):
+    """读取 CLI 的请求文件，并交给与其他入口相同的内存请求校验器。"""
+    return prepare_read_value(catalog_path, execution_path, read_json(request_path), action)
+
+
+def prepare_read_value(catalog_path, execution_path, request, action):
     """校验 describe/read 请求并返回裁剪计划与原请求，不创建运行目录或活动标记。
 
     计划只包含请求目标及其父类型的定位和选定属性，避免把全量 API 放入宏常量。
@@ -476,7 +481,6 @@ def prepare_read(catalog_path, execution_path, request_path, action):
     """
     _require(action in ('describe', 'read'), 'Unsupported catalog read action')
     plan = load_execution(catalog_path, execution_path)
-    request = read_json(request_path)
     _require(isinstance(request, dict)
              and {'schema_version', 'action', 'target'} <= request.keys()
              and request.keys() <= {'schema_version', 'action', 'target', 'properties'},
@@ -509,6 +513,40 @@ def prepare_read(catalog_path, execution_path, request_path, action):
                               for name, entry in plan['operations'][identifier].items()}}
     return ({**plan, 'types': required, 'properties': {identifier: properties},
              'operations': operations if action == 'describe' else {}}, request)
+
+
+def prepare_find(catalog_path, execution_path, request):
+    """按目录类型枚举一个父上下文中的实例，只发送已核对的定位管线。
+
+    子对象必须提供完整父路径。分页使用非负 offset，结果属于调用时的状态，
+    不建立跨请求快照；调用者需要根据返回的身份与预期旧值检测后续变化。
+    """
+    _require(isinstance(request, dict)
+             and {'schema_version', 'action', 'type'} <= request.keys()
+             and request.keys() <= {'schema_version', 'action', 'type', 'name', 'parent', 'offset', 'limit'},
+             'Invalid object search fields')
+    _require(type(request['schema_version']) is int and request['schema_version'] == 1,
+             'Unsupported object search schema_version')
+    _require(request['action'] == 'find', 'Object search action must be find')
+    plan = load_execution(catalog_path, execution_path)
+    identifier = request['type']
+    _text(identifier, 'type ID')
+    _require(identifier in plan['types'], 'Unknown or unmapped search type')
+    # 复用目标校验核对父类型、递归深度和引用字段；占位名称不进入实际搜索。
+    target = {'type': identifier, 'name': request.get('name', '_search_')}
+    if 'parent' in request:
+        target['parent'] = request['parent']
+    _target(plan, target)
+    offset, limit = request.get('offset', 0), request.get('limit', 100)
+    _require(type(offset) is int and 0 <= offset <= 2147483647, 'Invalid search offset')
+    _require(type(limit) is int and 1 <= limit <= 500, 'Search limit must be between 1 and 500')
+    required = {}
+    current = identifier
+    while current is not None:
+        required[current] = plan['types'][current]
+        current = plan['types'][current]['parent_type']
+    return ({**plan, 'types': required, 'properties': {}, 'operations': {}},
+            {**request, 'offset': offset, 'limit': limit})
 
 
 def _json_value(value):
@@ -753,13 +791,17 @@ def _prepare_operation(plan, request):
 
 
 def prepare_modification(catalog_path, execution_path, request_path):
+    """读取 CLI 的修改请求文件，复用内存请求的准备与校验流程。"""
+    return prepare_modification_value(catalog_path, execution_path, read_json(request_path))
+
+
+def prepare_modification_value(catalog_path, execution_path, request):
     """校验属性或结构操作请求并裁剪写入计划；旧状态和实际可写条件在 server 再核对。
 
     修改请求格式与旧 Modifier 分开版本化。新值在本地按适配器检查，最终方法和
     参数在 Java 准备阶段解析；活动请求标记之前不会启动客户端或尝试 setter。
     """
     plan = load_execution(catalog_path, execution_path)
-    request = read_json(request_path)
     if isinstance(request, dict) and type(request.get('schema_version')) is int and request['schema_version'] == 3:
         return _prepare_operation(plan, request)
     _keys(request, 'schema_version action target property expected value', 'modification')

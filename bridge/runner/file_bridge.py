@@ -17,7 +17,7 @@ import uuid
 # 直接运行脚本时 Python 只加入 runner 目录；显式加入仓库根以复用共享 Core。
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from modifier import (ModificationRejected, content_snapshot, java_literal, load_request,
+from bridge.runner.modifier import (ModificationRejected, content_snapshot, java_literal, load_request,
                       same_value, snapshot_diff, verify_modification)
 from core.execution import prepare_legacy
 from core.snapshot import prepare_snapshot
@@ -153,7 +153,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
             client_userdir=None, modification=None, catalog_plan=None,
             catalog_request=None, session_token=None, legacy_plan=None, snapshot_plan=None):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
-    catalog_actions = {'catalog-read': 'read', 'catalog-describe': 'describe',
+    catalog_actions = {'catalog-find': 'find', 'catalog-read': 'read', 'catalog-describe': 'describe',
                        'catalog-verify': 'read', 'catalog-modify': 'modify',
                        'file-catalog-modify': 'modify'}
     catalog_call = catalog_plan is not None or catalog_request is not None or action in catalog_actions

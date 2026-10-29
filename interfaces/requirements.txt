@@ -1,0 +1,3 @@
+# MCP 是可选接口依赖；既有 CLI 与 Core 继续只使用 Python 标准库。
+mcp==2.3.0
+jsonschema>=4.20,<5

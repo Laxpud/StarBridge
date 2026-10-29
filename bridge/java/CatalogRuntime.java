@@ -272,6 +272,63 @@ class CatalogRuntime {
         return result;
     }
 
+    /**
+     * 枚举一个类型与父上下文中的对象，返回可继续定位的名称、完整路径与会话身份。
+     * 分页只截取本次已排序的集合；下一页调用时对象可能已变化，不提供快照隔离。
+     */
+    public static java.util.Map<String, Object> find(star.common.Simulation sim,
+            java.util.Map<String, Object> plan, java.util.Map<String, Object> request, String token) {
+        // 1. 版本与父身份先通过核对，才执行该类型的定位管线。
+        java.util.Map<String, Object> runtime = checkVersion(sim, plan, token);
+        require("find".equals(request.get("action")), "Unsupported catalog search action");
+        String typeId = string(request.get("type"), "search.type");
+        java.util.Map<String, Object> types = object(plan.get("types"), "plan.types");
+        java.util.Map<String, Object> type = object(types.get(typeId), "search type");
+        star.base.neo.ClientServerObject parent = null;
+        if (type.get("parent_type") != null) {
+            java.util.Map<String, Object> target = object(request.get("parent"), "search.parent");
+            require(type.get("parent_type").equals(target.get("type")), "Search parent type mismatch");
+            parent = locate(sim, types, target, token, 0).object;
+        } else require(!request.containsKey("parent"), "Unexpected search parent");
+        try {
+            // 2. 只返回目录声明类型的实例；名称计数用于提示后续唯一定位会拒绝的歧义。
+            Class<?> expected = javaType(string(type.get("java_class"), "type.java_class"));
+            require(star.base.neo.ClientServerObject.class.isAssignableFrom(expected), "Invalid search class");
+            java.util.List<star.base.neo.ClientServerObject> matches = new java.util.ArrayList<>();
+            java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+            for (Object item : candidates(sim, type, parent)) {
+                if (!expected.isInstance(item)) continue;
+                star.base.neo.ClientServerObject candidate = (star.base.neo.ClientServerObject) item;
+                String name = candidate.getPresentationName();
+                if (request.containsKey("name") && !request.get("name").equals(name)) continue;
+                matches.add(candidate);
+                counts.put(name, counts.getOrDefault(name, 0) + 1);
+            }
+            // 3. 先稳定排序，再截取当前页；total 保留全部匹配数，不能把截断误报为空或完整集合。
+            matches.sort(java.util.Comparator.comparing(star.base.neo.ClientServerObject::getPresentationName)
+                    .thenComparing(star.base.neo.ClientServerObject::getObjectKeyAsString));
+            int offset = ((Number) request.get("offset")).intValue();
+            int limit = ((Number) request.get("limit")).intValue();
+            require(offset >= 0 && limit >= 1 && limit <= 500, "Invalid search page");
+            int start = Math.min(offset, matches.size());
+            int end = (int) Math.min((long) start + limit, matches.size());
+            java.util.List<Object> objects = new java.util.ArrayList<>();
+            for (int index = start; index < end; index++) {
+                star.base.neo.ClientServerObject item = matches.get(index);
+                java.util.Map<String, Object> path = fields("type", typeId, "name", item.getPresentationName());
+                if (parent != null) path.put("parent", locator(object(request.get("parent"), "search.parent")));
+                objects.add(fields("type", typeId, "name", item.getPresentationName(),
+                        "java_class", item.getClass().getName(), "reference", identity(item, token),
+                        "locator", path, "locator_unique", counts.get(item.getPresentationName()) == 1));
+            }
+            return fields("catalog_id", plan.get("catalog_id"), "runtime", runtime,
+                    "objects", objects, "total", matches.size(), "offset", offset,
+                    "next_offset", end < matches.size() ? end : null, "inspection_complete", true);
+        } catch (Exception error) {
+            throw new IllegalArgumentException("Catalog object search failed: " + errorText(error), error);
+        }
+    }
+
     /** 描述操作范围及选项；Profile 枚举全部方法，材料物性只查找目录已映射的类。 */
     private static java.util.Map<String, Object> describeOperation(star.common.Simulation sim,
             Resolved resolved, java.util.Map<String, Object> operation, String token) {
@@ -1359,20 +1416,8 @@ class CatalogRuntime {
             Class<?> expectedClass = javaType(string(type.get("java_class"), "type.java_class"));
             require(star.base.neo.ClientServerObject.class.isAssignableFrom(expectedClass),
                     "Target type is not a STAR object");
-            Object value = pipeline(sim, null, parent, object(type.get("locate"), "type.locate"));
-            // 根管理器可作为配置对象直接返回；声明仍决定返回形状，避免隐式宽容错误管线。
-            Object kind = type.getOrDefault("locate_kind", "collection");
-            java.util.Collection<?> candidates;
-            if ("object".equals(kind)) {
-                require(value instanceof star.base.neo.ClientServerObject, "Object locator must return a STAR object");
-                candidates = java.util.List.of(value);
-            } else {
-                require("collection".equals(kind) && value instanceof java.util.Collection<?>,
-                        "Collection locator must return a collection");
-                candidates = (java.util.Collection<?>) value;
-            }
             star.base.neo.ClientServerObject found = null;
-            for (Object item : candidates) {
+            for (Object item : candidates(sim, type, parent)) {
                 if (!expectedClass.isInstance(item)) continue;
                 star.base.neo.ClientServerObject candidate = (star.base.neo.ClientServerObject) item;
                 if (!name.equals(candidate.getPresentationName())) continue;
@@ -1389,6 +1434,20 @@ class CatalogRuntime {
         } catch (Exception error) {
             throw new IllegalArgumentException("Catalog target resolution failed: " + errorText(error), error);
         }
+    }
+
+    /** 查找与唯一定位共用相同的返回形状检查，不能因入口不同而扩大目录调用范围。 */
+    private static java.util.Collection<?> candidates(star.common.Simulation sim,
+            java.util.Map<String, Object> type, star.base.neo.ClientServerObject parent) throws Exception {
+        Object value = pipeline(sim, null, parent, object(type.get("locate"), "type.locate"));
+        Object kind = type.getOrDefault("locate_kind", "collection");
+        if ("object".equals(kind)) {
+            require(value instanceof star.base.neo.ClientServerObject, "Object locator must return a STAR object");
+            return java.util.List.of(value);
+        }
+        require("collection".equals(kind) && value instanceof java.util.Collection<?>,
+                "Collection locator must return a collection");
+        return (java.util.Collection<?>) value;
     }
 
     /** 去掉各层的会话引用，仅保留文件重载后可重新解析的显式名称、类型和父路径。 */
