@@ -710,6 +710,54 @@
       "fingerprint": "35cf3f2f7882f618f4fd2e032e20b8700e80c7fdd0ed8cf0464b09786f7a4939",
       "parameter_types": [],
       "effect": "read"
+    },
+    "material_model.material": {
+      "type": "star.material.SingleComponentMaterialModel",
+      "member": "getMaterial()",
+      "signature": "public Material getMaterial()",
+      "fingerprint": "8ee368e1ddd3ba2b6eee920228956f69c2ebc4545c2219dec05e13249a4f3218",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "material.properties": {
+      "type": "star.material.MaterialPropertiesHolder",
+      "member": "getMaterialProperties()",
+      "signature": "public MaterialPropertyManager getMaterialProperties()",
+      "fingerprint": "679b73c166a036db3c6edca9fddcf96659fa5d69015620d4a2c8aec2fc54b3f9",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "material_property.method": {
+      "type": "star.material.MaterialProperty",
+      "member": "getMethod()",
+      "signature": "public MaterialPropertyMethod getMethod()",
+      "fingerprint": "a735f1980b403efbe557f3c37846fdaede781dfb293c0ac6b4173b29cf8b89b6",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "material_property.dimensions": {
+      "type": "star.material.MaterialProperty",
+      "member": "getDimensions()",
+      "signature": "@StarBeanProperty(readOnly=true, display=\"Dimensions\", hint=\"Physical dimensions\") public Dimensions getDimensions()",
+      "fingerprint": "9937f16cf767035de6f5b985f9501621180afadf384a4ed6371cd3bb0a9d348b",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "material_method.coefficients": {
+      "type": "star.material.MultiCoefficientMaterialPropertyMethod",
+      "member": "getScalarProperties()",
+      "signature": "public Vector<ScalarMaterialProperty> getScalarProperties()",
+      "fingerprint": "6f6f92d1a131b9cce1fbf3520dcd5e2fed0308d786437d8c0d773b1b4ff55acd",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "constant_material.quantity": {
+      "type": "star.material.ConstantMaterialPropertyMethod",
+      "member": "getQuantity()",
+      "signature": "public ScalarPhysicalQuantity getQuantity()",
+      "fingerprint": "f1d75a9b50b4bb7cc12146467a21d9cb511452561c21c63b0e070b1f2e9d486b",
+      "parameter_types": [],
+      "effect": "read"
     }
   },
   "types": {
@@ -916,6 +964,70 @@
           },
           {
             "member": "object.children",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "material_model": {
+      "java_class": "star.material.SingleComponentMaterialModel",
+      "parent_type": "physics_continuum",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "continuum.models",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "material": {
+      "java_class": "star.material.Material",
+      "parent_type": "material_model",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "object.children",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "material_property": {
+      "java_class": "star.material.MaterialProperty",
+      "parent_type": "material",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "material.properties",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "material_coefficient": {
+      "java_class": "star.material.ScalarMaterialProperty",
+      "parent_type": "material_property",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "material_property.method",
+            "arguments": []
+          },
+          {
+            "member": "material_method.coefficients",
             "arguments": []
           }
         ]
@@ -5034,6 +5146,355 @@
         "writable": false,
         "reason": "读取所属张量当前方法、维度和方向引用，不读取其他分量的数量"
       }
+    },
+    "material_model": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取物理连续体中已有单组分材料模型的实际名称，不创建或启用模型"
+      },
+      "material": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "material_model.material",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前模型关联的材料身份，不替换材料"
+      }
+    },
+    "material": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取材料模型下已有材料的实际名称，不重命名或创建材料"
+      },
+      "properties": {
+        "adapter": "collection",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "material.properties",
+              "arguments": []
+            },
+            {
+              "member": "manager.objects",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "枚举材料当前已有的物性对象，不读取或切换各物性的方法"
+      }
+    },
+    "material_property": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取材料中已有物性的实际显示名称，不创建或重命名物性"
+      },
+      "property_method": {
+        "adapter": "java_class",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "material_property.method",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取物性当前方法类型，不切换方法或读取未活动方法"
+      },
+      "dimensions": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "material_property.dimensions",
+              "arguments": []
+            },
+            {
+              "member": "dimensions.text",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取物性声明的物理量纲，不据此推断系数矩阵形状"
+      },
+      "coefficients": {
+        "adapter": "collection",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "material_property.method",
+              "arguments": []
+            },
+            {
+              "member": "material_method.coefficients",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "枚举当前多系数方法的实际标量子属性，不读取各系数数量或切换其方法"
+      },
+      "basis": {
+        "adapter": "material_coefficient_basis",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取当前多系数方法、物性量纲及按 API 顺序组织的系数名称、类型和量纲，不读取数量"
+      },
+      "coefficient_state": {
+        "adapter": "material_coefficient_state",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "在当前多系数布局后读取各系数当前常量方法的完整数量，不补写矩阵或切换方法"
+      }
+    },
+    "material_coefficient": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前多系数物性方法中已定位的标量系数名称，不创建或重命名系数"
+      },
+      "property_method": {
+        "adapter": "java_class",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "material_property.method",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前标量系数方法类型，不切换到常量或函数方法"
+      },
+      "quantity": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "material_property.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_material.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改已定位系数当前常量方法的数量；保留系数方法、父物性方法及系数名称、类型和量纲",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "material_property.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_material.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "multicoefficient_method",
+              "read": {
+                "root": "parent",
+                "steps": [
+                  {
+                    "member": "material_property.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "material_method.coefficients",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "presence",
+              "expected": true,
+              "message": "Material coefficient writes require a current multi-coefficient material property method"
+            },
+            {
+              "id": "constant_coefficient",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "material_property.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.material.ConstantMaterialPropertyMethod",
+              "message": "Material coefficient writes require the current constant material property method"
+            }
+          ]
+        }
+      },
+      "quantity_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "material_property.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_material.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改已定位系数当前常量方法的数量；保留系数方法、父物性方法及系数名称、类型和量纲",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "material_property.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_material.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "multicoefficient_method",
+              "read": {
+                "root": "parent",
+                "steps": [
+                  {
+                    "member": "material_property.method",
+                    "arguments": []
+                  },
+                  {
+                    "member": "material_method.coefficients",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "presence",
+              "expected": true,
+              "message": "Material coefficient writes require a current multi-coefficient material property method"
+            },
+            {
+              "id": "constant_coefficient",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "material_property.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.material.ConstantMaterialPropertyMethod",
+              "message": "Material coefficient writes require the current constant material property method"
+            }
+          ]
+        }
+      },
+      "basis": {
+        "adapter": "material_coefficient_basis",
+        "read": {
+          "root": "parent",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取父物性当前多系数布局，不读取兄弟系数数量或切换其方法"
+      }
     }
   },
   "operations": {
@@ -5111,6 +5572,10 @@
         ]
       }
     },
-    "tensor_component": {}
+    "tensor_component": {},
+    "material_model": {},
+    "material": {},
+    "material_property": {},
+    "material_coefficient": {}
   }
 }

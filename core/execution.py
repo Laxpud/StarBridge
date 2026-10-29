@@ -17,7 +17,8 @@ from .catalog import CatalogError, _keys, _pinned_member, _require, load, read_j
 ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum', 'query',
             'name', 'type_name', 'names', 'enum_name', 'presence', 'java_class',
             'tensor_profile', 'tensor_basis', 'tensor_method_state',
-            'tensor_components', 'tensor_method_basis', 'tensor_layout_valid'}
+            'tensor_components', 'tensor_method_basis', 'tensor_layout_valid',
+            'material_coefficient_basis', 'material_coefficient_state'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
     'field_definition': {'value'},

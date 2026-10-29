@@ -66,7 +66,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 本页描述与读取请求的格式版本为整数 `1`；属性修改使用独立的 schema 2 契约，结构操作使用 schema 3。顶层必需字段为 `schema_version`、`action`、`target`，可选字段为 `properties`；未知字段会被拒绝。`properties` 是不重复、非空的属性 ID 数组，省略时选择该类型当前映射中的全部属性，不能据此理解为整个 STAR 对象的全部属性。未映射属性在启动客户端或写入会话活动标记前拒绝。`properties` 只筛选属性；`describe` 另返回该类型全部已配操作，`read` 不返回操作描述。
 
-`target` 使用目录的类型 ID 和精确显示名称。当前定位器从指定管理器枚举对象，按 Java 类型过滤后要求名称唯一匹配。边界和 `tensor_profile` 还必须提供所属区域，`tensor_component` 则提供父 `tensor_profile` 的完整定位路径；例如边界请求：
+`target` 使用目录的类型 ID 和精确显示名称。当前定位器从指定管理器枚举对象，按 Java 类型过滤后要求名称唯一匹配。边界和 `tensor_profile` 还必须提供所属区域，`tensor_component` 提供父 `tensor_profile` 的完整定位路径；材料系数则沿连续体、材料模型、材料和物性定位，见[材料物性与系数](#材料物性与系数)。例如边界请求：
 
 ```json
 {
@@ -147,6 +147,10 @@ python3 bridge/runner/session_bridge.py describe \
 | `boundary` | `name`、`boundary_type`、`region`、`index`、`allow_per_part_values`、`tags` |
 | `tensor_profile` | `name`、`profile_method`、`tensor`、`basis`、`method_state`、`components`；`xx`、`xy`、`xz`、`yx`、`yy`、`yz`、`zx`、`zy`、`zz` 及各自的 `_value` 属性 |
 | `tensor_component` | `name`、`profile_method`、`quantity`、`quantity_value`、`basis` |
+| `material_model` | `name`、`material` |
+| `material` | `name`、`properties` |
+| `material_property` | `name`、`property_method`、`dimensions`、`coefficients`、`basis`、`coefficient_state` |
+| `material_coefficient` | `name`、`property_method`、`quantity`、`quantity_value`、`basis` |
 | `user_tag` | `name` |
 | `volume_average_report` | `name`、`parts`、`tags`、`field_function` |
 
@@ -157,7 +161,7 @@ python3 bridge/runner/session_bridge.py describe \
 | `primitive` | 字符串、布尔或数值；非有限数值转成显式字符串 |
 | `name` | 单个 STAR 对象的显示名称；可选关联允许 `null` |
 | `type_name` | 非空对象的 Java 简单类名 |
-| `java_class` | 非空对象的完整 Java 类名，用于实际 Profile 方法及方法条件检查 |
+| `java_class` | 非空对象的完整 Java 类名，用于实际 Profile、材料物性方法及方法条件检查 |
 | `names` | STAR 对象集合的排序名称数组；空集合返回 `[]`，集合为 `null` 则报错 |
 | `enum_name` | 非空 Java 枚举的常量名称 |
 | `presence` | `null` 为 `false`，非空返回值为 `true`；用于已声明的对象存在性条件，不判断其他模型状态 |
@@ -171,6 +175,8 @@ python3 bridge/runner/session_bridge.py describe \
 | `tensor_components` | 当前方法的独立标量分量引用数组，采用普通集合条目格式，不读取数量 |
 | `tensor_method_basis` | 当前已适配张量方法的元数据和方向引用，不读取任何分量数量 |
 | `tensor_layout_valid` | 条件适配器：核对当前方法布局及二维/三维维数后返回 `true`，不支持时报告错误 |
+| `material_coefficient_basis` | 当前多系数材料物性的方法、量纲和有序系数元数据，不读取数量 |
+| `material_coefficient_state` | 同一物性元数据和各系数当前常量方法的数量，保留 API 实际名称和顺序 |
 | `enum` | `selected` 和当前 API 返回的 `allowed` 集合，不以枚举类全部常量替代当前允许值 |
 | `query` | 静态模式为 `mode: static` 和 `objects`；动态模式为 `mode: query`、`predicate` 和 `modifiers` |
 
@@ -184,7 +190,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 `CompositeTensorProfileMethod` 按 `storage: full` 输出九项，顺序为 `XX, XY, XZ, YX, YY, YZ, ZX, ZY, ZZ`；`AnisotropicTensorProfileMethod` 读取 `local_orientation`，带 CoordinateSystem 的子类读取 `coordinate_system`。`CompositeSymmetricTensorProfileMethodWithCoordinateSystem` 按 `storage: symmetric_lower` 输出 `XX, YX, YY, ZX, ZY, ZZ` 六项。每项含大写 `name`、从 `0` 开始的 `row`/`column`、当前分量 `method`，以及完整标量 `quantity`；对称方法不补齐镜像项。
 
-`basis` 与上述元数据和方向字段相同，但不含 `components`，也不访问各分量的 quantity。`tensor` 要求所有独立分量的当前方法为 `ConstantScalarProfileMethod`；不支持的方法或二维数据返回属性错误，不猜测缺失分量。读取始终使用无参 `getMethod()`，禁止通过带 Class 参数的重载暗中改变当前方法。独立分量属性及其 `_value` 属性均返回标量数量；写入边界与对称别名见[张量分量修改](catalog-modifier.md#张量-profile-分量)。对称六分量分支已实现，但尚未通过真实算例验收。
+`basis` 与上述元数据和方向字段相同，但不含 `components`，也不访问各分量的 quantity。`tensor` 要求所有独立分量的当前方法为 `ConstantScalarProfileMethod`；不支持的方法或二维数据返回属性错误，不猜测缺失分量。读取始终使用无参 `getMethod()`，禁止通过带 Class 参数的重载暗中改变当前方法。独立分量属性及其 `_value` 属性均返回标量数量；写入边界与对称别名见[张量分量修改](catalog-modifier.md#张量-profile-分量)。对称方法已通过二维/三维代表性读取与分量写入；具体验证范围见[修改验收](catalog-modifier.md#验证范围与迁移边界)。
 
 ### 张量方法状态
 
@@ -210,21 +216,61 @@ python3 bridge/runner/session_bridge.py describe \
 
 子对象具有五个属性：`name`、`profile_method`、`quantity`、`quantity_value`、`basis`。两个 quantity 属性读取当前常量方法的同一标量数量；`basis` 使用父张量的 `tensor_method_basis`，保留 shape、存储方式、量纲与方向引用，不访问兄弟分量。支持上述二维和三维布局；原 `tensor_profile.tensor`、`basis` 与 `xx` 等矩阵属性仍仅支持三维复合方法。用子对象修改时的范围与示例见[张量分量修改](catalog-modifier.md#张量-profile-分量)。
 
+### 材料物性与系数
+
+材料路径从已有 `physics_continuum` 开始，依次定位单组分材料模型、材料、物性和当前方法的系数。`material_model` 对应 `SingleComponentMaterialModel`，例如名称为 `Solid` 的模型；它的 `material` 属性返回实际材料的对象引用，例如 `Al`，不以模型名称代替材料名称。`material` 从模型的子对象中筛选 `Material`，`material_property` 从材料的 `getMaterialProperties().getObjects()` 枚举物性。每层均按类型和实际显示名称要求唯一匹配。
+
+例如读取专用固体连续体中的一个导热系数：
+
+```json
+{
+  "schema_version": 1,
+  "action": "read",
+  "target": {
+    "type": "material_coefficient",
+    "name": "k12",
+    "parent": {
+      "type": "material_property",
+      "name": "Thermal Conductivity",
+      "parent": {
+        "type": "material",
+        "name": "Al",
+        "parent": {
+          "type": "material_model",
+          "name": "Solid",
+          "parent": {"type": "physics_continuum", "name": "_TensorSolidMaterial"}
+        }
+      }
+    }
+  }
+}
+```
+
+示例名称来自工作副本，必须替换为目标算例的实际名称。`material_coefficient` 只从父物性当前无参 `getMethod()` 的 `getScalarProperties()` 定位 `ScalarMaterialProperty`；方法须为 `MultiCoefficientMaterialPropertyMethod`。父物性的 `coefficients` 属性返回这些系数的实际对象引用，不读取数量。切换材料物性方法后应重新枚举；同会话可保留各层 `reference` 拒绝旧对象，跨加载使用完整 `locator`。
+
+`material_property.basis` 使用 `material_coefficient_basis`，返回 `name`、`java_class`、`method`、`dimensions` 和 `coefficients`。每个系数条目含从 `0` 开始的 `index`、API 给出的 `coefficient_name`、实际显示名称 `name`、实际 `java_class` 和 `dimensions`；条目按 API 顺序保留。它不读取系数数量，也不推断矩阵 shape、对称镜像或坐标转换。该材料路径没有方向关联字段，方向设置不在核对范围。
+
+`coefficient_state` 使用 `material_coefficient_state`，在相同元数据和系数条目上增加各项当前 `method` 及完整标量 `quantity`；所有系数均须使用当前 `ConstantMaterialPropertyMethod`。某个系数为其他方法时，该完整状态读取报错，但不妨碍独立枚举 `coefficients` 或读取 `basis`。真实导热夹具的正交方法返回 `k11, k22, k33`，各向异性方法返回 `k11, k12, k13, k22, k23, k33`；这些名称和项数是该物性的观察结果，不是其他材料系数的固定格式。
+
+系数子对象有五个属性：`name`、`property_method`、`quantity`、`quantity_value`、`basis`。两个 quantity 属性读取该系数当前常量方法的同一数量；子对象 `basis` 读取父物性的多系数布局，不读取兄弟系数数量。已有单项写入契约见[材料系数修改](catalog-modifier.md#材料系数)。
+
 ## 人工执行映射
 
 [`catalogs/2602/execution.json`](../catalogs/2602/execution.json) 是维护者审阅的调用映射，由 [`core/execution.py`](../core/execution.py) 与候选目录共同校验；它与仅供离线核对的 `overrides.json` 修改语义分开维护。请求只能选择目标、属性或操作及其参数，不能覆盖映射、方法的 `effect`、Java 类或参数来源。
 
 映射格式版本当前为 `5`，加载器兼容仅含读取管线的 schema 1 和原有写入 schema 2/3/4；顶层包含 `target`、`members`、`types`、`properties`、`operations`。旧格式没有结构操作，加载时使用空操作集合。每个 member 锁定候选声明的签名和指纹，并声明反射参数类型及 `effect: read` 或 `effect: write`。定位和读取管线只允许 `read`；写入管线仅最后一步允许 `write`，读取计划会移除写入管线。当前只接收已核对的 public 实例方法，不开放字段、构造器、静态调用或通过 `setAccessible()` 访问非 public 方法。参数类型必须能由候选材料证明，裸泛型变量 `T` 不能冒充可加载类；枚举 setter `EnumeratedOption.setSelected(T)` 仅在候选类声明和官方类型链接证明其首个上界为 `Enum` 时，使用已核对的泛型擦除规则。其他未解析泛型仍拒绝猜测；嵌套类按已核对类型页转换为 JVM 名称。
 
-类型的 `locate` 和属性的 `read` 都是调用管线：`root` 可为 `simulation`、当前 `object` 或 `parent`，后续每一步以上一步返回值作为接收对象。参数来源只能是已核对的类字面量、JSON 标量 `literal` 或当前 `object`/`parent` 上下文，数量和类型必须与指定方法相符。只读管线允许 `steps: []`，直接将所选 root 传给适配器；张量 `tensor`/`basis`/`method_state` 使用此形式读取当前对象。写入管线仍要求非空并以受控 setter 结束。对象定位管线最终必须返回集合，父类型关系须明确且不能成环。
+类型的 `locate` 和属性的 `read` 都是调用管线：`root` 可为 `simulation`、当前 `object` 或 `parent`，后续每一步以上一步返回值作为接收对象。参数来源只能是已核对的类字面量、JSON 标量 `literal` 或当前 `object`/`parent` 上下文，数量和类型必须与指定方法相符。只读管线允许 `steps: []`，直接将所选 root 传给适配器；张量 `tensor`/`basis`/`method_state` 和材料系数元数据使用此形式读取当前对象或父对象。写入管线仍要求非空并以受控 setter 结束。对象定位管线最终必须返回集合，父类型关系须明确且不能成环。
 
 schema 3 新增通用 `primitive`、`enum`、`vector_expression` 和 `vector_value` 写适配器，并将场函数定义命名为 `field_definition`；schema 2 的旧 `primitive` 加载时规范化为 `field_definition`。`write.guards` 使用同样受 `effect: read` 限制的管线，在修改准备和 setter 前检查；读计划移除写入执行管线；`describe` 额外保留目标条件的只读管线，以返回实际检查结果，新关联条件仍只提供摘要。schema 4 新增 `reference` 与 `object_selection`：`value_types` 限定允许的关联类型，引用写入的 `value_guards` 在新关联上检查；对象选择以 `pipelines.static` 和 `pipelines.query` 分别声明最终 setter，每次请求只选一条。属性请求版本仍为读取 schema 1、修改 schema 2，详细值格式与条件行为见[目录修改](catalog-modifier.md#写入条件)。
+
+材料系数读取沿 `MaterialProperty.getMethod()` → `MultiCoefficientMaterialPropertyMethod.getScalarProperties()` → 各子属性当前 `getMethod()` 取得数据。本机 2602 实现中，`MaterialProperty.getObjects()` 只返回当前方法，不能用它枚举全部可用方法；`getMaterialPropertyMethod(Class)` 只查找既有方法，缺失时抛错。`MultiCoefficientMaterialPropertyMethod.getMethod(int)` 在系数当前不是函数方法时会切换到 `FunctionMaterialPropertyMethod`，因此没有将它映射为只读调用。
 
 schema 5 按类型新增 `operations`。首个 `profile_method` 操作声明方法 ID、只读 `available` 管线、`guards`、独立 `read_properties`、`state_property`、`preserved_properties` 和 `impacts`，以及最终 `write` 管线。`available` 从目标枚举现有方法；setter 的唯一 `method` 参数必须来自其中选定的实际 `ProfileMethod` 对象。属性 writer 不能使用这个操作专用参数。描述计划移除操作 setter，普通读取和兼容修改计划移除操作集合；结构修改计划则只保留所选操作与声明的读取集合。结构请求独立使用 schema 3。
 
 运行时先用 `getCurrentVersion()` 和 `getReleaseNumber()` 读取当前 server 版本，与目录精确匹配，不使用文件保存版本，也不截断版本后缀。离线 `check --install` 只核对安装材料，不能代替这项会话检查。
 
-Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作为 setter 或访问路径；`readOnly` 元数据也不能替代实际条件检查。现有写入流程核对预期旧状态、类型、单位、允许枚举值、向量分量及标签并回读；重力模型存在性、报告新关联的标量场函数类型以及张量布局、维数和分量方法已配置为声明式条件，其他模型条件与适配器仍待补齐，新增路径的实际验证状态见[修改验证范围](catalog-modifier.md#验证范围与迁移边界)。写入参数、单次 setter 尝试及失败契约见[目录修改](catalog-modifier.md)。
+Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作为 setter 或访问路径；`readOnly` 元数据也不能替代实际条件检查。现有写入流程核对预期旧状态、类型、单位、允许枚举值、向量分量及标签并回读；重力模型存在性、报告新关联的标量场函数类型以及张量布局、维数、分量方法和材料系数当前方法已配置为声明式条件，其他模型条件与适配器仍待补齐，新增路径的实际验证状态见[修改验证范围](catalog-modifier.md#验证范围与迁移边界)。写入参数、单次 setter 尝试及失败契约见[目录修改](catalog-modifier.md)。
 
 ## 验证范围与剩余工作
 
@@ -236,4 +282,4 @@ Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作�
 
 `describe` 已在 2602 工作副本验证张量目标条件全部满足、缺失重力模型不满足、受控条件适配错误的逐项隔离，以及无条件属性与未实现写入的区分；错误后会话仍为 `ready`，张量读取值和原输入 SHA256 未变。文件模式的标量描述及原输入保护也已核对。产物位于本地 `outputs/catalog-conditions-20261029/`。
 
-张量 Profile 已在单相多孔区域完成二维和三维四种已映射方法的当前分量子对象读写、状态读取与代表性切换；非常量兄弟分量隔离、旧状态/引用/单位拒绝及文件保存重载已验证，原三维矩阵入口也通过回归检查。具体转换及未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。分项覆盖报告见[离线目录工具](catalog.md#分项覆盖报告)；已有操作描述覆盖张量方法切换，其他结构操作、类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。
+张量 Profile 已在单相多孔区域完成二维和三维四种已映射方法的当前分量子对象读写、状态读取与代表性切换；非常量兄弟分量隔离、旧状态/引用/单位拒绝及文件保存重载已验证，原三维矩阵入口也通过回归检查。材料导热系数的代表性标量写入、方法拒绝及保存重载已通过；有限元源导数对称张量已核对二维三项、三维六项、XY/YX 别名及保存后的数值和坐标引用。具体转换及未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。分项覆盖报告见[离线目录工具](catalog.md#分项覆盖报告)；已有操作描述覆盖张量方法切换，其他结构操作、类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。

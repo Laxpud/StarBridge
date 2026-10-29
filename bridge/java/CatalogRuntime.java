@@ -551,7 +551,7 @@ class CatalogRuntime {
             if (!sameValue(before.get("target"), after.get("target")))
                 throw new IllegalStateException("Modification target identity changed");
             for (String key : java.util.List.of("name", "function_name", "value_type", "dimensions", "unit",
-                    "profile_method", "coordinate_system", "local_orientation", "basis")) {
+                    "profile_method", "property_method", "coordinate_system", "local_orientation", "basis")) {
                 if (key.equals(property)) continue;
                 if (key.equals("unit") && (adapter.equals("scalar_expression") || adapter.equals("scalar_value")
                         || adapter.equals("vector_expression") || adapter.equals("vector_value"))) continue;
@@ -1330,14 +1330,14 @@ class CatalogRuntime {
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
-                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid")
+                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
         // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
         if (adapter.equals("presence")) return value != null;
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {
-            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid").contains(adapter),
+            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state").contains(adapter),
                     "Metadata adapter requires a non-null value: " + adapter);
             return null;
         }
@@ -1397,8 +1397,58 @@ class CatalogRuntime {
             case "tensor_method_basis": return tensorBasis(value, sessionToken, false);
             case "tensor_components": return collection(tensorComponents(value), sessionToken);
             case "tensor_layout_valid": return tensorLayoutValid(value);
+            case "material_coefficient_basis": return materialCoefficients(value, false, sessionToken);
+            case "material_coefficient_state": return materialCoefficients(value, true, sessionToken);
             default: throw new IllegalArgumentException("Unsupported value adapter: " + adapter);
         }
+    }
+
+    /**
+     * 读取材料当前多系数方法的组织与可选数量，不将系数名称猜成某个矩阵布局。
+     * basis 只保存方法、量纲和按 API 顺序配对的名称/子属性元数据，用于单系数写入后的身份核对；
+     * state 额外读取各系数的当前常量数量，任一不支持的方法都会令完整状态读取失败。
+     */
+    private static Object materialCoefficients(Object value, boolean withQuantities, String token) {
+        require(value instanceof star.material.MaterialProperty,
+                "Material coefficient adapter requires a MaterialProperty");
+        star.material.MaterialProperty property = (star.material.MaterialProperty) value;
+        // 1. 只读取当前方法；MultiCoefficient.getMethod(int) 会切换分量到函数方法，禁止用于读取。
+        star.material.MaterialPropertyMethod current = property.getMethod();
+        require(current instanceof star.material.MultiCoefficientMaterialPropertyMethod,
+                "Unsupported material coefficient method: " + (current == null ? "null" : current.getClass().getName()));
+        star.material.MultiCoefficientMaterialPropertyMethod method =
+                (star.material.MultiCoefficientMaterialPropertyMethod) current;
+        java.util.List<String> names = method.getCoefficientNames();
+        java.util.List<star.material.ScalarMaterialProperty> properties = method.getScalarProperties();
+        require(names != null && properties != null && names.size() == properties.size(),
+                "Material coefficient names and properties do not have matching lengths");
+
+        // 2. API 的名称顺序与子属性顺序一一对应；显示名称另行保留，供通用定位器唯一匹配。
+        // 不补写对称项、不硬编码 3/6/9 项，也不把不同材料的系数解释为相同坐标含义。
+        java.util.List<Object> coefficients = new java.util.ArrayList<>();
+        for (int index = 0; index < properties.size(); index++) {
+            star.material.ScalarMaterialProperty coefficient = properties.get(index);
+            String name = names.get(index);
+            require(coefficient != null && name != null && !name.isEmpty(),
+                    "Material coefficient metadata is missing at index " + index);
+            java.util.Map<String, Object> item = fields("index", index, "coefficient_name", name,
+                    "name", coefficient.getPresentationName(), "java_class", coefficient.getClass().getName(),
+                    "dimensions", coefficient.getDimensions().toString());
+            if (withQuantities) {
+                // 3. ScalarMaterialProperty 的无参 getter 不改变方法；函数系数不伪装成常量数量。
+                star.material.MaterialPropertyMethod scalarMethod = coefficient.getMethod();
+                require(scalarMethod instanceof star.material.ConstantMaterialPropertyMethod,
+                        "Unsupported material coefficient method for " + name + ": "
+                        + (scalarMethod == null ? "null" : scalarMethod.getClass().getName()));
+                item.put("method", scalarMethod.getClass().getName());
+                item.put("quantity", encode(((star.material.ConstantMaterialPropertyMethod) scalarMethod).getQuantity(),
+                        "quantity", token));
+            }
+            coefficients.add(item);
+        }
+        return fields("name", property.getPresentationName(), "java_class", property.getClass().getName(),
+                "method", current.getClass().getName(), "dimensions", property.getDimensions().toString(),
+                "coefficients", coefficients);
     }
 
     /** 保存一次取得的方法及其独立分量布局；这里只描述组织，不访问 quantity 或切换方法。 */

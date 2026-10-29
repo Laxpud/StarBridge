@@ -2,7 +2,7 @@
 
 [返回项目入口](README.cn.md) · [目录描述与读取](catalog-runtime.md) · [旧 Modifier 契约](modifier.md) · [当前任务](../TODO.md)
 
-文件与后台会话的 `modify` 使用候选目录和人工执行映射修改已有属性，或执行目录声明的结构操作。属性映射包含标量与向量表达式或常量、用户场函数定义及布尔/枚举选项、重力向量、用户标签关联，体积平均报告的场函数引用和对象选择，以及区域中已有二维或三维张量 Profile 的常量分量。结构操作首先支持已有二维或三维张量 Profile 的[方法切换](#张量-profile-方法切换)。每次请求选择一个属性或一个操作，先核对条件与旧状态，再执行、回读并返回差异。实际验证状态见[验证范围](#验证范围与迁移边界)；创建、删除、重命名、模型切换和其他结构操作尚未实现。
+文件与后台会话的 `modify` 使用候选目录和人工执行映射修改已有属性，或执行目录声明的结构操作。属性映射包含标量与向量表达式或常量、用户场函数定义及布尔/枚举选项、重力向量、用户标签关联，体积平均报告的场函数引用和对象选择，以及区域中已有二维或三维张量 Profile 的常量分量、材料物性当前多系数方法的常量系数。结构操作首先支持已有二维或三维张量 Profile 的[方法切换](#张量-profile-方法切换)。每次请求选择一个属性或一个操作，先核对条件与旧状态，再执行、回读并返回差异。实际验证状态见[验证范围](#验证范围与迁移边界)；创建、删除、重命名、模型切换和其他结构操作尚未实现。
 
 ## 使用方式
 
@@ -57,7 +57,7 @@ python3 bridge/runner/session_bridge.py save \
 
 ## 请求与支持范围
 
-属性修改请求顶层必须且只能有 `schema_version`、`action`、`target`、`property`、`expected`、`value` 六个字段。格式版本为整数 `2`，`action` 固定为 `modify`。`target` 沿用[目录目标身份](catalog-runtime.md#请求与目标身份)：类型 ID、唯一显示名称，边界与张量 Profile 还需父区域，张量分量需完整父 Profile 路径；同会话可附带 `reference` 严格检查 token/key。跨加载不能沿用旧引用，应重新读取并使用 `locator`。结构操作使用下文独立的 [schema 3 契约](#张量-profile-方法切换)。
+属性修改请求顶层必须且只能有 `schema_version`、`action`、`target`、`property`、`expected`、`value` 六个字段。格式版本为整数 `2`，`action` 固定为 `modify`。`target` 沿用[目录目标身份](catalog-runtime.md#请求与目标身份)：类型 ID、唯一显示名称，边界与张量 Profile 还需父区域，张量分量需完整父 Profile 路径，材料系数需完整父物性及材料路径；同会话可附带 `reference` 严格检查 token/key。跨加载不能沿用旧引用，应重新读取并使用 `locator`。结构操作使用下文独立的 [schema 3 契约](#张量-profile-方法切换)。
 
 | 目标类型 | 属性 ID | `expected` | `value` |
 |---|---|---|---|
@@ -68,6 +68,7 @@ python3 bridge/runner/session_bridge.py save \
 | `physics_continuum` | `gravity` | 完整向量对象 | 含 `definition` 和结果 `unit` 的对象；要求已启用 `GravityModel` |
 | `physics_continuum` | `gravity_value` | 完整向量对象 | 含三个 `components` 和 `unit` 的对象；要求已启用 `GravityModel` |
 | `tensor_component` | `quantity`、`quantity_value` | 所选分量的完整标量数量对象 | 分别为含 `definition` 或有限数值 `value` 的对象，均需 `unit`；父张量须为已支持布局，分量须为当前常量方法 |
+| `material_coefficient` | `quantity`、`quantity_value` | 所选系数的完整标量数量对象 | 分别为含 `definition` 或有限数值 `value` 的对象，均需 `unit`；父物性须为当前多系数方法，系数须为当前常量材料方法 |
 | `tensor_profile` | `xx`、`xy`、`xz`、`yx`、`yy`、`yz`、`zx`、`zy`、`zz` | 对应分量的完整标量数量对象 | 含 `definition` 和结果 `unit` 的对象；要求当前为受支持的三维张量方法与常量分量方法 |
 | `tensor_profile` | 上述各属性加 `_value`，例如 `xx_value` | 同上 | 含有限数值 `value` 和 `unit` 的对象 |
 | `user_field_function` | `definition` | 当前定义字符串 | 非空定义字符串 |
@@ -168,9 +169,19 @@ python3 bridge/runner/session_bridge.py save \
 
 `three_dimensional_tensor` 检查 `is3D()`，`composite_tensor_dimension` 检查复合方法维数为 `3`，`constant_component` 检查目标分量当前方法为 `ConstantScalarProfileMethod`。完整修改还要求全部已配属性可读，所以其他分量使用不支持的方法也会阻止写入。读取只调用无参 `getMethod()`，不会通过带 Class 参数的重载切换方法；`ConstantScalarProfileMethod` 是当前方法类型，仍可由标量数量保存表达式。
 
-`name`、`profile_method`、`tensor`、`basis`、`components` 和 `method_state` 不能通过属性赋值修改。写后核对 `profile_method` 和 `basis` 不变，保留原量纲、三维 shape、存储方式、坐标系和局部方向引用，不变换坐标系。对称方法的上下三角属性指向同一独立量，例如 `xy` 与 `yx` 是别名；`tensor.components` 只列下三角六项。该对称分支尚未完成真实算例验收，不能将九个属性名理解为九个独立可写量。
+`name`、`profile_method`、`tensor`、`basis`、`components` 和 `method_state` 不能通过属性赋值修改。写后核对 `profile_method` 和 `basis` 不变，保留原量纲、三维 shape、存储方式、坐标系和局部方向引用，不变换坐标系。对称方法的上下三角属性指向同一独立量，例如 `xy` 与 `yx` 是别名；`tensor.components` 只列下三角六项。三维真实实例已确认 `xy` 与 `yx` 的别名行为，不能将九个属性名理解为九个独立可写量；验证范围见[验收说明](#验证范围与迁移边界)。
 
 上述 `tensor_profile.xx` 等矩阵属性写入不适用于二维和非复合方法；使用 `tensor_component` 访问已支持布局的实际分量。两种入口均不支持非常量分量方法和材料系数路径。多相多孔阻力使用的 `MixturePorousViscousResistanceMethod` 不属于已支持的方法，不能自动切换为各向异性方法。模型启用与 Profile 创建尚未接入；已有受支持二维或三维 Profile 的方法切换使用下述结构操作。
+
+## 材料系数
+
+`material_coefficient` 修改已有材料物性当前多系数方法中的一个标量子属性。目标需完整保留[连续体—材料模型—材料—物性—系数路径](catalog-runtime.md#材料物性与系数)，以父 `material_property.coefficients` 返回的实际系数名称定位；不能把下标或预想的矩阵分量名作为替代。
+
+读取子对象后，将 `catalog.properties.quantity.value` 原样放入 schema 2 请求的 `expected`。选择 `property: "quantity"` 时，新值为 `{"definition":"2.5","unit":"W/m-K"}`；选择 `property: "quantity_value"` 时，新值为 `{"value":2.5,"unit":"W/m-K"}`。这里的单位来自导热系数夹具，实际请求必须采用读取到的量纲与兼容单位。完整数量旧状态、表达式和单位规则与其他标量写入相同。
+
+`multicoefficient_method` 条件在父物性当前方法上调用 `getScalarProperties()`，要求当前方法支持多系数访问并返回非空引用；`presence` 不检查集合项数。`constant_coefficient` 条件要求所选系数的实际当前类精确为 `star.material.ConstantMaterialPropertyMethod`，不会自动把函数等方法切为常量。准备和回读要求子对象全部五个属性可读，写后核对目标身份、`property_method` 和父物性 `basis` 不变。
+
+此入口每次只修改所选数量，不切换材料物性方法、不替换材料，也不启停模型。父物性的 `basis` 保留当前方法、量纲与系数名称、类型和量纲组织，不读取兄弟数量；其他系数使用函数方法时不单独阻止当前常量系数写入。需要完整系数数量时另读父 `coefficient_state`，该读取要求所有当前系数方法均受支持。这里不补齐矩阵、推断对称别名或转换坐标，方向设置也不属于本次核对范围。
 
 ## 张量 Profile 方法切换
 
@@ -331,7 +342,7 @@ python3 bridge/runner/session_bridge.py modify \
 - 一旦进入 `apply()`，包括 setter 前再次检查条件在内的任何异常，以及后续回读或保存异常，都不归为准备阶段的 `rejected`。后台会话进入 `uncertain`；超时或中断也可能保留活动请求标记，按[会话失败处理](bridge-session.md#身份隔离与失败处理)排查。不会自动重试或承诺回滚。
 - 文件操作只有另存并独立加载后，旧快照和目录内容都一致，才生成成功 `summary.json`。
 
-`describe` 返回的 `writable` 只表示有写入实现，不能代替实际条件检查。当前条件覆盖重力模型存在性、新关联场函数的标量类型，以及张量布局、维数和当前分量方法，方法切换另核对源状态、当前唯一选项和目标方法设置。其他模型依赖、其他结构操作及跨对象事务仍待实现。
+`describe` 返回的 `writable` 只表示有写入实现，不能代替实际条件检查。当前条件覆盖重力模型存在性、新关联场函数的标量类型，以及张量布局、维数、当前分量方法和材料系数当前方法，方法切换另核对源状态、当前唯一选项和目标方法设置。其他模型依赖、其他结构操作及跨对象事务仍待实现。
 
 ## 结果与差异
 
@@ -345,11 +356,21 @@ python3 bridge/runner/session_bridge.py modify \
 
 ## 验证范围与迁移边界
 
+本机 STAR-CCM+ 2602 Build 21.02.007 的固体材料导热系数已完成代表性会话读写：连续体 `_TensorSolidMaterial` 下按 `Solid` → `Al` → `Thermal Conductivity` → 系数的完整路径定位，父物性全部六个属性、系数子对象全部五个属性均可完整读取。各向异性方法的 `k12` 数值从 `0` 改为 `7.5 W/m-K`，`k11` 常量表达式从 `237` 改为 `250`；正交方法三项状态完整，`k22` 数值改为 `150.75 W/m-K`。材料方法选择由验收夹具显式完成，不作为产品结构操作证据；切回各向异性后，其独立设置仍为 `k11=250`、`k12=8.5`、`k13=0`、`k22=237`、`k23=0`、`k33=237`。
+
+将各向异性 `k13` 显式设为函数方法后，父 `basis`、`coefficients` 仍可读，完整 `coefficient_state` 与该系数数量明确报错；`k13` 写入拒绝，兄弟常量系数 `k12` 仍能从 `7.5` 改为 `8.5`。恢复夹具确认函数方法的原 key 未变，读取和拒绝检查没有隐式切换方法。过时数量、`deg` 单位、错误子对象 key、错误连续体路径、函数系数，以及切至正交方法后沿用同名 `k11` 的旧引用，共六类请求均在 setter 前拒绝，会话保持 `ready`。
+
+有限元 `ViscousFlowModel` 与 `GeneralizedNonNewtonianModel` 的专用 Fluid 区域提供了真实 `Momentum Source Velocity Derivative` 对称张量。夹具选择实际可用的 `CompositeSymmetricTensorProfileMethodWithCoordinateSystem`，记录 Laboratory 坐标系和 XY/YX 相同对象 key。三维读取全部 24 个父目标属性，状态含下三角六项；`xy_value` 写为 `3.5` 后 `xy`、`yx` 数量一致，basis 保持不变。二维通过实际名为 `XY & YX Component` 的子对象写入 `5.5`，完整方法状态回读 `shape: [2,2]` 和下三角三项。该方法选择仅用于夹具准备，未扩展产品的 `set_method` 选项。
+
+材料文件修改将各向异性 `k12` 从 `8.5` 改为 `10 W/m-K`，独立重载的目录、旧快照及原输入摘要核对均通过；文件修改前的系数五个属性也与保存前会话结果一致。随后文件修改把三维对称 `yx` 从 `3.5` 改为 `4.25`，重载后 `xy=yx=4.25`，全部 24 个目标属性及坐标 basis 核对通过。独立读取最终文件的材料父物性，完整六属性中仅 `k12` 数量按请求改变，其他系数、方法及 basis 一致；二维对称方法状态和分量集合也与保存前一致，数值 `5.5` 保留。
+
+上述两个文件修改的 `reopened_catalog_match`、`reopened_snapshot_match`、`input_unchanged` 均为 `true`。起始副本和原 `Base.sim~` 的 SHA256 未变，验收会话已关闭、文件进程已结束，未运行网格或求解。产物位于本地 `outputs/catalog-material-20261029/`。这些检查只证明所述导热系数和源导数张量样例；其他材料、方法、方向设置及更广的模型与结构操作仍未覆盖。
+
 本机 STAR-CCM+ 2602 Build 21.02.007 的单相多孔阻力已完成当前分量子对象的二维/三维验收：Anisotropic、Orthotropic、Isotropic、Transverse Isotropic 的独立分量数分别为二维 `4/2/1/2`、三维 `9/3/1/2`。每种布局均按父对象返回的实际分量名称及引用读取子对象全部五个属性，并修改一个代表性分量；数值与纯数值表达式写入交替验证，回读的分量身份、当前方法和父张量 basis 保持一致。二维和三维均完成 Anisotropic → Orthotropic → Isotropic → Transverse Isotropic 切换；这不代表所有有向转换均已验证。
 
 过时数量、单位不兼容、子对象引用 key 不匹配、切换后已不活动的分量，以及非常量分量写入均在 setter 前拒绝，会话保持 `ready`。XX 显式改为函数方法后，父 `components` 与子 `basis` 仍可读，完整 `method_state` 和 XX 数量明确报错；ZZ 常量分量仍可写，随后确认 XX 的函数方法 key 未变，再由夹具显式恢复。原三维 `xx_value` 写入通过全部 24 个父目标属性回读，二维调用原 `xz_value` 在三维条件处拒绝。二维子对象的 `describe` 返回两项已满足的实际条件。
 
-会话保存后，文件入口独立加载二维横观各向同性分量，将其从 `23.25` 改为 `24.5 kg/m^3-s`；目录、旧快照的独立重载核对及输入摘要核对均通过。跨加载按契约移除方向引用的 token/key 后，保存前后的子对象五个属性一致；父张量的分量引用集合和完整方法状态也与独立加载结果一致。产物位于本地 `outputs/catalog-components-20261029/`；本轮未运行网格或求解，对称方法、材料系数及方向对象内部轴设置仍未验收。
+会话保存后，文件入口独立加载二维横观各向同性分量，将其从 `23.25` 改为 `24.5 kg/m^3-s`；目录、旧快照的独立重载核对及输入摘要核对均通过。跨加载按契约移除方向引用的 token/key 后，保存前后的子对象五个属性一致；父张量的分量引用集合和完整方法状态也与独立加载结果一致。产物位于本地 `outputs/catalog-components-20261029/`，该次验证未运行网格或求解。后续材料系数和对称方法的已确认范围见本节开头，方向对象内部轴设置仍未验收。
 
 本机 2602 Build 21.02.007 已在单相多孔工作副本验证 `set_method`：按 Anisotropic → Orthotropic → Isotropic → TransverseIsotropic → Anisotropic 顺序切换，完整回读对应的 9/3/1/2 项独立分量及方向引用。`describe` 返回四种当前可选方法、条件及影响范围；多相阻力的 `MixturePorousViscousResistanceMethod` 单独列为 `unmapped_methods`，未被标成可执行选项。
 
@@ -361,7 +382,7 @@ python3 bridge/runner/session_bridge.py modify \
 
 夹具显式将 XX 分量切换到实际允许的 `FunctionScalarProfileMethod` 后，普通 `modify` 在 `constant_component` 条件检查处拒绝，会话保持 `ready`；随后核对该 Function 方法的对象 key 未变，确认拒绝没有暗中切回 Constant。夹具显式恢复后，XX 仍为 `10`、XY 仍为 `3`。多相 `_TensorPorous` 的 Mixture 方法，以及 `Background` 中不存在的同名 Profile 均在写入前拒绝，会话保持 `ready`。会话另存为 `saved.sim` 后，文件入口读取的全部 22 个已配属性与保存前恢复后的会话结果在跨加载引用规范化后相同。文件 `modify` 将 `yx_value` 写为 `4` 并另存 `file-modified.sim`，`reopened_catalog_match`、`reopened_snapshot_match` 和 `input_unchanged` 均为 `true`；独立重载回读 XX=`10`、XY=`3`、YX=`4`，九分量保持 full 存储，`basis`（含 `LocalOrientation` 引用）规范化后一致。原 `Base.sim~` 的 SHA256 未变，验收会话已关闭。本轮没有运行网格、求解或报告求值，产物位于本地 `outputs/catalog-tensor-20261028/`。
 
-本地映射校验接受只读空 `steps`，拒绝空写入管线。对称方法的二维三项、三维六项及其上下三角别名尚未通过真实实例验收；材料系数和其他未适配方法仍待完成。当前分量子对象的二维/三维验收见本节开头，原矩阵属性仍保留三维边界。
+本地映射校验接受只读空 `steps`，拒绝空写入管线。对称方法的二维三项、三维六项及上下三角别名，以及材料系数的代表性读写、拒绝和保存重载，已有本节开头所述证据；其他未适配方法仍待完成。原矩阵属性仍保留三维边界。
 
 本机 STAR-CCM+ 2602 Build 21.02.007 的 `_SelectionReport` 体积平均报告已由 `Pressure` 关联到 `Density`，`value_checks` 记录 `scalar_field_function` 的预期和实际值均为 `SCALAR`。`parts` 已完成名称查询→静态 `Background` 区域→嵌套查询→空静态选择→同一嵌套查询的回读；嵌套规则为 `And(Type Is Region, Or(Name Matches Background, Tag Contains AirfoilMotion))`，保留 `PrefilterNamedObjects` 修饰符。
 
