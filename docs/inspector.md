@@ -14,7 +14,7 @@ python3 bridge/runner/session_bridge.py inspect \
   --session-dir outputs/my-session
 ```
 
-第二条命令要求已经用 `session_bridge.py start` 启动会话。两种入口自动加载仓库随附的候选目录、`execution.json` 和 `snapshot.json`，不需要新增参数或自行生成目录。当前 server 必须精确匹配 STAR-CCM+ 2602 Build 21.02.007。其余启动条件、目录要求与失败恢复分别见上方使用说明。
+第二条命令要求已经用 `session_bridge.py start` 启动会话。两种入口自动加载仓库随附的候选目录、`execution.json` 和 `snapshot.json`，不需要新增参数或自行生成目录。当前 server 必须精确匹配所选目录的 release/Build；默认 2602，其他版本见[版本选择](catalog-versions.md)。其余启动条件、目录要求与失败恢复分别见上方使用说明。
 
 ## 快照字段
 

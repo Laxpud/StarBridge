@@ -22,6 +22,7 @@ from file_bridge import (catalog_content, catalog_diff, digest, execute,
                          prepare_catalog_modification, prepare_catalog_read, prepare_legacy,
                          prepare_snapshot)
 from modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
+from core.catalog_bundle import bundle_target, check_plan_targets, session_target
 
 
 def write_json(path, data):
@@ -119,6 +120,7 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
     """连接已登记的服务并校验目标文件身份；修改失败不自动重试。"""
     if not alive(state):
         raise RuntimeError('Managed server is not running; refusing to connect to its old port')
+    check_plan_targets(catalog_plan, legacy_plan, snapshot_plan, target=session_target(state))
     # 旧管理会话升级时在持锁请求中只补一次世代标识；对象 key 必须与该 token 配对。
     if not state.get('session_token'):
         state['session_token'] = uuid.uuid4().hex
@@ -174,7 +176,7 @@ def start(args, directory):
                  'port': args.port, 'star': star, 'input': str(source),
                  'input_sha256': original, 'working_copy': str(working),
                  'current_file': str(working), 'modified': None, 'active_request': None,
-                 'session_token': uuid.uuid4().hex}
+                 'session_token': uuid.uuid4().hex, 'catalog_target': args.snapshot_plan['target']}
         with (directory / 'server.log').open('w') as log:
             process = subprocess.Popen(command, cwd=directory, env=environment,
                                        stdin=subprocess.DEVNULL, stdout=log,
@@ -227,6 +229,18 @@ def operate(args, directory):
         uncertain = state['state'] != 'ready' or state.get('active_request') is not None
         if uncertain and not (args.action == 'stop' and args.discard):
             raise RuntimeError('Previous operation outcome is unknown; inspect logs or stop --discard')
+        # 持锁后从会话绑定选择版本。所有本地计划校验都在请求活动标记与 uncertain
+        # 捕获块之前完成，版本错配只拒绝本次输入，不污染可继续使用的会话。
+        if not (args.action == 'stop' and args.discard):
+            target = session_target(state)
+            catalog_plan = getattr(args, 'catalog_plan', None)
+            check_plan_targets(catalog_plan, target=target)
+            if args.action == 'set-scalar' or (args.action == 'modify' and catalog_plan is None):
+                args.legacy_plan = prepare_legacy(getattr(args, 'modification', None), target=target)
+            if args.action in ('inspect', 'save', 'modify', 'set-scalar', 'stop'):
+                args.snapshot_plan = prepare_snapshot(target)
+            check_plan_targets(catalog_plan, getattr(args, 'legacy_plan', None),
+                               getattr(args, 'snapshot_plan', None), target=target)
         if args.action == 'stop':
             # 先读取 STAR 的修改标志；本机另存后仍可能为真，不擅自清除此标志。
             # 失败或仍有修改时，只有显式 discard 才允许放弃剩余内存状态。
@@ -323,6 +337,7 @@ def main():
         if action == 'start':
             command.add_argument('input', type=Path)
             command.add_argument('--star', default='starccm+')
+            command.add_argument('--catalog-release', default='2602', help='Exact bundled release to bind to this session')
             command.add_argument('--port', type=int, default=49001)
         elif action == 'set-scalar':
             command.add_argument('--name', required=True)
@@ -356,19 +371,14 @@ def main():
                 args.catalog, args.execution, args.request)
         else:
             args.modification = load_request(args.request)
-            args.legacy_plan = prepare_legacy(args.modification)
     elif args.action in ('describe', 'read'):
         # 目录、成员指纹与请求校验在获取会话活动标记之前完成；无效输入不会污染会话。
         args.catalog_plan, args.catalog_request = prepare_catalog_read(
             args.catalog, args.execution, args.request, args.action)
-    elif args.action == 'set-scalar':
-        # 默认目录也在活动标记前校验，目录缺失或签名失效不会污染会话状态。
-        args.legacy_plan = prepare_legacy()
-    # 需要快照的生命周期和修改入口共用默认目录；status 与显式 discard 不依赖目录，
-    # 以便目录损坏或不匹配时仍能查询、清理本次创建的服务。
-    if args.action in ('start', 'inspect', 'save', 'modify', 'set-scalar') or (
-            args.action == 'stop' and not args.discard):
-        args.snapshot_plan = prepare_snapshot()
+    # 新会话显式绑定；既有会话在持锁后使用保存的目标，不依赖新的 CLI 默认值。
+    # status 与显式 discard 不加载目录，以便目录损坏时仍能查询或清理本次服务。
+    if args.action == 'start':
+        args.snapshot_plan = prepare_snapshot(bundle_target(args.catalog_release))
     directory = args.session_dir.resolve()
     result = start(args, directory) if args.action == 'start' else operate(args, directory)
     # 部分对象读取失败不意味着会话身份不确定；保留可用快照，并显式提示缺失内容。

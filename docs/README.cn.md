@@ -15,7 +15,7 @@ StarBridge 目前处于早期开发阶段。Inspector 已支持通过文件和�
 
 目录驱动的 `describe/read` 已可核对当前 server 版本、定位对象，并通过经审阅的映射和共享类型适配器读取选定属性。结果独立返回会话引用及逐属性状态。目录 `modify` 提供旧状态检查、回读及目录与快照两层 Diff；当前映射还新增布尔/枚举选项、向量表达式与分量，以及检查 GravityModel 存在性的重力写入，新增路径的代表性写入、拒绝和保存重载已通过真实 STAR 2602 检查。报告场函数引用及静态/查询对象选择也已通过代表性写入、拒绝和保存重载检查。区域张量 Profile 已支持二维和三维已适配方法的分量子对象读写，在保持当前方法与方向的条件下修改单个常量分量；各向异性、正交、各向同性和横观各向同性多孔阻力已通过代表性分量读写。主方向和轴对称方法直接拥有的方向轴已接入共享向量读写，分别保留每轴坐标关联，二维和三维都保留三个原始向量分量。材料物性已提供命名系数子对象的标量读写，保持当前方法和系数组织；此路径不切换材料方法，也不检查方向设置。固体导热系数已通过代表性写入、拒绝和保存重载检查，对称源导数张量已通过二维/三维读写与持久化检查；其他材料、方法及更广的配置覆盖仍未完成。具体验证范围见[修改说明](catalog-modifier.md)。
 
-兼容 schema 1 `modify` 和 `set-scalar` 已自动使用同一目录修改器，保留原参数及既有结果字段；随附目录要求运行中 server 精确匹配 2602 Build 21.02.007，`set-scalar` 仍没有调用者提供的预期旧状态。
+兼容 schema 1 `modify` 和 `set-scalar` 已自动使用同一目录修改器，保留原参数及既有结果字段；随附目录要求运行中 server 精确匹配所选目录的 release/Build，版本选择见[说明](catalog-versions.md)，`set-scalar` 仍没有调用者提供的预期旧状态。
 
 Inspector 快照也已通过独立布局使用共享目录，保留 schema 1 字段；`inspect` 和 `save` 同样精确核对 server 版本。[分项覆盖报告](catalog.md#分项覆盖报告)已区分发现、实现与实际运行证据，`describe` 可检查已声明的目标条件。张量 Profile 与材料物性方法结构操作已提供描述、影响范围、旧状态检查及回读；材料操作按映射类查找既有常量、正交及各向异性导热方法；其他写适配器、更多结构操作与更广的模型状态检查仍未完成。
 
@@ -23,7 +23,7 @@ Inspector 快照也已通过独立布局使用共享目录，保留 schema 1 字
 
 ## 快速开始
 
-先阅读[文件 Bridge 使用说明](bridge-file.md)。原型需要 Python 3.11 或更新版本、可用的 STAR-CCM+ 安装及许可证；目前已在 Linux 和 STAR-CCM+ 2602 上实际运行。在仓库根目录执行：
+先阅读[文件 Bridge 使用说明](bridge-file.md)。原型需要 Python 3.11 或更新版本、可用的 STAR-CCM+ 安装及许可证；已在 Linux 上运行 2602，并完成 2510 的代表性验证，范围见[版本说明](catalog-versions.md)。在仓库根目录执行：
 
 ```bash
 python3 bridge/runner/file_bridge.py inspect 'Base.sim~' --work-dir outputs/read-parameters
@@ -37,6 +37,7 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' --work-dir outputs/read
 |---|---|
 | [目录描述与读取](catalog-runtime.md) | 核对 server 版本、按需读取属性，并返回会话引用和逐属性错误 |
 | [目录单属性修改](catalog-modifier.md) | schema 2 写入、旧状态检查、回读、Diff 与文件重载核对 |
+| [STAR 版本选择](catalog-versions.md) | 选择 2602 或 2510 的精确 Build，核对会话绑定及分版本证据 |
 | [离线目录工具](catalog.md) | 生成版本化候选 API、合并人工语义与比较声明 |
 | [Modifier 单项修改](modifier.md) | 修改请求、旧状态检查、回读与保存契约 |
 | [Inspector 对象快照](inspector.md) | 目录驱动的快照布局、兼容字段、读取错误与验证边界 |

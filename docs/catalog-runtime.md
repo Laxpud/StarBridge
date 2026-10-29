@@ -6,7 +6,7 @@
 
 ## 使用方式
 
-需要 Python 3.11+、可用的 STAR-CCM+ 2602 Build 21.02.007 安装和许可证。以下命令直接使用随仓库分发的 `catalogs/2602/generated/catalog.json`；可按[离线目录工具](catalog.md#生成与查看)从该安装及当前 `catalogs/2602/selection.json` 重新生成到新路径进行核对。`describe/read` 仍显式指定候选目录和人工执行映射。
+需要 Python 3.11+、匹配所选目录的 STAR 安装和许可证；默认 2602，其他随附版本见[版本选择](catalog-versions.md)。以下命令直接使用随仓库分发的 `catalogs/2602/generated/catalog.json`；可按[离线目录工具](catalog.md#生成与查看)从该安装及当前 `catalogs/2602/selection.json` 重新生成到新路径进行核对。`describe/read` 仍显式指定候选目录和人工执行映射。
 
 保存 `read-request.json`，将对象名称换成目标算例中的实际名称：
 

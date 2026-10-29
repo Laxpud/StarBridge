@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "target": {
+    "release": "2510",
+    "build": "20.06.007"
+  },
+  "bindings": {
+    "scalar_parameter.definition": {
+      "type": "star.common.ScalarGlobalParameter",
+      "kind": "property",
+      "value_type": {
+        "kind": "expression",
+        "unit": null,
+        "dimensions": null,
+        "enum_values": [],
+        "reference_type": null
+      },
+      "parameters": {},
+      "access": {
+        "description": "通过 Simulation.get(GlobalParameterManager.class) 枚举对象，按显示名称唯一匹配，并确认 ScalarGlobalParameter 类型。名称不是跨重载的永久身份。",
+        "members": [
+          {
+            "type": "star.common.RootObject",
+            "member": "get(java.lang.Class)",
+            "signature": "public <T extends ClientServerObject> T get(Class<T> aClass)",
+            "fingerprint": "37e8a9e9353f3d0d5be4e244115274bc546afe1fa5f61ad15b6706370d3becee"
+          },
+          {
+            "type": "star.base.neo.ClientServerObjectManager",
+            "member": "getObjects()",
+            "signature": "public Collection<T> getObjects()",
+            "fingerprint": "25bbd44d36de5feba1633320a423e78dd42666d93ec3ccf451a49a0c99ab9695"
+          }
+        ]
+      },
+      "read": [
+        {
+          "type": "star.common.ScalarGlobalParameter",
+          "member": "getQuantity()",
+          "signature": "public ScalarPhysicalQuantity getQuantity()",
+          "fingerprint": "b38c9a61d2ba39f6c8b59750e88ace5b408f2abc6794bce1bcb5525158af2da7"
+        },
+        {
+          "type": "star.common.ScalarPhysicalQuantity",
+          "member": "getDefinition()",
+          "signature": "public String getDefinition()",
+          "fingerprint": "fb19e9f77690619fda74eca11d74a0281b72a848efc22d23a9ba4e532b335d6a"
+        },
+        {
+          "type": "star.common.ValueFunction",
+          "member": "getUnits()",
+          "signature": "public Units getUnits()",
+          "fingerprint": "28e643a5c1bc26e69f1e70dda3b60f59e88ebdd94f526481182dae79cfdde1ba"
+        }
+      ],
+      "write": [
+        {
+          "type": "star.common.ScalarGlobalParameter",
+          "member": "getQuantity()",
+          "signature": "public ScalarPhysicalQuantity getQuantity()",
+          "fingerprint": "b38c9a61d2ba39f6c8b59750e88ace5b408f2abc6794bce1bcb5525158af2da7"
+        },
+        {
+          "type": "star.common.ScalarPhysicalQuantity",
+          "member": "setDefinitionAndUnits(java.lang.String,star.common.Units)",
+          "signature": "public void setDefinitionAndUnits(String definition, Units units)",
+          "fingerprint": "c772fa29d5baf1b63847f51f65d508db52a9b837cde2821b95ea1e1f24419727"
+        }
+      ],
+      "adapter": null,
+      "constraints": [
+        {
+          "description": "写入前核对预期旧状态和完整的已覆盖快照；目录尚未接入运行时检查。",
+          "runtime_check": null
+        },
+        {
+          "description": "单位和量纲来自当前数量对象。非常量表达式要求 SI 结果单位；纯数值可以指定兼容量纲的单位。",
+          "runtime_check": null
+        },
+        {
+          "description": "保持原文件保护、文件另存重载及会话显式保存；写入结果不确定时禁止继续修改。",
+          "runtime_check": null
+        }
+      ],
+      "verification": {
+        "description": "回读定义、结果单位及原有身份属性，记录已覆盖字段 Diff；纯数值文本允许 STAR 的等价规范化。",
+        "members": [
+          {
+            "type": "star.common.ScalarGlobalParameter",
+            "member": "getQuantity()",
+            "signature": "public ScalarPhysicalQuantity getQuantity()",
+            "fingerprint": "b38c9a61d2ba39f6c8b59750e88ace5b408f2abc6794bce1bcb5525158af2da7"
+          },
+          {
+            "type": "star.common.ScalarPhysicalQuantity",
+            "member": "getDefinition()",
+            "signature": "public String getDefinition()",
+            "fingerprint": "fb19e9f77690619fda74eca11d74a0281b72a848efc22d23a9ba4e532b335d6a"
+          },
+          {
+            "type": "star.common.ValueFunction",
+            "member": "getUnits()",
+            "signature": "public Units getUnits()",
+            "fingerprint": "28e643a5c1bc26e69f1e70dda3b60f59e88ebdd94f526481182dae79cfdde1ba"
+          }
+        ]
+      },
+      "evidence": [
+        "bridge/java/BridgeFileMacro.java",
+        "docs/modifier.md",
+        "docs/inspector.md"
+      ],
+      "status": {
+        "discovered": true,
+        "read_implemented": false,
+        "write_implemented": false,
+        "verified": false
+      }
+    },
+    "user_field_function.definition": {
+      "type": "star.common.UserFieldFunction",
+      "kind": "property",
+      "value_type": {
+        "kind": "expression",
+        "unit": null,
+        "dimensions": null,
+        "enum_values": [],
+        "reference_type": null
+      },
+      "parameters": {},
+      "access": {
+        "description": "通过 Simulation.getFieldFunctionManager() 枚举对象，按显示名称唯一匹配并确认 UserFieldFunction；不要将显示名称当作 function_name。",
+        "members": [
+          {
+            "type": "star.common.Simulation",
+            "member": "getFieldFunctionManager()",
+            "signature": "public FieldFunctionManager getFieldFunctionManager()",
+            "fingerprint": "82e647ba19d381219b66cc7e3a6b4c3205a351006b505b0a2198e15051ea3e08"
+          },
+          {
+            "type": "star.base.neo.ClientServerObjectManager",
+            "member": "getObjects()",
+            "signature": "public Collection<T> getObjects()",
+            "fingerprint": "25bbd44d36de5feba1633320a423e78dd42666d93ec3ccf451a49a0c99ab9695"
+          }
+        ]
+      },
+      "read": [
+        {
+          "type": "star.common.UserFieldFunction",
+          "member": "getDefinition()",
+          "signature": "@StarBeanProperty(display=\"Definition\", hint=\"Function definition\", editor=ExpressionPropertyEditor.class, booleanValues=@BooleanValue(key=\"AllowGrouping\",value=false)) public String getDefinition()",
+          "fingerprint": "b55482ee45455d2c724835bb748dee638955e371659bcf7fd955af68a4a271b8"
+        }
+      ],
+      "write": [
+        {
+          "type": "star.common.UserFieldFunction",
+          "member": "setDefinition(java.lang.String)",
+          "signature": "public void setDefinition(String newValue)",
+          "fingerprint": "23cfc64831e42183ed43be16740d7913ee55c667d4c67ed01bdd9271656a41cc"
+        }
+      ],
+      "adapter": null,
+      "constraints": [
+        {
+          "description": "仅修改已存在的用户场函数；保持 function_name、值类型及量纲。",
+          "runtime_check": null
+        },
+        {
+          "description": "写入前必须核对旧状态；表达式字符串不得为空，回读成功不代表场函数在所有位置可求值。",
+          "runtime_check": null
+        }
+      ],
+      "verification": {
+        "description": "回读表达式并核对 function_name、值类型、量纲、名称及类型；文件修改还须重载核对。",
+        "members": [
+          {
+            "type": "star.common.UserFieldFunction",
+            "member": "getDefinition()",
+            "signature": "@StarBeanProperty(display=\"Definition\", hint=\"Function definition\", editor=ExpressionPropertyEditor.class, booleanValues=@BooleanValue(key=\"AllowGrouping\",value=false)) public String getDefinition()",
+            "fingerprint": "b55482ee45455d2c724835bb748dee638955e371659bcf7fd955af68a4a271b8"
+          }
+        ]
+      },
+      "evidence": [
+        "bridge/java/BridgeFileMacro.java",
+        "docs/modifier.md",
+        "docs/inspector.md"
+      ],
+      "status": {
+        "discovered": true,
+        "read_implemented": false,
+        "write_implemented": false,
+        "verified": false
+      }
+    },
+    "user_tags.replace": {
+      "type": "star.common.TagManager",
+      "kind": "operation",
+      "value_type": {
+        "kind": "void",
+        "unit": null,
+        "dimensions": null,
+        "enum_values": [],
+        "reference_type": null
+      },
+      "parameters": {
+        "target": {
+          "kind": "reference",
+          "unit": null,
+          "dimensions": null,
+          "enum_values": [],
+          "reference_type": "star.base.neo.ClientServerObject"
+        },
+        "tags": {
+          "kind": "collection",
+          "unit": null,
+          "dimensions": null,
+          "enum_values": [],
+          "reference_type": "star.common.UserTag"
+        }
+      },
+      "access": {
+        "description": "通过 Simulation.get(TagManager.class) 访问标签管理器。目标沿现有 parameter、field_function、region、boundary 定位契约查找，边界须先定位所属区域。",
+        "members": [
+          {
+            "type": "star.common.RootObject",
+            "member": "get(java.lang.Class)",
+            "signature": "public <T extends ClientServerObject> T get(Class<T> aClass)",
+            "fingerprint": "37e8a9e9353f3d0d5be4e244115274bc546afe1fa5f61ad15b6706370d3becee"
+          },
+          {
+            "type": "star.base.neo.ClientServerObjectManager",
+            "member": "getObjects()",
+            "signature": "public Collection<T> getObjects()",
+            "fingerprint": "25bbd44d36de5feba1633320a423e78dd42666d93ec3ccf451a49a0c99ab9695"
+          }
+        ]
+      },
+      "read": [
+        {
+          "type": "star.common.TagManager",
+          "member": "getTags(star.base.neo.ClientServerObject)",
+          "signature": "public Collection<Tag> getTags(ClientServerObject cso)",
+          "fingerprint": "320332eee29213e5601e347d20843a1bca6922f8b3d600a772f95d31db903ed1"
+        }
+      ],
+      "write": [
+        {
+          "type": "star.common.TagManager",
+          "member": "setTags(star.base.neo.ClientServerObject,java.util.Collection)",
+          "signature": "public void setTags(ClientServerObject cso, Collection<Tag> tags)",
+          "fingerprint": "bf670023ba2395c9b8a30e4f02528e00c09ec10de4e98a4c484fc94c3cf0bc77"
+        }
+      ],
+      "adapter": null,
+      "constraints": [
+        {
+          "description": "标签和目标对象必须已经存在，标签名称必须唯一；不创建或删除标签对象。",
+          "runtime_check": null
+        },
+        {
+          "description": "目标现有关联和新集合必须全部为 UserTag，包含系统标签时拒绝。",
+          "runtime_check": null
+        },
+        {
+          "description": "替换完整关联集合；空集合表示清除用户标签关联。标签无顺序语义，旧状态和回读均按名称排序比较。",
+          "runtime_check": null
+        }
+      ],
+      "verification": {
+        "description": "回读完整标签集合并核对目标身份和已覆盖字段 Diff；保留文件重载与会话失败状态处理。",
+        "members": [
+          {
+            "type": "star.common.TagManager",
+            "member": "getTags(star.base.neo.ClientServerObject)",
+            "signature": "public Collection<Tag> getTags(ClientServerObject cso)",
+            "fingerprint": "320332eee29213e5601e347d20843a1bca6922f8b3d600a772f95d31db903ed1"
+          }
+        ]
+      },
+      "evidence": [
+        "bridge/java/BridgeFileMacro.java",
+        "docs/modifier.md",
+        "docs/inspector.md"
+      ],
+      "status": {
+        "discovered": true,
+        "read_implemented": false,
+        "write_implemented": false,
+        "verified": false
+      }
+    }
+  }
+}

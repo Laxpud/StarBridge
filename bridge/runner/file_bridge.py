@@ -21,6 +21,7 @@ from modifier import (ModificationRejected, content_snapshot, java_literal, load
                       same_value, snapshot_diff, verify_modification)
 from core.execution import prepare_legacy
 from core.snapshot import prepare_snapshot
+from core.catalog_bundle import bundle_target, check_plan_targets
 
 
 def digest(path):
@@ -174,6 +175,9 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
             raise ValueError('Catalog operation requires a matching plan, request and action')
         if (action == 'file-catalog-modify') != (output is not None):
             raise ValueError('Only file-catalog-modify requires an output file')
+    # 文件和会话调用方都必须使用同一精确版本的快照与修改计划。
+    # 此检查先于目录创建；输入错误不能留下已开始执行的工作目录。
+    check_plan_targets(catalog_plan, legacy_plan, snapshot_plan)
     directory.mkdir(parents=True, exist_ok=False)
     result = directory / "result.json"
     template = Path(__file__).resolve().parents[1] / "java" / "BridgeFileMacro.java"
@@ -259,6 +263,7 @@ def main():
     parser.add_argument("input", type=Path)
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--star", default="starccm+")
+    parser.add_argument('--catalog-release', help='Bundled catalog release; defaults to 2602 or the explicit catalog target')
     parser.add_argument("--output", type=Path)
     parser.add_argument("--name")
     parser.add_argument("--value", type=float)
@@ -290,7 +295,7 @@ def main():
                 args.catalog, args.execution, args.request)
         else:
             modification = load_request(args.request)
-            legacy_plan = prepare_legacy(modification)
+            legacy_plan = prepare_legacy(modification, target=bundle_target(args.catalog_release))
     elif args.catalog is not None or args.execution is not None:
         parser.error("--catalog and --execution are only supported by describe/read/modify")
     elif args.request is not None:
@@ -300,7 +305,7 @@ def main():
             parser.error("set-scalar requires --output, --name, --value and --unit")
         if not math.isfinite(args.value):
             parser.error("--value must be finite")
-        legacy_plan = prepare_legacy()
+        legacy_plan = prepare_legacy(target=bundle_target(args.catalog_release))
     if args.action in ("set-scalar", "modify"):
         if output.exists() or output == source or output.suffix != ".sim":
             parser.error("--output must be a new .sim file distinct from the input")
@@ -309,7 +314,11 @@ def main():
     elif any(item is not None for item in [output, args.name, args.value, args.unit]):
         parser.error("Read-only actions do not accept modification arguments")
     # 兼容快照也来自共享目录；在建立工作目录前校验全部只读映射。
-    snapshot_plan = prepare_snapshot() if args.action in ('inspect', 'modify', 'set-scalar') else None
+    target = check_plan_targets(catalog_plan, legacy_plan,
+                               target=bundle_target(args.catalog_release) if args.catalog_release is not None else None)
+    target = target or bundle_target()
+    snapshot_plan = prepare_snapshot(target) if args.action in ('inspect', 'modify', 'set-scalar') else None
+    check_plan_targets(catalog_plan, legacy_plan, snapshot_plan, target=target)
     directory.mkdir(parents=True, exist_ok=False)
 
     # 1. 为本次调用记录原文件摘要；不复制或重命名用户原始文件。

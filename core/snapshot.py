@@ -115,7 +115,8 @@ def load_snapshot(catalog_path, execution_path, snapshot_path):
             'nodes': nodes, 'collections': collections}
 
 
-def prepare_snapshot():
+def prepare_snapshot(target=None):
     """读取随仓库分发的明确版本目录；实际 server 匹配由 Java 在读取前核对。"""
-    root = Path(__file__).resolve().parents[1] / 'catalogs' / '2602'
+    from .catalog_bundle import bundle_root
+    root = bundle_root(target)
     return load_snapshot(root / 'generated' / 'catalog.json', root / 'execution.json', root / 'snapshot.json')

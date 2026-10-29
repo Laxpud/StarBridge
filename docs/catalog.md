@@ -88,6 +88,8 @@ python3 tools/catalog/catalog.py describe \
 
 ## 版本比较
 
+随附版本、运行入口绑定和已确认差异见[版本选择与目录维护](catalog-versions.md)。
+
 分别从两个安装生成目录，再运行：
 
 ```bash

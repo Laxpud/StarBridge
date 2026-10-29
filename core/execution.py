@@ -856,16 +856,17 @@ def prepare_modification(catalog_path, execution_path, request_path):
     return ({**plan, 'types': required, 'properties': {identifier: clipped}, 'operations': {}}, request)
 
 
-def prepare_legacy(modification=None):
-    """为旧修改入口加载随仓库分发的 2602 目录，保留原请求与结果契约。
+def prepare_legacy(modification=None, *, target=None):
+    """为旧修改入口加载所选精确版本目录，保留原请求与结果契约。
 
     调用方应先用旧请求校验器检查 modification；None 表示 set-scalar。
     这里只选择调用能力，不读取算例或合成预期状态。Java 在同一次宏中读取
     目录与旧快照，核对旧 expected 及两种读取的一致性，再交给统一修改器。
     旧数值入口仍无外部 expected。
-    固定目录不表示其他 STAR 版本兼容，实际 server 必须通过精确版本检查。
+    省略 target 保留原 2602 默认；实际 server 必须通过精确版本检查。
     """
-    root = Path(__file__).resolve().parents[1] / 'catalogs' / '2602'
+    from .catalog_bundle import bundle_root
+    root = bundle_root(target)
     plan = load_execution(root / 'generated' / 'catalog.json', root / 'execution.json')
     if modification is None:
         identifier, property_name = 'scalar_parameter', 'quantity_value'

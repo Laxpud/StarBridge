@@ -2,11 +2,11 @@
 
 [返回项目入口](README.cn.md) · [Inspector 快照](inspector.md) · [目录修改](catalog-modifier.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
-`modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。当前优先建立[版本目录与通用读写基础](../TODO.md)；Mesh Controls、Boundary Parameters、Selected Physics Settings 和 Simulation Operations 的修改纳入[后续目录覆盖扩展](roadmap.md#目录覆盖扩展与版本演进)。本页描述不带目录参数的兼容 schema 1 契约。它与 `set-scalar` 自动加载仓库随附的 2602 目录并复用同一修改器，原 CLI、请求和旧结果字段继续保留。带 `--catalog` 和 `--execution` 的 `modify` 使用[目录 schema 2 契约](catalog-modifier.md)，无需把旧请求改成新格式。
+`modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。当前优先建立[版本目录与通用读写基础](../TODO.md)；Mesh Controls、Boundary Parameters、Selected Physics Settings 和 Simulation Operations 的修改纳入[后续目录覆盖扩展](roadmap.md#目录覆盖扩展与版本演进)。本页描述不带目录参数的兼容 schema 1 契约。它与 `set-scalar` 自动加载所选版本的随附目录并复用同一修改器，原 CLI、请求和旧结果字段继续保留。带 `--catalog` 和 `--execution` 的 `modify` 使用[目录 schema 2 契约](catalog-modifier.md)，无需把旧请求改成新格式。
 
 ## 使用方式
 
-这些兼容写入口精确支持 STAR-CCM+ 2602 Build 21.02.007；版本不匹配在写入前返回 `rejected`。默认目录位于 `catalogs/2602/generated/catalog.json`，人工调用映射为 `catalogs/2602/execution.json`，用户不必额外生成目录或增加命令参数。
+这些兼容写入口默认选择 STAR-CCM+ 2602 Build 21.02.007，也可按[版本说明](catalog-versions.md)选择 2510；运行版本不匹配在写入前返回 `rejected`。默认目录位于 `catalogs/2602/generated/catalog.json`，人工调用映射为 `catalogs/2602/execution.json`，用户不必额外生成目录或增加命令参数。
 
 先运行 `inspect`，从目标对象快照提取名称、类型和预期旧属性，再保存请求，例如 `change.json`：
 

@@ -1,0 +1,1088 @@
+{
+  "schema_version": 1,
+  "target": {
+    "release": "2510",
+    "build": "20.06.007"
+  },
+  "nodes": {
+    "reference": {
+      "fields": [],
+      "variants": [],
+      "require_variant": false
+    },
+    "boundary_reference": {
+      "fields": [
+        {
+          "output": "region",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "boundary.region",
+                "arguments": []
+              }
+            ]
+          },
+          "record": "reference"
+        }
+      ],
+      "variants": [],
+      "require_variant": false
+    },
+    "parameter": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        }
+      ],
+      "variants": [
+        {
+          "java_class": "star.common.ScalarGlobalParameter",
+          "fields": [
+            {
+              "output": null,
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "scalar.quantity",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "quantity",
+              "select": []
+            }
+          ]
+        },
+        {
+          "java_class": "star.common.VectorGlobalParameter",
+          "fields": [
+            {
+              "output": "definition",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "vector.quantity",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "vector",
+              "select": [
+                "definition"
+              ]
+            },
+            {
+              "output": "unit",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "vector.quantity",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "vector",
+              "select": [
+                "unit"
+              ]
+            },
+            {
+              "output": "raw_value",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "vector.quantity",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "vector",
+              "select": [
+                "components"
+              ]
+            }
+          ]
+        }
+      ],
+      "require_variant": true
+    },
+    "field_function": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "function_name",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "field_function.name",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "primitive",
+          "select": []
+        },
+        {
+          "output": "value_type",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "field_function.value_type",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "enum_name",
+          "select": []
+        },
+        {
+          "output": "dimensions",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "field_function.dimensions",
+                "arguments": []
+              },
+              {
+                "member": "dimensions.text",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "primitive",
+          "select": []
+        },
+        {
+          "output": "user_defined",
+          "literal": false
+        }
+      ],
+      "variants": [
+        {
+          "java_class": "star.common.UserFieldFunction",
+          "fields": [
+            {
+              "output": "user_defined",
+              "literal": true
+            },
+            {
+              "output": "definition",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "function.definition",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "select": []
+            }
+          ]
+        }
+      ],
+      "require_variant": false
+    },
+    "tag": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        }
+      ],
+      "variants": [],
+      "require_variant": false
+    },
+    "continuum": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "regions",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "continuum.regions",
+                "arguments": []
+              }
+            ]
+          },
+          "collection": "reference"
+        },
+        {
+          "output": "models",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "continuum.models",
+                "arguments": []
+              },
+              {
+                "member": "manager.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "collection": "model"
+        }
+      ],
+      "variants": [],
+      "require_variant": false
+    },
+    "model": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        }
+      ],
+      "variants": [],
+      "require_variant": false
+    },
+    "region": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "region_type",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "region.type",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "type_name",
+          "select": []
+        },
+        {
+          "output": "physics_continuum",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "region.physics_continuum",
+                "arguments": []
+              }
+            ]
+          },
+          "record": "reference"
+        },
+        {
+          "output": "boundaries",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "region.boundaries",
+                "arguments": []
+              },
+              {
+                "member": "manager.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "collection": "boundary"
+        }
+      ],
+      "variants": [],
+      "require_variant": false
+    },
+    "boundary": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "boundary_type",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "boundary.type",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "type_name",
+          "select": []
+        }
+      ],
+      "variants": [],
+      "require_variant": false
+    },
+    "interface": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "interface_type",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "interface.type",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "type_name",
+          "select": []
+        }
+      ],
+      "variants": [
+        {
+          "java_class": "star.common.BoundaryInterface",
+          "fields": [
+            {
+              "output": "enabled",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "boundary_interface.enabled",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "select": []
+            },
+            {
+              "output": "boundary0",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "boundary_interface.boundary0",
+                    "arguments": []
+                  }
+                ]
+              },
+              "record": "boundary_reference"
+            },
+            {
+              "output": "boundary1",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "boundary_interface.boundary1",
+                    "arguments": []
+                  }
+                ]
+              },
+              "record": "boundary_reference"
+            }
+          ]
+        }
+      ],
+      "require_variant": false
+    },
+    "mesh_operation": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "index",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "mesh_operation.index",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "primitive",
+          "select": []
+        },
+        {
+          "output": "input_parts",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "mesh_operation.input_parts",
+                "arguments": []
+              },
+              {
+                "member": "manager.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "collection": "reference"
+        }
+      ],
+      "variants": [],
+      "require_variant": false
+    },
+    "report": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "unit",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "report.units",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "name",
+          "select": []
+        }
+      ],
+      "variants": [
+        {
+          "java_class": "star.base.report.ExpressionReport",
+          "fields": [
+            {
+              "output": "definition",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "expression_report.definition",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "select": []
+            }
+          ]
+        }
+      ],
+      "require_variant": false
+    },
+    "monitor": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "enabled",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "monitor.enabled",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "primitive",
+          "select": []
+        }
+      ],
+      "variants": [
+        {
+          "java_class": "star.base.report.ReportMonitor",
+          "fields": [
+            {
+              "output": "report",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "report_monitor.report",
+                    "arguments": []
+                  }
+                ]
+              },
+              "record": "reference"
+            }
+          ]
+        }
+      ],
+      "require_variant": false
+    },
+    "stopping_criterion": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "enabled",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "stopping_criterion.enabled",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "primitive",
+          "select": []
+        }
+      ],
+      "variants": [
+        {
+          "java_class": "star.common.StepStoppingCriterion",
+          "fields": [
+            {
+              "output": "definition",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "step_stopping_criterion.definition",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "select": []
+            },
+            {
+              "output": "maximum_steps",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "step_stopping_criterion.maximum_steps",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "select": []
+            }
+          ]
+        },
+        {
+          "java_class": "star.common.PhysicalTimeStoppingCriterion",
+          "fields": [
+            {
+              "output": "maximum_time",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "time_stopping_criterion.maximum_time",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "quantity",
+              "select": []
+            }
+          ]
+        }
+      ],
+      "require_variant": false
+    },
+    "workflow": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        },
+        {
+          "output": "blocks",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "workflow.blocks",
+                "arguments": []
+              },
+              {
+                "member": "manager.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "collection": "block"
+        }
+      ],
+      "variants": [],
+      "require_variant": false
+    },
+    "block": {
+      "fields": [
+        {
+          "output": "tags",
+          "read": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "object.tags",
+                "arguments": []
+              },
+              {
+                "member": "tag_group.objects",
+                "arguments": []
+              }
+            ]
+          },
+          "adapter": "names",
+          "select": []
+        }
+      ],
+      "variants": [
+        {
+          "java_class": "star.automation.LoopAutomationBlock",
+          "fields": [
+            {
+              "output": "blocks",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "loop.blocks",
+                    "arguments": []
+                  },
+                  {
+                    "member": "manager.objects",
+                    "arguments": []
+                  }
+                ]
+              },
+              "collection": "block"
+            }
+          ]
+        },
+        {
+          "java_class": "star.automation.SubWorkflowAutomationBlock",
+          "fields": [
+            {
+              "output": "workflow",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "sub_workflow.workflow",
+                    "arguments": []
+                  }
+                ]
+              },
+              "record": "reference"
+            }
+          ]
+        }
+      ],
+      "require_variant": false
+    }
+  },
+  "collections": [
+    {
+      "output": "parameters",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.parameters",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "parameter"
+    },
+    {
+      "output": "field_functions",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.field_functions",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "field_function"
+    },
+    {
+      "output": "tags",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "root.manager",
+            "arguments": [
+              {
+                "class": "star.common.TagManager"
+              }
+            ]
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "tag"
+    },
+    {
+      "output": "continua",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.continua",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "continuum"
+    },
+    {
+      "output": "regions",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.regions",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "region"
+    },
+    {
+      "output": "interfaces",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.interfaces",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "interface"
+    },
+    {
+      "output": "mesh_operations",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "root.manager",
+            "arguments": [
+              {
+                "class": "star.meshing.MeshOperationManager"
+              }
+            ]
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "mesh_operation"
+    },
+    {
+      "output": "reports",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.reports",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "report"
+    },
+    {
+      "output": "monitors",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.monitors",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "monitor"
+    },
+    {
+      "output": "stopping_criteria",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "simulation.stopping_criteria",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "stopping_criterion"
+    },
+    {
+      "output": "simulation_operations",
+      "read": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "root.manager",
+            "arguments": [
+              {
+                "class": "star.automation.SimDriverWorkflowManager"
+              }
+            ]
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      },
+      "collection": "workflow"
+    }
+  ]
+}

@@ -6,7 +6,7 @@
 
 ## 读取算例对象与参数
 
-需要 Python 3.11 或更新版本、可启动且具有可用许可证的 STAR-CCM+，以及与其兼容的输入算例。当前 `inspect` 和修改均由随附目录驱动，运行中 server 必须精确匹配 2602 Build 21.02.007；字段读取或写入前拒绝不匹配的版本。Runner 默认调用 `PATH` 中的 `starccm+`，可用 `--star /absolute/path/to/starccm+` 指定启动器。
+需要 Python 3.11 或更新版本、可启动且具有可用许可证的 STAR-CCM+，以及与其兼容的输入算例。当前 `inspect` 和修改均由随附目录驱动，运行中 server 必须精确匹配所选目录，默认 2602 Build 21.02.007，其他随附版本见[版本选择](catalog-versions.md)；字段读取或写入前拒绝不匹配的版本。Runner 默认调用 `PATH` 中的 `starccm+`，可用 `--star /absolute/path/to/starccm+` 指定启动器。
 
 在仓库根目录运行：
 
@@ -27,7 +27,7 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' \
 
 ## 按预期旧状态修改
 
-表达式和标签修改使用 `modify --request`，请求格式、预检查、全部已覆盖字段的 Diff 和重载核对见 [Modifier 单项修改](modifier.md)。兼容 `modify` 和以下 `set-scalar` 自动使用仓库随附目录及统一修改器，无需自行生成目录；精确支持 2602 Build 21.02.007，版本不符在写入前拒绝。`set-scalar` 保留直接设置常量的行为，没有调用者提供的 `expected`，不保护陈旧请求。新 schema 2 用法见[目录修改](catalog-modifier.md)。
+表达式和标签修改使用 `modify --request`，请求格式、预检查、全部已覆盖字段的 Diff 和重载核对见 [Modifier 单项修改](modifier.md)。兼容 `modify` 和以下 `set-scalar` 自动使用仓库随附目录及统一修改器，无需自行生成目录；按所选目录精确匹配 release/Build，版本不符在写入前拒绝。`set-scalar` 保留直接设置常量的行为，没有调用者提供的 `expected`，不保护陈旧请求。新 schema 2 用法见[目录修改](catalog-modifier.md)。
 
 ## 修改已有标量并另存
 

@@ -4,7 +4,7 @@
 
 会话 Runner 让 STAR 后台加载一次工作副本，后续读取、修改和另存都连接这个服务。每次请求仍启动一个临时 Java 批处理客户端，客户端退出后服务继续保留算例及未保存修改。常驻 Java 适配器留待后续研究。
 
-当前仅支持本机 Linux、Python 3.11 或更新版本；已实际运行的 STAR 版本为 2602 Build 21.02.007。需要可用的安装、许可证和兼容算例。默认调用 `PATH` 中的 `starccm+`，启动时可用 `--star` 指定路径。
+当前仅支持本机 Linux、Python 3.11 或更新版本；默认绑定 STAR 2602 Build 21.02.007，2510 的选择与验证范围见[版本说明](catalog-versions.md)。需要可用的安装、许可证和兼容算例。默认调用 `PATH` 中的 `starccm+`，启动时可用 `--star` 指定路径。
 
 ## 启动并操作
 
@@ -35,7 +35,7 @@ python3 bridge/runner/session_bridge.py save \
 
 `status` 只读取本地记录并核对进程身份，不启动 Java 客户端；其中 `modified` 是上次成功请求的值。`inspect` 通过随附快照布局和共享目录读取服务的当前状态，并精确核对当前 server 版本。快照字段、读取错误及覆盖范围见 [Inspector 对象快照](inspector.md)。
 
-表达式和标签修改使用 `modify --request`，预期旧状态检查、回读与拒绝处理见 [Modifier 单项修改](modifier.md)。它也只修改内存。兼容 `modify` 和 `set-scalar` 自动加载仓库随附的 2602 目录，使用统一准备、写入及回读流程，无需生成目录或修改旧命令；当前 server 必须精确匹配 2602 Build 21.02.007。显式指定目录的 schema 2 用法见[目录修改](catalog-modifier.md)。
+表达式和标签修改使用 `modify --request`，预期旧状态检查、回读与拒绝处理见 [Modifier 单项修改](modifier.md)。它也只修改内存。兼容 `modify` 和 `set-scalar` 自动加载该会话绑定版本的随附目录，使用统一准备、写入及回读流程，无需生成目录或修改旧命令；当前 server 必须精确匹配 2602 Build 21.02.007。显式指定目录的 schema 2 用法见[目录修改](catalog-modifier.md)。
 
 `set-scalar` **只修改内存，不保存文件**。它将已有标量设置为数值常量，替换原表达式，检查单位量纲并回读目标数值与单位。它没有调用者提供的 `expected`，内部按当前值准备修改不会保护陈旧请求。临时客户端退出后，另一次 `inspect` 仍能读到该修改。
 
