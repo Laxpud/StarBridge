@@ -1360,9 +1360,19 @@ class CatalogRuntime {
             require(star.base.neo.ClientServerObject.class.isAssignableFrom(expectedClass),
                     "Target type is not a STAR object");
             Object value = pipeline(sim, null, parent, object(type.get("locate"), "type.locate"));
-            require(value instanceof java.util.Collection<?>, "Locator must return a collection");
+            // 根管理器可作为配置对象直接返回；声明仍决定返回形状，避免隐式宽容错误管线。
+            Object kind = type.getOrDefault("locate_kind", "collection");
+            java.util.Collection<?> candidates;
+            if ("object".equals(kind)) {
+                require(value instanceof star.base.neo.ClientServerObject, "Object locator must return a STAR object");
+                candidates = java.util.List.of(value);
+            } else {
+                require("collection".equals(kind) && value instanceof java.util.Collection<?>,
+                        "Collection locator must return a collection");
+                candidates = (java.util.Collection<?>) value;
+            }
             star.base.neo.ClientServerObject found = null;
-            for (Object item : (java.util.Collection<?>) value) {
+            for (Object item : candidates) {
                 if (!expectedClass.isInstance(item)) continue;
                 star.base.neo.ClientServerObject candidate = (star.base.neo.ClientServerObject) item;
                 if (!name.equals(candidate.getPresentationName())) continue;

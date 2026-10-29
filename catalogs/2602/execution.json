@@ -1,5 +1,5 @@
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "target": {
     "release": "2602",
     "build": "21.02.007"
@@ -840,6 +840,48 @@
       "fingerprint": "6717df97bce8bacebdd1afc2dd7cdbbce67836a7d2ef0cc3635c8cb151001853",
       "parameter_types": [],
       "effect": "read"
+    },
+    "workflow_manager.selected": {
+      "type": "star.automation.SimDriverWorkflowManager",
+      "member": "getSelectedWorkflow()",
+      "signature": "public AutomationWorkflow getSelectedWorkflow()",
+      "fingerprint": "7791d932e6ce4b32222dd9aabd773ea01b6d197b1d5482ee6d6778ac01713d4a",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "workflow_manager.executing": {
+      "type": "star.automation.SimDriverWorkflowManager",
+      "member": "getExecutingWorkflow()",
+      "signature": "@StarBeanProperty(display=\"Executing\", editor=ReadOnlyObjectsEditorSupport.class, hint=\"The workflow currently executing\") public AutomationWorkflow getExecutingWorkflow()",
+      "fingerprint": "0916883df2efcc56e513893c874aeb25fb19c3fb30eebfafa89981cc902c47b6",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "workflow_manager.running": {
+      "type": "star.automation.SimDriverWorkflowManager",
+      "member": "hasRunningWorkflow()",
+      "signature": "public boolean hasRunningWorkflow()",
+      "fingerprint": "bd2f12a0286f9d1b2194a524f231e6ace0e94345c4dbfc51e4c14ab4e82ed3bb",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "workflow_manager.select": {
+      "type": "star.automation.SimDriverWorkflowManager",
+      "member": "setSelectedWorkflow(star.automation.AutomationWorkflow)",
+      "signature": "public void setSelectedWorkflow(AutomationWorkflow workflow)",
+      "fingerprint": "c443c31c704a880c17bb7fbec3d259977378ef3cef69bdcdaa303f779adee048",
+      "parameter_types": [
+        "star.automation.AutomationWorkflow"
+      ],
+      "effect": "write"
+    },
+    "workflow.active": {
+      "type": "star.automation.AutomationWorkflow",
+      "member": "isActive()",
+      "signature": "public boolean isActive()",
+      "fingerprint": "f226efb4f5f8fb59de814dee112aa54fb2475de8aef5333a52525dc53de5ab5c",
+      "parameter_types": [],
+      "effect": "read"
     }
   },
   "types": {
@@ -1213,6 +1255,45 @@
           {
             "member": "directed_source.defaults",
             "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "workflow_settings": {
+      "java_class": "star.automation.SimDriverWorkflowManager",
+      "parent_type": null,
+      "locate_kind": "object",
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "root.manager",
+            "arguments": [
+              {
+                "class": "star.automation.SimDriverWorkflowManager"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "workflow": {
+      "java_class": "star.automation.AutomationWorkflow",
+      "parent_type": null,
+      "locate": {
+        "root": "simulation",
+        "steps": [
+          {
+            "member": "root.manager",
+            "arguments": [
+              {
+                "class": "star.automation.SimDriverWorkflowManager"
+              }
+            ]
           },
           {
             "member": "manager.objects",
@@ -6840,6 +6921,168 @@
           ]
         }
       }
+    },
+    "workflow": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前工作流配置，不执行工作流"
+      },
+      "blocks": {
+        "adapter": "collection",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "workflow.blocks",
+              "arguments": []
+            },
+            {
+              "member": "manager.objects",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前工作流配置，不执行工作流"
+      },
+      "active": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "workflow.active",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前工作流配置，不执行工作流"
+      }
+    },
+    "workflow_settings": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前工作流配置，不执行工作流"
+      },
+      "workflows": {
+        "adapter": "collection",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "manager.objects",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前工作流配置，不执行工作流"
+      },
+      "running": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "workflow_manager.running",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前工作流配置，不执行工作流"
+      },
+      "executing_workflow": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "workflow_manager.executing",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前工作流配置，不执行工作流"
+      },
+      "selected_workflow": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "workflow_manager.selected",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "选择已有工作流，仅更改下次运行的配置；当前工作流运行时拒绝",
+        "write": {
+          "adapter": "reference",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "workflow_manager.select",
+                "arguments": [
+                  {
+                    "context": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          "value_types": [
+            "workflow"
+          ],
+          "value_guards": [],
+          "guards": [
+            {
+              "id": "workflow_not_running",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "workflow_manager.running",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": false,
+              "message": "Cannot change workflow selection while a workflow is running"
+            }
+          ],
+          "preserved_properties": [
+            "name",
+            "workflows",
+            "executing_workflow"
+          ]
+        }
+      }
     }
   },
   "operations": {
@@ -6977,6 +7220,8 @@
     "boundary_vector_profile": {},
     "directed_mesh_operation": {},
     "directed_auto_source_mesh": {},
-    "mesh_scalar_control": {}
+    "mesh_scalar_control": {},
+    "workflow": {},
+    "workflow_settings": {}
   }
 }

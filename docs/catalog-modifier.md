@@ -402,6 +402,12 @@ schema 6 属性写映射可通过 `write.preserved_properties` 指定额外的�
 
 两层 Diff 都使用 `path`、`before`、`after`，路径是相应比较对象的 JSON Pointer。`snapshot_diff` 覆盖旧 Inspector 已读取的对象字段；`catalog_diff` 比较目标及本次计划读取的属性：属性赋值覆盖该类型已配置属性，结构操作覆盖声明的 `read_properties`。同会话保留对象 key 变化，跨加载则移除协议引用中的 token/key，以名称和实际类型核对可重定位内容；查询内标签及身份集合引用也递归规范化，张量 `tensor`/`basis`/`method_state` 内的坐标系与局部方向引用同样移除会话 token/key，其他谓词字段及组合顺序保持不变，不会任意删除业务字典中的同名字段。Diff 不涵盖整个 STAR 对象树，不能证明未读取设置均未变化。
 
+## 工作流选择配置
+
+`workflow_settings.selected_workflow` 通过已有对象引用写入器选择一个已存在的 `workflow`。`expected` 是读取的完整旧关联或 `null`；`value` 为工作流定位对象，例如 `{"type":"workflow","name":"_SnapshotChild 1"}`，同会话可附带该工作流的引用。暂不支持清空选择。
+
+写入前检查 `hasRunningWorkflow=false`，再次核对目标和新关联身份，调用一次 `setSelectedWorkflow()` 后回读；管理器名称、已有工作流引用集合及正在执行的工作流必须保持。它改变下次运行的选择配置，不执行任何块，不创建、删除、重排块，也不改变子工作流关联。嵌套块结构仍可用 Inspector 读取，子工作流链接修改所需的循环关系校验尚未实现。文件模式另存后独立重载，旧状态或条件不符仍在准备阶段拒绝。
+
 ## 网格尺寸修改
 
 `mesh_scalar_control.quantity` 和 `quantity_value` 复用标量表达式与常量写入器，目标使用[完整网格父路径](catalog-runtime.md#有向网格源尺寸)。`expected` 为当前完整标量数量；新值分别为 `{"definition":"${_MeshBackgroundBaseSize} * 1.1", "unit":"m"}` 或 `{"value":12.5, "unit":"mm"}`。修改后保持名称、源网格身份和量纲。
@@ -411,6 +417,10 @@ schema 6 属性写映射可通过 `write.preserved_properties` 指定额外的�
 Base Size 的实测范围为严格大于零。未适配的 input、无法预览的表达式、量纲错误和越界值均在准备时拒绝；执行阶段异常仍使用现有 `uncertain` 契约。此入口修改已有尺寸配置，不创建控制、不生成网格，也不执行求解。
 
 ## 验证范围与迁移边界
+
+2602 的既有嵌套工作流副本已通过 `workflow_settings` 的单对象定位，完整读取五个管理器属性，并通过 `workflow` 读取两条既有工作流。选择先切到 `_SnapshotChild 1`，再切到 `_SnapshotMain 1`，回读引用一致，已有工作流集合与执行关联保持。错误 key、跨会话引用、过时旧关联和不存在的工作流均在准备时拒绝；拒绝前后完整管理器状态一致。反向条件临时映射另外验证声明式 guard 的拒绝路径，会话保持 `ready`；真实运行中的工作流状态尚未实测。
+
+会话另存并关闭后，文件入口从主工作流切回子工作流，独立重载时完整目录、旧快照及输入摘要核对通过；文件修改前状态也与会话保存前跨加载规范化一致。六种非法 singleton 声明被拒绝，旧 schema 7 保持集合定位。产物在本地 `outputs/catalog-workflow-20261029/`；没有执行工作流、网格或求解，未验证块创建/重排/删除、子工作流链接修改或并发切换。2510 的对应映射已按其自身声明加载校验，尚无该新增路径的真实运行证据。
 
 本机 2602 Build 21.02.007 已在现有 MeshBackground → Auto Mesh → Base Size 完整读取六个属性，将尺寸改为 `12.5 mm`，再改为 `${_MeshBackgroundBaseSize} * 1.1`（SI 结果单位 `m`）；第二次预览按原 input 的 `mm` 范围检查，验证了 SI 值与范围单位换算。零值、负常量、负表达式、缺失参数和错误量纲均在准备时拒绝，前后完整状态一致，会话保持 `ready`。带旧引用改指 MeshSliding 下同名控制时按 key 拒绝，另一个源网格的尺寸定义保持原值。
 

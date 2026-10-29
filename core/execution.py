@@ -288,7 +288,7 @@ def load_execution(catalog_path, execution_path):
     catalog = load(catalog_path)
     rules = read_json(execution_path)
     _require(isinstance(rules, dict), 'Execution rules must be an object')
-    _require(type(rules.get('schema_version')) is int and rules['schema_version'] in (1, 2, 3, 4, 5, 6, 7),
+    _require(type(rules.get('schema_version')) is int and rules['schema_version'] in (1, 2, 3, 4, 5, 6, 7, 8),
              'Unsupported execution schema_version')
     _keys(rules, 'schema_version target members types properties'
           + (' operations' if rules['schema_version'] >= 5 else ''), 'execution')
@@ -306,7 +306,12 @@ def load_execution(catalog_path, execution_path):
     types = {}
     for identifier, entry in rules['types'].items():
         _text(identifier, 'type ID')
-        _keys(entry, 'java_class parent_type locate', identifier)
+        _keys(entry, 'java_class parent_type locate' + (' locate_kind' if 'locate_kind' in entry else ''), identifier)
+        # 某些根管理器本身就是配置对象；必须显式声明单对象定位，不能把集合失败当成单对象。
+        _require(rules['schema_version'] >= 8 or 'locate_kind' not in entry,
+                 'Single-object locators require execution schema 8')
+        locate_kind = entry.get('locate_kind', 'collection')
+        _require(locate_kind in ('collection', 'object'), f'Invalid locator kind: {identifier}')
         _text(entry['java_class'], 'java_class')
         _require(entry['java_class'] in catalog['types'], f'Unknown Java type: {identifier}')
         _require(entry['parent_type'] is None or isinstance(entry['parent_type'], str),
@@ -314,7 +319,8 @@ def load_execution(catalog_path, execution_path):
         locate = _pipeline(catalog, methods, entry['locate'], identifier + '.locate')
         expected_root = 'simulation' if entry['parent_type'] is None else 'parent'
         _require(locate['root'] == expected_root, f'Locator must start at {expected_root}: {identifier}')
-        types[identifier] = {**entry, 'java_class': _binary_class(catalog, entry['java_class']),
+        types[identifier] = {**entry, 'locate_kind': locate_kind,
+                             'java_class': _binary_class(catalog, entry['java_class']),
                              'locate': locate}
     for identifier in types:
         visited = set()

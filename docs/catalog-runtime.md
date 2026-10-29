@@ -152,6 +152,8 @@ python3 bridge/runner/session_bridge.py describe \
 | `directed_mesh_operation` | `name`、`index`、`input_parts`、`source_meshes` |
 | `directed_auto_source_mesh` | `name`、`mesh_operation`、`default_values` |
 | `mesh_scalar_control` | `name`、`source_mesh`、`dimensions`、`range`、`quantity`、`quantity_value` |
+| `workflow_settings` | `name`、`workflows`、`running`、`executing_workflow`、`selected_workflow` |
+| `workflow` | `name`、`blocks`、`active` |
 | `tensor_profile` | `name`、`profile_method`、`tensor`、`basis`、`method_state`、`components`、`axes`；`xx`、`xy`、`xz`、`yx`、`yy`、`yz`、`zx`、`zy`、`zz` 及各自的 `_value` 属性 |
 | `tensor_component` | `name`、`profile_method`、`quantity`、`quantity_value`、`basis` |
 | `tensor_axis` | `name`、`profile_method`、`quantity`、`quantity_value`、`coordinate_system`、`basis` |
@@ -192,6 +194,12 @@ python3 bridge/runner/session_bridge.py describe \
 | `query` | 静态模式为 `mode: static` 和 `objects`；动态模式为 `mode: query`、`predicate` 和 `modifiers` |
 
 动态查询保留规则本身，不求值成当时匹配的对象列表。当前编码 `NamePredicate`、`TypePredicate`、`CompoundPredicate`、`TagPredicate`、`CommentPredicate`、`IncludesPredicate` 和 `IdentityPredicate`，分别返回 `type: name`、`java_type`、`compound`、`tag`、`comment`、`includes` 或 `identity`。复合规则保留有序 `predicates`，标签规则的 `value` 是名称、实际 Java 类和会话引用。身份规则的 `value` 是完整引用数组，注释规则使用文本 `value`，includes 只有 `All`/`None` 算子且没有 `value`；`Placeholder` 和元数据等未适配规则明确报错。读取从深度 `0` 开始，最多允许深度 `16`、总计 `256` 个谓词节点；未知谓词或超限逐属性报错，不执行 `asJournal()` 生成的代码。此入口不求报告值、不生成网格、不运行求解或工作流。静态/动态选择写入以及标签旧引用与新定位对象的区别见[对象引用与选择](catalog-modifier.md#对象引用与选择)。
+
+### 工作流设置
+
+`workflow_settings` 定位 SimDriverWorkflowManager 本身，读取实际名称、已存在的工作流集合、当前是否运行、正在执行的工作流和下次运行所选工作流。空关联返回 `null`。`workflow` 从该管理器枚举已有 AutomationWorkflow，读取名称、直接拥有的块集合及活动状态；嵌套块内容仍由 [Inspector 快照](inspector.md)读取。
+
+管理器在当前样例中的名称为 `Simulation Operations`，例如 `{"type":"workflow_settings","name":"Simulation Operations"}`。不同算例应使用实际名称；单对象定位也核对 Java 类型、名称及可选会话引用。选择操作见[工作流选择配置](catalog-modifier.md#工作流选择配置)，描述中的运行条件只反映本次读取时刻。
 
 ### 有向网格源尺寸
 
@@ -331,13 +339,15 @@ python3 bridge/runner/session_bridge.py describe \
 
 [`catalogs/2602/execution.json`](../catalogs/2602/execution.json) 是维护者审阅的调用映射，由 [`core/execution.py`](../core/execution.py) 与候选目录共同校验；它与仅供离线核对的 `overrides.json` 修改语义分开维护。请求只能选择目标、属性或操作及其参数，不能覆盖映射、方法的 `effect`、Java 类或参数来源。
 
-映射格式版本当前为 `7`，加载器兼容仅含读取管线的 schema 1 和原有写入 schema 2/3/4/5/6；顶层包含 `target`、`members`、`types`、`properties`、`operations`。旧格式没有结构操作，加载时使用空操作集合。每个 member 锁定候选声明的签名和指纹，并声明反射参数类型及 `effect: read` 或 `effect: write`。定位和读取管线只允许 `read`；写入管线仅最后一步允许 `write`，读取计划会移除写入管线。当前只接收已核对的 public 实例方法，不开放字段、构造器、静态调用或通过 `setAccessible()` 访问非 public 方法。参数类型必须能由候选材料证明，裸泛型变量 `T` 不能冒充可加载类；枚举 setter `EnumeratedOption.setSelected(T)` 仅在候选类声明和官方类型链接证明其首个上界为 `Enum` 时，使用已核对的泛型擦除规则。其他未解析泛型仍拒绝猜测；嵌套类按已核对类型页转换为 JVM 名称。
+映射格式版本当前为 `8`，加载器兼容仅含读取管线的 schema 1 和原有写入 schema 2/3/4/5/6/7；顶层包含 `target`、`members`、`types`、`properties`、`operations`。旧格式没有结构操作，加载时使用空操作集合。每个 member 锁定候选声明的签名和指纹，并声明反射参数类型及 `effect: read` 或 `effect: write`。定位和读取管线只允许 `read`；写入管线仅最后一步允许 `write`，读取计划会移除写入管线。当前只接收已核对的 public 实例方法，不开放字段、构造器、静态调用或通过 `setAccessible()` 访问非 public 方法。参数类型必须能由候选材料证明，裸泛型变量 `T` 不能冒充可加载类；枚举 setter `EnumeratedOption.setSelected(T)` 仅在候选类声明和官方类型链接证明其首个上界为 `Enum` 时，使用已核对的泛型擦除规则。其他未解析泛型仍拒绝猜测；嵌套类按已核对类型页转换为 JVM 名称。
 
 类型的 `locate` 和属性的 `read` 都是调用管线：`root` 可为 `simulation`、当前 `object` 或 `parent`，后续每一步以上一步返回值作为接收对象。参数来源只能是已核对的类字面量、JSON 标量 `literal` 或当前 `object`/`parent` 上下文，数量和类型必须与指定方法相符。只读管线允许 `steps: []`，直接将所选 root 传给适配器；张量 `tensor`/`basis`/`method_state` 和材料系数元数据使用此形式读取当前对象或父对象。写入管线仍要求非空并以受控 setter 结束。对象定位管线最终必须返回集合，父类型关系须明确且不能成环。
 
 schema 3 新增通用 `primitive`、`enum`、`vector_expression` 和 `vector_value` 写适配器，并将场函数定义命名为 `field_definition`；schema 2 的旧 `primitive` 加载时规范化为 `field_definition`。`write.guards` 使用同样受 `effect: read` 限制的管线，在修改准备和 setter 前检查；读计划移除写入执行管线；`describe` 额外保留目标条件的只读管线，以返回实际检查结果，新关联条件仍只提供摘要。schema 4 新增 `reference` 与 `object_selection`：`value_types` 限定允许的关联类型，引用写入的 `value_guards` 在新关联上检查；对象选择以 `pipelines.static` 和 `pipelines.query` 分别声明最终 setter，每次请求只选一条。属性请求版本仍为读取 schema 1、修改 schema 2，详细值格式与条件行为见[目录修改](catalog-modifier.md#写入条件)。
 
 材料系数读取沿 `MaterialProperty.getMethod()` → `MultiCoefficientMaterialPropertyMethod.getScalarProperties()` → 各子属性当前 `getMethod()` 取得数据。本机 2602 实现中，`MaterialProperty.getObjects()` 只返回当前方法，不能用它枚举全部可用方法；`getMaterialPropertyMethod(Class)` 只查找既有方法，缺失时抛错。`MultiCoefficientMaterialPropertyMethod.getMethod(int)` 在系数当前不是函数方法时会切换到 `FunctionMaterialPropertyMethod`，因此没有将它映射为只读调用。
+
+schema 8 的类型映射可显式声明 `locate_kind: "object"`，要求只读定位管线返回单个 STAR 对象；默认 `collection` 仍要求集合。两者均核对实际类型、名称及身份，不对错误返回值自动转换。旧 schema 不接受此字段，其他定位和父路径契约保持不变。
 
 schema 7 的标量 `write.bounds` 可声明一条只读管线，返回所写数量自己的 BoundedScalarInput；旧 schema 不接受此字段。加载器限制为 `scalar_expression` 或 `scalar_value`，运行时核对数量身份、单位、表达式预览和范围。`describe` 与覆盖报告提供 `value_bounds` 标志；没有候选新值时不会执行范围预览。
 
