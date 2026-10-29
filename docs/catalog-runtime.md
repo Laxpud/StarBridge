@@ -119,13 +119,15 @@ python3 bridge/runner/session_bridge.py describe \
 
 ### 结构操作描述
 
-当前 `tensor_profile` 的 `operations.set_method` 描述张量方法切换。`implemented` 表示已有操作实现；`read_properties` 声明准备和回读所需的属性集合，当前为 `name`、`method_state`；`state_property` 为完整预期旧状态的来源 `method_state`；`preserved_properties` 列出必须保持不变的属性。`impacts` 按 `target` 和 `owned_objects` 说明目标及其所拥有分量对象可能发生的变化，不保证切回旧方法可以恢复旧设置。
+当前 `tensor_profile` 和 `material_property` 的 `operations.set_method` 分别描述张量 Profile 与材料物性的方法切换。`implemented` 表示已有操作实现；`read_properties` 声明准备和回读所需的属性集合，当前为 `name`、`method_state`；`state_property` 为完整预期旧状态的来源 `method_state`；`preserved_properties` 列出必须保持不变的属性。`impacts` 按 `target` 和 `owned_objects` 说明目标及其所拥有分量对象可能发生的变化，不保证切回旧方法可以恢复旧设置。
 
-操作同样返回 `guard_checks`、`target_condition_status` 和 `conditions_checked`，含义与属性目标条件相同。映射中的 `methods` 是维护者定义的方法 ID 与 Java 类的对应关系；运行时描述通过 `method_choices` 返回每项 `id`、`java_class`、`available` 和 `matches`。只有当前 Profile 的只读方法枚举中恰好有一个相应实例时，`available` 才为 `true`；`matches` 保留实际方法的名称、类和会话引用，缺失或重名不会被当作可选。
+操作同样返回 `guard_checks`、`target_condition_status` 和 `conditions_checked`，含义与属性目标条件相同。映射中的 `methods` 是维护者定义的方法 ID 与 Java 类的对应关系；Profile 描述以 `method_choices_scope: "all_available"`、`method_resolution: "enumeration"` 标明完整枚举，通过 `method_choices` 返回每项 `id`、`java_class`、`available` 和 `matches`。只有当前 Profile 的只读方法枚举中恰好有一个相应实例时，`available` 才为 `true`；`matches` 保留实际方法的名称、类和会话引用，缺失或重名不会被当作可选。
 
 `unmapped_methods` 保留当前枚举中尚无目录方法 ID 的实际对象引用；它们属于已发现但未接入的选项，不能用于结构修改请求。
 
-`method_choices_checked` 表示方法枚举是否成功，失败时还有 `method_choices_error` 并令 `inspection_complete` 为 `false`。选项可用且目标条件满足仍不保证请求可执行：描述不检查调用者旧状态，也不读取全部源状态或未活动目标方法的分量设置。修改准备会继续完成这些检查。可用方法 ID、请求与失败语义见[张量方法切换](catalog-modifier.md#张量-profile-方法切换)。
+材料描述使用 `method_choices_scope: "mapped_classes"`、`method_resolution: "class_lookup"`，只按已映射类查找既有方法。各项返回 `id`、`java_class`、`available` 和 `resolved_method`；只有查找结果的实际类与映射精确一致时才可用，缺失时引用为 `null`。该 API 没有提供完整枚举，因此不返回 `matches` 或 `unmapped_methods`，也不宣称已排除其他方法或同类重复对象。仅将已核对的本地“方法不存在”异常视为缺失，其他查找错误继续报告。
+
+`method_choices_checked` 表示相应发现过程是否成功，失败时还有 `method_choices_error` 并令 `inspection_complete` 为 `false`。选项可用且目标条件满足仍不保证请求可执行：描述不比较调用者旧状态，也不预读未活动目标方法的分量设置。即使选定属性中包含当前 `method_state`，修改准备仍会重新完整读取并检查。可用方法 ID、请求与失败语义见[张量方法切换](catalog-modifier.md#张量-profile-方法切换)和[材料方法切换](catalog-modifier.md#材料物性方法切换)。
 
 目录与人工映射不匹配、请求格式错误或未知属性在本地拒绝。当前 server 版本、定位或会话引用不匹配时，宏返回 `status: rejected`，CLI 非零退出；后台会话保持 `ready`，可以重新读取。客户端异常或其他无法确认的失败仍沿用会话 `uncertain` 处理，不自动重试。底层 `result.json` 保存拒绝原因；文件失败时不生成成功 `summary.json`。
 
@@ -149,7 +151,7 @@ python3 bridge/runner/session_bridge.py describe \
 | `tensor_component` | `name`、`profile_method`、`quantity`、`quantity_value`、`basis` |
 | `material_model` | `name`、`material` |
 | `material` | `name`、`properties` |
-| `material_property` | `name`、`property_method`、`dimensions`、`coefficients`、`basis`、`coefficient_state` |
+| `material_property` | `name`、`property_method`、`dimensions`、`coefficients`、`basis`、`coefficient_state`、`method_state` |
 | `material_coefficient` | `name`、`property_method`、`quantity`、`quantity_value`、`basis` |
 | `user_tag` | `name` |
 | `volume_average_report` | `name`、`parts`、`tags`、`field_function` |
@@ -177,6 +179,7 @@ python3 bridge/runner/session_bridge.py describe \
 | `tensor_layout_valid` | 条件适配器：核对当前方法布局及二维/三维维数后返回 `true`，不支持时报告错误 |
 | `material_coefficient_basis` | 当前多系数材料物性的方法、量纲和有序系数元数据，不读取数量 |
 | `material_coefficient_state` | 同一物性元数据和各系数当前常量方法的数量，保留 API 实际名称和顺序 |
+| `material_method_state` | 当前材料方法的常量数量或完整多系数设置，供方法切换比较旧状态 |
 | `enum` | `selected` 和当前 API 返回的 `allowed` 集合，不以枚举类全部常量替代当前允许值 |
 | `query` | 静态模式为 `mode: static` 和 `objects`；动态模式为 `mode: query`、`predicate` 和 `modifiers` |
 
@@ -252,6 +255,10 @@ python3 bridge/runner/session_bridge.py describe \
 
 `coefficient_state` 使用 `material_coefficient_state`，在相同元数据和系数条目上增加各项当前 `method` 及完整标量 `quantity`；所有系数均须使用当前 `ConstantMaterialPropertyMethod`。某个系数为其他方法时，该完整状态读取报错，但不妨碍独立枚举 `coefficients` 或读取 `basis`。真实导热夹具的正交方法返回 `k11, k22, k33`，各向异性方法返回 `k11, k12, k13, k22, k23, k33`；这些名称和项数是该物性的观察结果，不是其他材料系数的固定格式。
 
+`material_property.method_state` 使用 `material_method_state`，统一返回 `name`、`java_class`、`method`、`dimensions`、`storage`、`quantity`、`coefficients` 七个字段。当前方法为常量时，`storage` 为 `constant`，`quantity` 为完整标量数量，`coefficients` 为 `[]`；当前方法为多系数时，`storage` 为 `coefficients`，`quantity` 为 `null`，系数条目与 `coefficient_state` 相同且必须非空。未知方法或不可读系数明确报错，不隐式选择常量方法。
+
+常量物性不能读取仅属于多系数布局的 `basis`、`coefficients`、`coefficient_state`；准备切换时按需读取 `name` 和 `method_state`，不用要求所有物性属性适用于每一种方法。方法切换的映射范围和参数见[材料物性方法切换](catalog-modifier.md#材料物性方法切换)。
+
 系数子对象有五个属性：`name`、`property_method`、`quantity`、`quantity_value`、`basis`。两个 quantity 属性读取该系数当前常量方法的同一数量；子对象 `basis` 读取父物性的多系数布局，不读取兄弟系数数量。已有单项写入契约见[材料系数修改](catalog-modifier.md#材料系数)。
 
 ## 人工执行映射
@@ -266,7 +273,7 @@ schema 3 新增通用 `primitive`、`enum`、`vector_expression` 和 `vector_val
 
 材料系数读取沿 `MaterialProperty.getMethod()` → `MultiCoefficientMaterialPropertyMethod.getScalarProperties()` → 各子属性当前 `getMethod()` 取得数据。本机 2602 实现中，`MaterialProperty.getObjects()` 只返回当前方法，不能用它枚举全部可用方法；`getMaterialPropertyMethod(Class)` 只查找既有方法，缺失时抛错。`MultiCoefficientMaterialPropertyMethod.getMethod(int)` 在系数当前不是函数方法时会切换到 `FunctionMaterialPropertyMethod`，因此没有将它映射为只读调用。
 
-schema 5 按类型新增 `operations`。首个 `profile_method` 操作声明方法 ID、只读 `available` 管线、`guards`、独立 `read_properties`、`state_property`、`preserved_properties` 和 `impacts`，以及最终 `write` 管线。`available` 从目标枚举现有方法；setter 的唯一 `method` 参数必须来自其中选定的实际 `ProfileMethod` 对象。属性 writer 不能使用这个操作专用参数。描述计划移除操作 setter，普通读取和兼容修改计划移除操作集合；结构修改计划则只保留所选操作与声明的读取集合。结构请求独立使用 schema 3。
+schema 5 按类型新增 `operations`。`profile_method` 与 `material_method` 操作声明方法 ID、只读 `available` 管线、`guards`、独立 `read_properties`、`state_property`、`preserved_properties` 和 `impacts`，以及最终 `write` 管线。Profile 的 `available` 从目标枚举现有方法；材料的 `available` 必须为当前目标自身的空读取管线，由适配器按已映射类查找。setter 的唯一 `method` 参数必须来自选定的实际 `ProfileMethod` 或 `MaterialPropertyMethod` 对象；加载器校验映射方法的继承关系、相应状态适配器和 setter 参数类型。属性 writer 不能使用这个操作专用参数。描述计划移除操作 setter，普通读取和兼容修改计划移除操作集合；结构修改计划则只保留所选操作与声明的读取集合。结构请求独立使用 schema 3。
 
 运行时先用 `getCurrentVersion()` 和 `getReleaseNumber()` 读取当前 server 版本，与目录精确匹配，不使用文件保存版本，也不截断版本后缀。离线 `check --install` 只核对安装材料，不能代替这项会话检查。
 
@@ -282,4 +289,4 @@ Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作�
 
 `describe` 已在 2602 工作副本验证张量目标条件全部满足、缺失重力模型不满足、受控条件适配错误的逐项隔离，以及无条件属性与未实现写入的区分；错误后会话仍为 `ready`，张量读取值和原输入 SHA256 未变。文件模式的标量描述及原输入保护也已核对。产物位于本地 `outputs/catalog-conditions-20261029/`。
 
-张量 Profile 已在单相多孔区域完成二维和三维四种已映射方法的当前分量子对象读写、状态读取与代表性切换；非常量兄弟分量隔离、旧状态/引用/单位拒绝及文件保存重载已验证，原三维矩阵入口也通过回归检查。材料导热系数的代表性标量写入、方法拒绝及保存重载已通过；有限元源导数对称张量已核对二维三项、三维六项、XY/YX 别名及保存后的数值和坐标引用。具体转换及未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。分项覆盖报告见[离线目录工具](catalog.md#分项覆盖报告)；已有操作描述覆盖张量方法切换，其他结构操作、类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。
+张量 Profile 已在单相多孔区域完成二维和三维四种已映射方法的当前分量子对象读写、状态读取与代表性切换；非常量兄弟分量隔离、旧状态/引用/单位拒绝及文件保存重载已验证，原三维矩阵入口也通过回归检查。材料导热系数的代表性标量写入、方法拒绝及保存重载已通过，常量、正交和各向异性导热方法的结构切换也已通过代表性切换、写前拒绝及文件重载；有限元源导数对称张量已核对二维三项、三维六项、XY/YX 别名及保存后的数值和坐标引用。具体转换及未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。分项覆盖报告见[离线目录工具](catalog.md#分项覆盖报告)；已有操作描述覆盖张量 Profile 与材料物性方法切换，其他结构操作、类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。

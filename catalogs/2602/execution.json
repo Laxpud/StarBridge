@@ -758,6 +758,16 @@
       "fingerprint": "f1d75a9b50b4bb7cc12146467a21d9cb511452561c21c63b0e070b1f2e9d486b",
       "parameter_types": [],
       "effect": "read"
+    },
+    "material_property.set_method": {
+      "type": "star.material.MaterialProperty",
+      "member": "setMethodType(star.material.MaterialPropertyMethod)",
+      "signature": "public void setMethodType(MaterialPropertyMethod v)",
+      "fingerprint": "b860e8337991a220354320a45ae66d59686d5a4912c06c5fedeb2727a05bb150",
+      "parameter_types": [
+        "star.material.MaterialPropertyMethod"
+      ],
+      "effect": "write"
     }
   },
   "types": {
@@ -5293,6 +5303,15 @@
         },
         "writable": false,
         "reason": "在当前多系数布局后读取各系数当前常量方法的完整数量，不补写矩阵或切换方法"
+      },
+      "method_state": {
+        "adapter": "material_method_state",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取当前常量或多系数材料方法的完整活动设置，供结构操作核对旧状态；不切换方法"
       }
     },
     "material_coefficient": {
@@ -5575,7 +5594,53 @@
     "tensor_component": {},
     "material_model": {},
     "material": {},
-    "material_property": {},
+    "material_property": {
+      "set_method": {
+        "adapter": "material_method",
+        "reason": "按目录映射类查找当前物性已有的方法，在完整旧状态及目标方法设置均可读时显式选择；不枚举所有隐藏选项，不保证切回即可恢复旧设置",
+        "read_properties": [
+          "name",
+          "method_state"
+        ],
+        "state_property": "method_state",
+        "methods": {
+          "constant": "star.material.ConstantMaterialPropertyMethod",
+          "orthotropic": "star.energy.OrthotropicThermalConductivityMethod",
+          "anisotropic": "star.energy.AnisotropicThermalConductivityMethodWithValues"
+        },
+        "available": {
+          "root": "object",
+          "steps": []
+        },
+        "write": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "material_property.set_method",
+              "arguments": [
+                {
+                  "context": "method"
+                }
+              ]
+            }
+          ]
+        },
+        "guards": [],
+        "impacts": [
+          {
+            "scope": "target",
+            "description": "改变已有材料物性的当前方法与活动配置；目标身份、名称和量纲保持核对，不创建材料或启用模型"
+          },
+          {
+            "scope": "owned_objects",
+            "description": "常量数量与系数子属性可能随方法切换启用、隐藏或初始化；以完整新状态回读及已覆盖快照 Diff 记录结果，不自动回滚"
+          }
+        ],
+        "preserved_properties": [
+          "name"
+        ]
+      }
+    },
     "material_coefficient": {}
   }
 }

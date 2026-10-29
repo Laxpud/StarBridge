@@ -18,7 +18,7 @@ ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum'
             'name', 'type_name', 'names', 'enum_name', 'presence', 'java_class',
             'tensor_profile', 'tensor_basis', 'tensor_method_state',
             'tensor_components', 'tensor_method_basis', 'tensor_layout_valid',
-            'material_coefficient_basis', 'material_coefficient_state'}
+            'material_coefficient_basis', 'material_coefficient_state', 'material_method_state'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
     'field_definition': {'value'},
@@ -32,7 +32,7 @@ WRITE_ADAPTERS = {
     'user_tags': {'value'},
 }
 # 结构操作的参数只用于其最终调用，不能混入普通属性 writer 的契约。
-OPERATION_ADAPTERS = {'profile_method': {'method'}}
+OPERATION_ADAPTERS = {'profile_method': {'method'}, 'material_method': {'method'}}
 JAVA_TYPE = re.compile(r'[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\[\])*\Z')
 PRIMITIVES = {'boolean', 'byte', 'char', 'short', 'int', 'long', 'float', 'double'}
 QUERY_OPERATORS = {
@@ -182,10 +182,17 @@ def _guards(catalog, methods, source, *, has_parent):
     return guards
 
 
+def _catalog_has_base(catalog, java_class, base):
+    """用声明类或继承成员的来源证明基类关系，不根据类名后缀推测方法种类。"""
+    entry = catalog['types'].get(java_class)
+    return entry is not None and (java_class == base or
+                                  any(ref['type'] == base for ref in entry['inherited_members']))
+
+
 def _operations(catalog, methods, source, types, properties):
     """编译结构操作及其影响范围，确保操作使用独立的读取集合和最终调用。
 
-    Profile 方法切换可能改变分量组织，不能强制读取当前方法不存在的矩阵属性。
+    Profile 与材料方法切换均可能改变分量组织，不能强制读取新方法不存在的属性。
     read_properties 显式声明修改前后必须完整读取的状态，preserved_properties
     声明应保持不变的字段；状态属性自身允许随方法改变，但必须能完整回读。
     """
@@ -200,7 +207,13 @@ def _operations(catalog, methods, source, types, properties):
             where = type_id + '.' + name
             _keys(entry, 'adapter reason read_properties state_property methods available write guards '
                          'impacts preserved_properties', where)
-            _require(entry['adapter'] == 'profile_method', f'Unsupported operation adapter: {where}')
+            adapter = entry['adapter']
+            _require(isinstance(adapter, str) and adapter in OPERATION_ADAPTERS,
+                     f'Unsupported operation adapter: {where}')
+            state_adapter, method_base = {
+                'profile_method': ('tensor_method_state', 'star.common.ProfileMethod'),
+                'material_method': ('material_method_state', 'star.material.MaterialPropertyMethod'),
+            }[adapter]
             _text(entry['reason'], 'operation.reason')
             for key in ('read_properties', 'preserved_properties'):
                 value = entry[key]
@@ -210,8 +223,8 @@ def _operations(catalog, methods, source, types, properties):
             state = entry['state_property']
             _require(isinstance(state, str) and state in entry['read_properties'],
                      f'Operation state property must be read: {where}')
-            _require(properties[type_id][state]['adapter'] == 'tensor_method_state',
-                     f'Profile method operation requires tensor_method_state: {where}')
+            _require(properties[type_id][state]['adapter'] == state_adapter,
+                     f'Operation requires {state_adapter}: {where}')
             _require(set(entry['preserved_properties']) <= set(entry['read_properties'])
                      and state not in entry['preserved_properties'],
                      f'Operation preserved properties must exclude its mutable state: {where}')
@@ -224,19 +237,25 @@ def _operations(catalog, methods, source, types, properties):
                 _text(method_id, 'method ID')
                 _require(isinstance(java_class, str) and java_class in catalog['types'],
                          f'Unknown operation method class: {where}.{method_id}')
+                _require(_catalog_has_base(catalog, java_class, method_base),
+                         f'Operation method must derive from {method_base}: {where}.{method_id}')
                 compiled_choices[method_id] = _binary_class(catalog, java_class)
             _require(len(set(compiled_choices.values())) == len(compiled_choices),
                      f'Duplicate operation method classes: {where}')
 
-            # 2. 可选方法只能只读枚举；最终 setter 仅消费运行时选中的方法对象。
+            # 2. Profile 只读枚举选项；材料适配器接收目标自身，再按映射类查找既有方法。
+            # 材料 getObjects() 只返回当前方法，不能把它冒充全部可用选项。
+            # 两种最终 setter 都只消费运行时选定并核对身份的那个方法对象。
             available = _pipeline(catalog, methods, entry['available'], where + '.available')
             write = _pipeline(catalog, methods, entry['write'], where + '.write',
                               write_adapter=entry['adapter'])
             _require(available['root'] == 'object' and write['root'] == 'object',
-                     f'Profile method operations must start at the target object: {where}')
+                     f'Method operations must start at the target object: {where}')
+            _require(adapter != 'material_method' or not available['steps'],
+                     f'Material method lookup must receive the target object directly: {where}')
             _require(write['steps'][-1]['arguments'] == [{'context': 'method'}]
-                     and write['steps'][-1]['parameter_types'] == ['star.common.ProfileMethod'],
-                     f'Profile method setter must consume exactly one ProfileMethod: {where}')
+                     and write['steps'][-1]['parameter_types'] == [method_base],
+                     f'Method setter must consume exactly one {method_base}: {where}')
             guards = _guards(catalog, methods, entry['guards'],
                              has_parent=types[type_id]['parent_type'] is not None)
             _require(isinstance(entry['impacts'], list) and bool(entry['impacts']),
@@ -540,6 +559,45 @@ def _selection_value(plan, writer, value, *, expected=False):
     return {**value, 'predicate': predicate(value['predicate']), 'modifiers': sorted(modifiers)}
 
 
+def _expected_quantity(value, where='expected quantity'):
+    """核对完整标量回读值，保留原定义、单位及显式的非有限值字符串。"""
+    _keys(value, 'definition unit si_unit raw_value si_value', where)
+    _require(all(isinstance(value[key], str) for key in ('definition', 'unit', 'si_unit')),
+             'Expected quantity requires definition and units')
+    for key in ('raw_value', 'si_value'):
+        number = value[key]
+        _require((type(number) in (int, float) and math.isfinite(number))
+                 or (isinstance(number, str) and number in ('NaN', 'Infinity', '-Infinity')),
+                 'Expected quantity values must preserve numeric or non-finite readback types')
+
+
+def _material_method_state(expected):
+    """核对材料方法旧状态的两种完整布局，不删除或补齐调用方提交的系数设置。"""
+    _keys(expected, 'name java_class method dimensions storage quantity coefficients',
+          'expected material method state')
+    for field in ('name', 'java_class', 'method', 'dimensions', 'storage'):
+        _text(expected[field], 'expected.' + field)
+    if expected['storage'] == 'constant':
+        _require(expected['coefficients'] == [], 'Constant material state must have no coefficients')
+        _expected_quantity(expected['quantity'], 'expected material quantity')
+    elif expected['storage'] == 'coefficients':
+        _require(expected['quantity'] is None, 'Coefficient material state must not contain a scalar quantity')
+        coefficients = expected['coefficients']
+        _require(isinstance(coefficients, list) and bool(coefficients),
+                 'Expected material state requires its coefficient settings')
+        for index, coefficient in enumerate(coefficients):
+            _keys(coefficient, 'index coefficient_name name java_class dimensions method quantity',
+                  'expected material coefficient')
+            # index 与数组原顺序共同绑定 API 的名称/子属性配对，布尔值不能冒充索引。
+            _require(type(coefficient['index']) is int and coefficient['index'] == index,
+                     'Expected material coefficient indices must preserve their original order')
+            for field in ('coefficient_name', 'name', 'java_class', 'dimensions', 'method'):
+                _text(coefficient[field], 'expected coefficient.' + field)
+            _expected_quantity(coefficient['quantity'], 'expected coefficient quantity')
+    else:
+        raise CatalogError('Unsupported material method storage')
+
+
 def _operation_request(plan, request):
     """检查结构操作请求并规范方向引用；保留完整旧状态供 server 严格相等比较。
 
@@ -557,25 +615,29 @@ def _operation_request(plan, request):
     operation = plan['operations'][type_id][request['operation']]
     _keys(request['arguments'], 'method', 'operation arguments')
     _text(request['arguments']['method'], 'operation method')
-    _require(request['arguments']['method'] in operation['methods'], 'Unknown or unsupported profile method')
+    _require(request['arguments']['method'] in operation['methods'], 'Unknown or unsupported operation method')
     _json_value(request['expected'])
     expected = request['expected']
-    _keys(expected, 'java_class method dimensions is_3d shape storage coordinate_system local_orientation components',
-          'expected tensor method state')
-    for field in ('java_class', 'method', 'dimensions', 'storage'):
-        _text(expected[field], 'expected.' + field)
+    if operation['adapter'] == 'material_method':
+        _material_method_state(expected)
+    else:
+        _require(operation['adapter'] == 'profile_method', 'Unsupported structural operation adapter')
+        _keys(expected, 'java_class method dimensions is_3d shape storage coordinate_system local_orientation components',
+              'expected tensor method state')
+        for field in ('java_class', 'method', 'dimensions', 'storage'):
+            _text(expected[field], 'expected.' + field)
+        # shape 表示二维或三维二阶张量；布尔维度标志和整数矩阵尺寸必须一致。
+        dimension = 3 if expected['is_3d'] is True else 2
+        _require(type(expected['is_3d']) is bool and isinstance(expected['shape'], list)
+                 and all(type(size) is int for size in expected['shape'])
+                 and expected['shape'] == [dimension, dimension],
+                 'Expected tensor state requires a boolean is_3d and matching 2D or 3D shape')
+        _require(isinstance(expected['components'], list) and bool(expected['components'])
+                 and all(isinstance(component, dict) for component in expected['components']),
+                 'Expected method state requires its component settings')
+        expected = {**expected, **{key: _reference_state(expected[key])
+                                  for key in ('coordinate_system', 'local_orientation')}}
     _require(expected['method'] in operation['methods'].values(), 'Expected method is outside the operation mapping')
-    # shape 表示二维或三维二阶张量；布尔维度标志和整数矩阵尺寸必须一致。
-    dimension = 3 if expected['is_3d'] is True else 2
-    _require(type(expected['is_3d']) is bool and isinstance(expected['shape'], list)
-             and all(type(size) is int for size in expected['shape'])
-             and expected['shape'] == [dimension, dimension],
-             'Expected tensor state requires a boolean is_3d and matching 2D or 3D shape')
-    _require(isinstance(expected['components'], list) and bool(expected['components'])
-             and all(isinstance(component, dict) for component in expected['components']),
-             'Expected method state requires its component settings')
-    expected = {**expected, **{key: _reference_state(expected[key])
-                              for key in ('coordinate_system', 'local_orientation')}}
     return {**request, 'expected': expected}
 
 
@@ -673,14 +735,7 @@ def prepare_modification(catalog_path, execution_path, request_path):
         else:
             _require(type(value[field]) in (int, float) and math.isfinite(value[field]),
                      'Scalar value must be a finite number')
-        _keys(request['expected'], 'definition unit si_unit raw_value si_value', 'expected quantity')
-        _require(all(isinstance(request['expected'][k], str) for k in ('definition', 'unit', 'si_unit')),
-                 'Expected quantity requires definition and units')
-        for key in ('raw_value', 'si_value'):
-            old = request['expected'][key]
-            _require((type(old) in (int, float) and math.isfinite(old))
-                     or (isinstance(old, str) and old in ('NaN', 'Infinity', '-Infinity')),
-                     'Expected quantity values must preserve numeric or non-finite readback types')
+        _expected_quantity(request['expected'])
     else:
         _require(isinstance(value, list) and all(isinstance(v, str) and v for v in value)
                  and len(value) == len(set(value)), 'Tags must be unique non-empty names')

@@ -270,7 +270,7 @@ class CatalogRuntime {
         return result;
     }
 
-    /** 描述操作的范围和当前方法选项；选项未出现表示当前不可选，不依据类名创建新方法。 */
+    /** 描述操作范围及选项；Profile 枚举全部方法，材料物性只查找目录已映射的类。 */
     private static java.util.Map<String, Object> describeOperation(star.common.Simulation sim,
             Resolved resolved, java.util.Map<String, Object> operation, String token) {
         java.util.Map<String, Object> result = fields("adapter", operation.get("adapter"),
@@ -281,18 +281,32 @@ class CatalogRuntime {
                 "condition_reads", operation.get("guards")), token));
         java.util.List<Object> choices = new java.util.ArrayList<>();
         java.util.List<Object> unmapped = new java.util.ArrayList<>();
+        boolean material = "material_method".equals(operation.get("adapter"));
+        result.put("method_choices_scope", material ? "mapped_classes" : "all_available");
+        result.put("method_resolution", material ? "class_lookup" : "enumeration");
         try {
-            java.util.List<star.common.ProfileMethod> available = availableMethods(sim, resolved, operation);
             java.util.Map<String, Object> mappings = object(operation.get("methods"), "operation.methods");
-            // 可发现的方法不自动成为可执行能力；保留未映射项供调用方理解当前限制。
-            for (star.common.ProfileMethod method : available)
-                if (!mappings.containsValue(method.getClass().getName())) unmapped.add(reference(method, token));
-            for (java.util.Map.Entry<String, Object> mapping : mappings.entrySet()) {
-                java.util.List<Object> matches = new java.util.ArrayList<>();
+            if (material) {
+                // 材料 API 仅按类查找既有方法；查到一个对象不等于枚举了所有选项或证明无重复。
+                for (java.util.Map.Entry<String, Object> mapping : mappings.entrySet()) {
+                    star.material.MaterialPropertyMethod method = lookupMaterialMethod(sim, resolved, operation,
+                            string(mapping.getValue(), "mapped material method"));
+                    choices.add(fields("id", mapping.getKey(), "java_class", mapping.getValue(),
+                            "available", method != null && method.getClass().getName().equals(mapping.getValue()),
+                            "resolved_method", method == null ? null : reference(method, token)));
+                }
+            } else {
+                java.util.List<star.common.ProfileMethod> available = availableMethods(sim, resolved, operation);
+                // 可发现的方法不自动成为可执行能力；Profile 可完整枚举，因此返回未映射项。
                 for (star.common.ProfileMethod method : available)
-                    if (method.getClass().getName().equals(mapping.getValue())) matches.add(reference(method, token));
-                choices.add(fields("id", mapping.getKey(), "java_class", mapping.getValue(),
-                        "available", matches.size() == 1, "matches", matches));
+                    if (!mappings.containsValue(method.getClass().getName())) unmapped.add(reference(method, token));
+                for (java.util.Map.Entry<String, Object> mapping : mappings.entrySet()) {
+                    java.util.List<Object> matches = new java.util.ArrayList<>();
+                    for (star.common.ProfileMethod method : available)
+                        if (method.getClass().getName().equals(mapping.getValue())) matches.add(reference(method, token));
+                    choices.add(fields("id", mapping.getKey(), "java_class", mapping.getValue(),
+                            "available", matches.size() == 1, "matches", matches));
+                }
             }
             result.put("method_choices_checked", true);
         } catch (Exception error) {
@@ -300,7 +314,7 @@ class CatalogRuntime {
             result.put("method_choices_error", errorText(error));
         }
         result.put("method_choices", choices);
-        result.put("unmapped_methods", unmapped);
+        if (!material) result.put("unmapped_methods", unmapped);
         return result;
     }
 
@@ -319,7 +333,7 @@ class CatalogRuntime {
         return prepareModification(sim, plan, request, token);
     }
 
-    /** 从目录只读管线取得当前方法对象；不调用可能隐式切换方法的 getMethod(Class)。 */
+    /** 从目录只读管线枚举 Profile 方法；不调用可能隐式切换方法的 getMethod(Class)。 */
     private static java.util.List<star.common.ProfileMethod> availableMethods(star.common.Simulation sim,
             Resolved resolved, java.util.Map<String, Object> operation) throws Exception {
         require("profile_method".equals(operation.get("adapter")), "Unsupported operation adapter");
@@ -334,11 +348,46 @@ class CatalogRuntime {
         return methods;
     }
 
-    /** 只按已审阅目录的方法 ID 选择当前唯一实例，不接受请求提供的 Java 类或构造方法。 */
-    private static star.common.ProfileMethod selectedMethod(star.common.Simulation sim, Resolved resolved,
+    /**
+     * 按目录类查找材料物性已有方法，不调用 setter，也不通过只返回活动项的 getObjects 枚举。
+     * 2602 的查找 API 以本地 NeoException 报告缺失；只识别已核对的错误及类元数据，
+     * 其他异常继续传播，避免把连接失败或服务器错误解释成“不支持此方法”。
+     */
+    private static star.material.MaterialPropertyMethod lookupMaterialMethod(star.common.Simulation sim,
+            Resolved resolved, java.util.Map<String, Object> operation, String className) throws Exception {
+        require("material_method".equals(operation.get("adapter")), "Unsupported material operation adapter");
+        require(resolved.object instanceof star.material.MaterialProperty,
+                "Material method operation requires a MaterialProperty");
+        Object raw = pipeline(sim, resolved.object, resolved.parent, object(operation.get("available"), "operation.available"));
+        require(raw instanceof star.material.MaterialProperty
+                && ((star.material.MaterialProperty) raw).getObjectKeyAsString().equals(resolved.object.getObjectKeyAsString()),
+                "Material method lookup must use the operation target");
+        Class<? extends star.material.MaterialPropertyMethod> type = javaType(className)
+                .asSubclass(star.material.MaterialPropertyMethod.class);
+        try {
+            return ((star.material.MaterialProperty) raw).getMaterialPropertyMethod(type);
+        } catch (star.base.neo.NeoException error) {
+            star.base.neo.NeoProperty details = error.getNeoProperty();
+            if (details != null && !details.containsKey("Neo.Error") && details.containsKey("error")
+                    && details.containsKey("Class")
+                    && "MaterialPropertyMethod not found in MaterialProperty".equals(details.getString("error"))
+                    && type.toString().equals(details.getString("Class"))) return null;
+            throw error;
+        }
+    }
+
+    /** 仅选择已审阅 ID 对应的既有方法；Profile 检查唯一匹配，材料检查按类查找结果的精确类型。 */
+    private static star.base.neo.ClientServerObject selectedMethod(star.common.Simulation sim, Resolved resolved,
             java.util.Map<String, Object> operation, String methodId) throws Exception {
         java.util.Map<String, Object> mappings = object(operation.get("methods"), "operation.methods");
-        require(mappings.containsKey(methodId), "Unknown mapped profile method: " + methodId);
+        require(mappings.containsKey(methodId), "Unknown mapped method: " + methodId);
+        if ("material_method".equals(operation.get("adapter"))) {
+            String className = string(mappings.get(methodId), "mapped material method");
+            star.material.MaterialPropertyMethod method = lookupMaterialMethod(sim, resolved, operation, className);
+            require(method != null, "Material method is unavailable: " + methodId);
+            require(method.getClass().getName().equals(className), "Material method does not match mapped class: " + methodId);
+            return method;
+        }
         star.common.ProfileMethod selected = null;
         for (star.common.ProfileMethod method : availableMethods(sim, resolved, operation)) {
             if (!method.getClass().getName().equals(mappings.get(methodId))) continue;
@@ -357,8 +406,47 @@ class CatalogRuntime {
         return result;
     }
 
+    /** 仅张量状态规范化方向引用；材料状态不含协议引用，全部元数据和数量原样参与比较。 */
+    private static Object operationMethodContent(java.util.Map<String, Object> operation, Object value) {
+        if ("profile_method".equals(operation.get("adapter"))) return tensorMethodContent(value);
+        require("material_method".equals(operation.get("adapter")), "Unsupported structural operation adapter");
+        return object(value, "material method state");
+    }
+
+    /** 从指定的既有方法读取完整设置，可用于未活动目标方法的准备检查，不重新选择活动方法。 */
+    private static Object operationMethodState(Resolved resolved, java.util.Map<String, Object> operation,
+            star.base.neo.ClientServerObject method, String token) {
+        if ("profile_method".equals(operation.get("adapter"))) {
+            require(resolved.object instanceof star.common.TensorProfile && method instanceof star.common.ProfileMethod,
+                    "Profile method state requires a TensorProfile and ProfileMethod");
+            return tensorMethodState((star.common.TensorProfile) resolved.object, (star.common.ProfileMethod) method, token);
+        }
+        require("material_method".equals(operation.get("adapter"))
+                && resolved.object instanceof star.material.MaterialProperty && method instanceof star.material.MaterialPropertyMethod,
+                "Material method state requires a MaterialProperty and MaterialPropertyMethod");
+        return materialMethodState((star.material.MaterialProperty) resolved.object,
+                (star.material.MaterialPropertyMethod) method, token);
+    }
+
+    /** 按操作的目标类型读取无参当前方法，供 setter 后核对所选对象 key。 */
+    private static star.base.neo.ClientServerObject currentOperationMethod(Resolved resolved,
+            java.util.Map<String, Object> operation) {
+        star.base.neo.ClientServerObject method;
+        if ("profile_method".equals(operation.get("adapter"))) {
+            require(resolved.object instanceof star.common.TensorProfile, "Method operation requires a TensorProfile");
+            method = ((star.common.TensorProfile) resolved.object).getMethod();
+        } else {
+            require("material_method".equals(operation.get("adapter"))
+                    && resolved.object instanceof star.material.MaterialProperty,
+                    "Material method operation requires a MaterialProperty");
+            method = ((star.material.MaterialProperty) resolved.object).getMethod();
+        }
+        require(method != null, "Current operation method is missing");
+        return method;
+    }
+
     /**
-     * 先读取完整活动方法状态并核对 expected，再准备一次 setMethod 调用。
+     * 先读取完整活动方法状态并核对 expected，再准备一次已绑定的方法选择 setter。
      * 方法切换可能重建分量；不会把逐值回写或切回旧方法宣称为可用的回滚。
      */
     private static PreparedOperation prepareOperation(star.common.Simulation sim,
@@ -377,22 +465,23 @@ class CatalogRuntime {
             String operationId = string(request.get("operation"), "request.operation");
             java.util.Map<String, Object> operation = object(object(object(plan.get("operations"),
                     "plan.operations").get(typeId), "type operations").get(operationId), "operation");
-            require("profile_method".equals(operation.get("adapter")), "Unsupported structural operation adapter");
+            require(java.util.List.of("profile_method", "material_method").contains(operation.get("adapter")),
+                    "Unsupported structural operation adapter");
             java.util.List<Object> checks = checkGuards(sim, resolved, operation, token);
             java.util.Map<String, Object> readRequest = fields("schema_version", 1L, "action", "read",
                     "target", target, "properties", operation.get("read_properties"));
             java.util.Map<String, Object> before = inspect(sim, plan, readRequest, token);
             require(Boolean.TRUE.equals(before.get("inspection_complete")), "Operation requires complete source state");
             String property = string(operation.get("state_property"), "operation.state_property");
-            require(sameValue(tensorMethodContent(request.get("expected")),
-                    tensorMethodContent(propertyValue(before, property))), "Operation expected state does not match");
-            // 2. 选项必须是当前已存在的唯一方法对象；准备期间不调用 setter。
+            require(sameValue(operationMethodContent(operation, request.get("expected")),
+                    operationMethodContent(operation, propertyValue(before, property))), "Operation expected state does not match");
+            // 2. 按各适配器的发现规则取得既有方法对象；准备期间不调用 setter。
             java.util.Map<String, Object> arguments = object(request.get("arguments"), "request.arguments");
             require(arguments.keySet().equals(java.util.Set.of("method")), "Operation requires a method argument");
             String methodId = string(arguments.get("method"), "arguments.method");
-            star.common.ProfileMethod method = selectedMethod(sim, resolved, operation, methodId);
+            star.base.neo.ClientServerObject method = selectedMethod(sim, resolved, operation, methodId);
             // 未活动方法也可能保留非常量分量；先只读其设置，避免已知不可回读的目标进入 setter。
-            Object destination = tensorMethodState((star.common.TensorProfile) resolved.object, method, token);
+            Object destination = operationMethodState(resolved, operation, method, token);
             Invocation setter = prepareWrite(sim, resolved, object(operation.get("write"), "operation.write"),
                     fields("method", method));
             before.put("checks", checks);
@@ -415,7 +504,7 @@ class CatalogRuntime {
         PreparedOperation(star.common.Simulation sim, java.util.Map<String, Object> plan,
                 java.util.Map<String, Object> readRequest, java.util.Map<String, Object> operation,
                 java.util.Map<String, Object> before, String token, String stateProperty, String methodId,
-                star.common.ProfileMethod method, Object destination, Invocation setter) {
+                star.base.neo.ClientServerObject method, Object destination, Invocation setter) {
             this.sim = sim; this.plan = plan; this.readRequest = readRequest; this.operation = operation;
             this.before = before; this.token = token; this.stateProperty = stateProperty; this.methodId = methodId;
             this.methodKey = method.getObjectKeyAsString(); this.methodClass = method.getClass().getName();
@@ -435,10 +524,10 @@ class CatalogRuntime {
             require(Boolean.TRUE.equals(current.get("inspection_complete"))
                     && sameValue(before.get("properties"), current.get("properties")),
                     "Operation source state changed after preparation");
-            star.common.ProfileMethod selected = selectedMethod(sim, resolved, operation, methodId);
-            require(methodKey.equals(selected.getObjectKeyAsString()), "Selected profile method identity changed");
-            require(sameValue(destination, tensorMethodState((star.common.TensorProfile) resolved.object, selected, token)),
-                    "Selected profile method settings changed after preparation");
+            star.base.neo.ClientServerObject selected = selectedMethod(sim, resolved, operation, methodId);
+            require(methodKey.equals(selected.getObjectKeyAsString()), "Selected method identity changed");
+            require(sameValue(destination, operationMethodState(resolved, operation, selected, token)),
+                    "Selected method settings changed after preparation");
             setter.invoke();
             // 2. 新活动方法与对象身份必须匹配；全部已声明影响状态须能完整读取。
             java.util.Map<String, Object> after = inspect(sim, plan, readRequest, token);
@@ -447,10 +536,13 @@ class CatalogRuntime {
             java.util.Map<String, Object> oldState = object(propertyValue(before, stateProperty), "old method state");
             java.util.Map<String, Object> newState = object(propertyValue(after, stateProperty), "new method state");
             require(methodClass.equals(newState.get("method")), "Operation method readback mismatch");
-            require(methodKey.equals(((star.common.TensorProfile) resolved.object).getMethod().getObjectKeyAsString()),
-                    "Active profile method identity mismatch");
-            for (String key : java.util.List.of("java_class", "dimensions", "is_3d", "shape"))
-                require(sameValue(oldState.get(key), newState.get(key)), "Operation changed tensor identity: " + key);
+            require(methodKey.equals(currentOperationMethod(resolved, operation).getObjectKeyAsString()),
+                    "Active method identity mismatch");
+            java.util.List<String> identityFields = "profile_method".equals(operation.get("adapter"))
+                    ? java.util.List.of("java_class", "dimensions", "is_3d", "shape")
+                    : java.util.List.of("name", "java_class", "dimensions");
+            for (String key : identityFields)
+                require(sameValue(oldState.get(key), newState.get(key)), "Operation changed identity: " + key);
             for (Object raw : list(operation.get("preserved_properties"), "operation.preserved_properties")) {
                 String name = string(raw, "preserved property");
                 require(sameValue(propertyValue(before, name), propertyValue(after, name)),
@@ -1330,14 +1422,14 @@ class CatalogRuntime {
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
-                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state")
+                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
         // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
         if (adapter.equals("presence")) return value != null;
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {
-            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state").contains(adapter),
+            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state").contains(adapter),
                     "Metadata adapter requires a non-null value: " + adapter);
             return null;
         }
@@ -1399,6 +1491,7 @@ class CatalogRuntime {
             case "tensor_layout_valid": return tensorLayoutValid(value);
             case "material_coefficient_basis": return materialCoefficients(value, false, sessionToken);
             case "material_coefficient_state": return materialCoefficients(value, true, sessionToken);
+            case "material_method_state": return materialMethodState(value, sessionToken);
             default: throw new IllegalArgumentException("Unsupported value adapter: " + adapter);
         }
     }
@@ -1412,8 +1505,13 @@ class CatalogRuntime {
         require(value instanceof star.material.MaterialProperty,
                 "Material coefficient adapter requires a MaterialProperty");
         star.material.MaterialProperty property = (star.material.MaterialProperty) value;
-        // 1. 只读取当前方法；MultiCoefficient.getMethod(int) 会切换分量到函数方法，禁止用于读取。
-        star.material.MaterialPropertyMethod current = property.getMethod();
+        return materialCoefficients(property, property.getMethod(), withQuantities, token);
+    }
+
+    /** 沿指定材料方法读取系数；供操作预检查复用，所传方法可以尚未活动。 */
+    private static java.util.Map<String, Object> materialCoefficients(star.material.MaterialProperty property,
+            star.material.MaterialPropertyMethod current, boolean withQuantities, String token) {
+        // 1. 不重新取得父物性的活动方法；MultiCoefficient.getMethod(int) 也禁止用于只读路径。
         require(current instanceof star.material.MultiCoefficientMaterialPropertyMethod,
                 "Unsupported material coefficient method: " + (current == null ? "null" : current.getClass().getName()));
         star.material.MultiCoefficientMaterialPropertyMethod method =
@@ -1449,6 +1547,39 @@ class CatalogRuntime {
         return fields("name", property.getPresentationName(), "java_class", property.getClass().getName(),
                 "method", current.getClass().getName(), "dimensions", property.getDimensions().toString(),
                 "coefficients", coefficients);
+    }
+
+    /** 读取当前材料方法的完整设置；使用无参 getter，不为获得状态而改变方法。 */
+    private static Object materialMethodState(Object value, String token) {
+        require(value instanceof star.material.MaterialProperty,
+                "Material method state requires a MaterialProperty");
+        star.material.MaterialProperty property = (star.material.MaterialProperty) value;
+        return materialMethodState(property, property.getMethod(), token);
+    }
+
+    /**
+     * 保存指定材料方法的常量或多系数设置，供源旧状态比较与未活动目标的准备检查使用。
+     * 两种存储保留同一组顶层字段：常量有 quantity 和空 coefficients，多系数有空 quantity
+     * 和完整 coefficients。此处不推导物理合理性，也不保证激活时服务器绝不初始化设置。
+     */
+    private static Object materialMethodState(star.material.MaterialProperty property,
+            star.material.MaterialPropertyMethod method, String token) {
+        require(method != null, "Material property method is missing");
+        java.util.Map<String, Object> result;
+        if (method instanceof star.material.ConstantMaterialPropertyMethod) {
+            result = fields("name", property.getPresentationName(), "java_class", property.getClass().getName(),
+                    "method", method.getClass().getName(), "dimensions", property.getDimensions().toString(),
+                    "storage", "constant", "quantity", encode(
+                            ((star.material.ConstantMaterialPropertyMethod) method).getQuantity(), "quantity", token),
+                    "coefficients", java.util.List.of());
+        } else {
+            result = materialCoefficients(property, method, true, token);
+            require(!list(result.get("coefficients"), "material coefficients").isEmpty(),
+                    "Material method state requires coefficient settings");
+            result.put("storage", "coefficients");
+            result.put("quantity", null);
+        }
+        return result;
     }
 
     /** 保存一次取得的方法及其独立分量布局；这里只描述组织，不访问 quantity 或切换方法。 */

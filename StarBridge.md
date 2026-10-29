@@ -6,7 +6,7 @@
 
 **StarBridge** 是一个面向 AI Agent 的 **STAR-CCM+ 交互插件**，通过 Skills、MCP、自动化接口和持久化工作记忆，使 Agent 能够读取、理解、修改、运行 STAR-CCM+ 算例，并验证操作结果。
 
-项目已实现文件 Bridge、后台会话原型、[Inspector 对象快照](docs/inspector.md)、[Modifier 单项修改](docs/modifier.md)、[离线候选目录工具](docs/catalog.md)、[目录驱动的描述与读取](docs/catalog-runtime.md)和[首批目录修改](docs/catalog-modifier.md)。兼容修改命令和 Inspector 快照均已使用共享目录，快照由独立布局描述；已提供[分项覆盖报告](docs/catalog.md#分项覆盖报告)，首个张量方法结构操作已接入描述、前提与影响范围，接下来补齐其他写适配器、模型条件及更多结构操作。本文描述目标架构，当前可用入口及限制仍以这些使用说明为准。
+项目已实现文件 Bridge、后台会话原型、[Inspector 对象快照](docs/inspector.md)、[Modifier 单项修改](docs/modifier.md)、[离线候选目录工具](docs/catalog.md)、[目录驱动的描述与读取](docs/catalog-runtime.md)和[首批目录修改](docs/catalog-modifier.md)。兼容修改命令和 Inspector 快照均已使用共享目录，快照由独立布局描述；已提供[分项覆盖报告](docs/catalog.md#分项覆盖报告)，张量 Profile 与材料物性方法结构操作已接入描述、前提与影响范围，接下来补齐其他写适配器、模型条件及更多结构操作。本文描述目标架构，当前可用入口及限制仍以这些使用说明为准。
 
 StarBridge 不将自身限定为单纯的 CLI 或 Java Macro 工具，而是作为 AI Agent 与 STAR-CCM+ 之间的统一桥接层。
 
