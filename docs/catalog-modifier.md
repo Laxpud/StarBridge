@@ -2,7 +2,7 @@
 
 [返回项目入口](README.cn.md) · [目录描述与读取](catalog-runtime.md) · [旧 Modifier 契约](modifier.md) · [当前任务](../TODO.md)
 
-文件与后台会话的 `modify` 使用候选目录和人工执行映射修改已有属性，或执行目录声明的结构操作。属性映射包含标量与向量表达式或常量、用户场函数定义及布尔/枚举选项、重力向量、用户标签关联，体积平均报告的场函数引用和对象选择，以及区域中已有二维或三维张量 Profile 的常量分量、材料物性当前多系数方法的常量系数。结构操作支持已有二维或三维张量 Profile 的[方法切换](#张量-profile-方法切换)，以及已有材料物性的[常量与导热方法切换](#材料物性方法切换)。每次请求选择一个属性或一个操作，先核对条件与旧状态，再执行、回读并返回差异。实际验证状态见[验证范围](#验证范围与迁移边界)；创建、删除、重命名、模型切换和其他结构操作尚未实现。
+文件与后台会话的 `modify` 使用候选目录和人工执行映射修改已有属性，或执行目录声明的结构操作。属性映射包含标量与向量表达式或常量、用户场函数定义及布尔/枚举选项、重力向量、用户标签关联，体积平均报告的场函数引用和对象选择，以及区域中已有二维或三维张量 Profile 的常量分量、方向轴向量和材料物性当前多系数方法的常量系数。结构操作支持已有二维或三维张量 Profile 的[方法切换](#张量-profile-方法切换)，以及已有材料物性的[常量与导热方法切换](#材料物性方法切换)。每次请求选择一个属性或一个操作，先核对条件与旧状态，再执行、回读并返回差异。实际验证状态见[验证范围](#验证范围与迁移边界)；创建、删除、重命名、模型切换和其他结构操作尚未实现。
 
 ## 使用方式
 
@@ -57,7 +57,7 @@ python3 bridge/runner/session_bridge.py save \
 
 ## 请求与支持范围
 
-属性修改请求顶层必须且只能有 `schema_version`、`action`、`target`、`property`、`expected`、`value` 六个字段。格式版本为整数 `2`，`action` 固定为 `modify`。`target` 沿用[目录目标身份](catalog-runtime.md#请求与目标身份)：类型 ID、唯一显示名称，边界与张量 Profile 还需父区域，张量分量需完整父 Profile 路径，材料系数需完整父物性及材料路径；同会话可附带 `reference` 严格检查 token/key。跨加载不能沿用旧引用，应重新读取并使用 `locator`。结构操作使用下文独立的 [schema 3 契约](#张量-profile-方法切换)。
+属性修改请求顶层必须且只能有 `schema_version`、`action`、`target`、`property`、`expected`、`value` 六个字段。格式版本为整数 `2`，`action` 固定为 `modify`。`target` 沿用[目录目标身份](catalog-runtime.md#请求与目标身份)：类型 ID、唯一显示名称，边界与张量 Profile 还需父区域，张量分量与方向轴需完整父 Profile 路径，材料系数需完整父物性及材料路径；同会话可附带 `reference` 严格检查 token/key。跨加载不能沿用旧引用，应重新读取并使用 `locator`。结构操作使用下文独立的 [schema 3 契约](#张量-profile-方法切换)。
 
 | 目标类型 | 属性 ID | `expected` | `value` |
 |---|---|---|---|
@@ -68,6 +68,7 @@ python3 bridge/runner/session_bridge.py save \
 | `physics_continuum` | `gravity` | 完整向量对象 | 含 `definition` 和结果 `unit` 的对象；要求已启用 `GravityModel` |
 | `physics_continuum` | `gravity_value` | 完整向量对象 | 含三个 `components` 和 `unit` 的对象；要求已启用 `GravityModel` |
 | `tensor_component` | `quantity`、`quantity_value` | 所选分量的完整标量数量对象 | 分别为含 `definition` 或有限数值 `value` 的对象，均需 `unit`；父张量须为已支持布局，分量须为当前常量方法 |
+| `tensor_axis` | `quantity`、`quantity_value` | 当前轴的完整向量数量 | 分别为含 `definition` 或三个有限 `components` 的对象，均需 `unit`；保持轴方法与坐标关联 |
 | `material_coefficient` | `quantity`、`quantity_value` | 所选系数的完整标量数量对象 | 分别为含 `definition` 或有限数值 `value` 的对象，均需 `unit`；父物性须为当前多系数方法，系数须为当前常量材料方法 |
 | `tensor_profile` | `xx`、`xy`、`xz`、`yx`、`yy`、`yz`、`zx`、`zy`、`zz` | 对应分量的完整标量数量对象 | 含 `definition` 和结果 `unit` 的对象；要求当前为受支持的三维张量方法与常量分量方法 |
 | `tensor_profile` | 上述各属性加 `_value`，例如 `xx_value` | 同上 | 含有限数值 `value` 和 `unit` 的对象 |
@@ -138,7 +139,7 @@ python3 bridge/runner/session_bridge.py save \
 
 用此目标先 `read`，再将 `properties.quantity.value` 放入 schema 2 请求的 `expected`，选择 `property: "quantity_value"` 和 `value: {"value":10,"unit":"kg/m^3-s"}`。实际目标名、单位和旧值以读取结果为准；同会话可为子对象及父路径附带返回的 `reference`。跨加载使用不含旧引用的完整 `locator`。
 
-准备阶段以 `tensor_layout_valid` 核对父张量布局和维数，以 `constant_component` 核对所选分量的当前方法；写后核对该分量身份、方法及父张量 `basis` 不变。读取集合为子对象全部五个属性，因此兄弟分量采用不支持的数量方法不会单独阻止本分量写入。此路径不读取或核对兄弟分量的数量，也不展开方向对象内部轴设置；若需核对完整张量，可另读 `method_state`，该属性要求全部分量均可读。
+准备阶段以 `tensor_layout_valid` 核对父张量布局和维数，以 `constant_component` 核对所选分量的当前方法；写后核对该分量身份、方法及父张量 `basis` 不变。读取集合为子对象全部五个属性，因此兄弟分量采用不支持的数量方法不会单独阻止本分量写入。此路径不读取或核对兄弟标量分量数量；自带方向轴的方法还要求全部轴的常量向量可读并保持完整方向设置，所关联坐标系或 `LocalOrientation` 的内部设置仍不展开。若需核对完整张量，可另读 `method_state`，该属性要求全部标量分量和方向轴均可读。
 
 以下原矩阵属性入口继续保留：
 
@@ -173,6 +174,16 @@ python3 bridge/runner/session_bridge.py save \
 
 上述 `tensor_profile.xx` 等矩阵属性写入不适用于二维和非复合方法；使用 `tensor_component` 访问已支持布局的实际分量。两种入口均不支持非常量分量方法和材料系数路径。多相多孔阻力使用的 `MixturePorousViscousResistanceMethod` 不属于已支持的方法，不能自动切换为各向异性方法。模型启用与 Profile 创建尚未接入；已有受支持二维或三维 Profile 的方法切换使用下述结构操作。
 
+## 张量方向轴修改
+
+`tensor_axis` 修改当前主方向或轴对称方法直接拥有的一个常量向量轴。先读取父 `tensor_profile.axes`，按返回的实际名称及完整父路径读取子对象；主方向常见名称为 `XX Axis`、`YY Axis`，不要将 `direction_axes` 中的 `X`、`Y` 标签直接当作名称。
+
+将子对象的完整 `quantity.value` 放入 schema 2 `expected`。`quantity` 的新值例如 `{"definition":"[0, 2, 1]","unit":""}`，`quantity_value` 的新值例如 `{"components":[2,1,0],"unit":""}`。这里空单位来自实际无量纲方向轴，其他请求仍须使用实际数量的兼容单位。二维同样提交并保留三个原始分量，Bridge 不裁掉第三项，也不把向量归一化。标量/向量表达式的既有有限值与单位规则继续适用。
+
+`constant_axis` 条件要求所选轴当前方法精确为 `ConstantVectorProfileMethod`；读取和修改不会将函数轴切为常量。准备与回读要求该子对象六个属性完整可读，写后保持轴身份、方法、坐标关联及父 `basis`。轴 `basis` 保存各轴的名称、方法、维数和坐标关联，不保存可变的向量数量，因此兄弟函数轴不会单独阻止当前常量轴写入；其他轴数值不属于本次单轴回读核对范围。
+
+若需要检查完整方向状态，另读父 `method_state`，它要求全部方向轴和标量分量均可读。标量分量写入也会保留这些方法的完整方向轴设置。轴坐标系选择、坐标系内部基向量和轴方法切换尚未作为产品写入入口接入；本入口仅修改当前轴的数量。
+
 ## 材料系数
 
 `material_coefficient` 修改已有材料物性当前多系数方法中的一个标量子属性。目标需完整保留[连续体—材料模型—材料—物性—系数路径](catalog-runtime.md#材料物性与系数)，以父 `material_property.coefficients` 返回的实际系数名称定位；不能把下标或预想的矩阵分量名作为替代。
@@ -193,10 +204,14 @@ python3 bridge/runner/session_bridge.py save \
 | `orthotropic` | `star.common.OrthotropicTensorProfileMethod` |
 | `anisotropic` | `star.common.AnisotropicTensorProfileMethod` |
 | `transverse_isotropic` | `star.common.TransverseIsotropicTensorProfileMethod` |
+| `principal_axes` | `star.common.PrincipalTensorProfileMethodWithAxes` |
+| `axisymmetric_axis` | `star.common.AxisymmetricTensorProfileMethodWithAxis` |
+| `composite` | `star.common.CompositeTensorProfileMethodWithCoordinateSystem` |
+| `symmetric` | `star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem` |
 
 先用 `describe` 查看 `operations.set_method.method_choices`，确认目标方法在当前 Profile 中有唯一实际实例；目标条件、当前选项与影响范围的字段见[结构操作描述](catalog-runtime.md#结构操作描述)。目录中存在方法 ID 不表示任何 Profile 都允许它；缺失或重名选项在准备阶段拒绝。`implemented` 也不表示调用者旧状态、分量方法和所有可写条件已通过。
 
-`expected` 必须取当前 `method_state` 的完整 `value`，保留活动方法、分量组织、定义、单位、数值、量纲、shape 和方向引用。仅提供旧方法名称不足以保护源配置。请求规范化时只移除 `coordinate_system`、`local_orientation` 两个合法引用中的 token/key，按名称和实际 Java 类比较旧方向关联；不展开方向对象内部的轴设置。其他字段不删减或补默认值。当前操作要求旧方法和目标方法都在映射内；二维 `is_3d: false` 对应 `shape: [2,2]`，三维 `true` 对应 `[3,3]`。不一致的维数、未知方法或不支持的分量方法拒绝。
+`expected` 必须取当前 `method_state` 的完整 `value`，保留活动方法、分量组织、定义、单位、数值、量纲、shape 和方向引用。仅提供旧方法名称不足以保护源配置。自带方向轴的两个方法还必须保留完整 `direction_axes`，字段见[方向轴格式](catalog-runtime.md#张量方向轴)。请求规范化时只移除 `coordinate_system`、`local_orientation` 及各方向轴 `coordinate_system` 合法引用中的 token/key，按名称和实际 Java 类比较旧方向关联；不展开所关联坐标系或 `LocalOrientation` 的内部设置。其他字段不删减或补默认值。当前操作要求旧方法和目标方法都在映射内；二维 `is_3d: false` 对应 `shape: [2,2]`，三维 `true` 对应 `[3,3]`。不一致的维数、未知方法或不支持的分量方法拒绝。
 
 例如，将实际区域与 Profile 名称填入 `tensor-read.json`：
 
@@ -374,6 +389,15 @@ python3 bridge/runner/session_bridge.py modify \
 
 ## 验证范围与迁移边界
 
+本机 2602 Build 21.02.007 已在已有二维/三维有限元源导数张量上验证自带方向轴的方法。两种维数均沿 Symmetric → PrincipalWithAxes → AxisymmetricWithAxis → PrincipalWithAxes → Composite → Symmetric → Isotropic → PrincipalWithAxes 完成产品切换，按真实布局回读主值、全部轴及矩阵分量。主值 `XX Component` 分别写入三维 `13.5`、二维 `9.25`；主方向和轴对称方向轴均通过原始向量写入，主方向 Y 轴还通过向量定义写入。切回主方向后已修改设置保持。三维 Y 轴关联了夹具创建的 `_PrincipalAxisY 1`，X 轴仍关联 `Laboratory`；坐标系创建与关联选择属于夹具准备，不计为产品写入能力。
+
+旧向量、错误单位、旧目标引用、过时嵌套坐标关联、当前函数轴写入、含函数轴的源方法切换，以及含函数轴的未活动目标方法切换共七类请求均在 setter 前拒绝。函数轴使完整 `method_state` 报错，但 `axes` 和标量 `components` 仍可枚举，另一根常量轴可单独写入；恢复夹具前核对父方法和函数轴 key 均未被拒绝请求改变。旧二维/三维多孔正交、横观各向同性路径及分量读取也已通过回归，其旧状态没有新增 `direction_axes` 字段。
+
+会话保存并关闭后，二维/三维完整状态、轴集合及嵌套坐标关联与独立加载结果一致。文件模式把二维 X 轴写为 `[3,1,4]` 并重载，轴仍报告 `is_3d: false`、`size: 2`，原始非零第三项保持；随后对另一区域执行 PrincipalWithAxes → AxisymmetricWithAxis，双层重载核对均通过，再读二维完整状态确认除所写轴数量外其余设置保持。原输入摘要未变，产物位于本地 `outputs/catalog-principal-20261029/`。
+
+该批检查未运行网格或求解，不证明方向向量的物理合理性、全部有向转换、函数轴数量适配、坐标系内部设置、并发变更或中断恢复。目录中两个结构操作的实现总数不变，本批覆盖报告仅记录当前目录 ID 下实际执行的张量操作、三个属性写入入口及各自文件重载样例；材料操作证据仍以前一批的明确范围为准。
+
+
 本机 2602 Build 21.02.007 已通过产品 schema 3 入口验证材料导热率 Anisotropic → Constant → Orthotropic → Anisotropic 的切换，分别完整回读常量数量、三项和六项系数；常量值 `237 W/m-K`、既有正交 `k22=150.75 W/m-K` 和返回各向异性后的独立设置保持。`describe` 报告导热率三个映射选项可用、密度仅常量可用，并明确按映射类查找的范围。
 
 过时源状态、错误目标引用、密度选择不可用的导热方法，以及未活动正交 `k22` 使用函数方法时的切换，均在 setter 前拒绝，会话保持 `ready`。最后一项同时核对拒绝后的父方法和目标系数 key 未变；显式恢复夹具后正交系数仍为原值。原 Profile 的 Anisotropic → Orthotropic → Anisotropic 切换、选项枚举描述和材料系数 schema 2 写入均通过回归；`k12` 更新为 `10.5 W/m-K`，父物性全部七个属性可完整读取。
@@ -394,13 +418,13 @@ python3 bridge/runner/session_bridge.py modify \
 
 过时数量、单位不兼容、子对象引用 key 不匹配、切换后已不活动的分量，以及非常量分量写入均在 setter 前拒绝，会话保持 `ready`。XX 显式改为函数方法后，父 `components` 与子 `basis` 仍可读，完整 `method_state` 和 XX 数量明确报错；ZZ 常量分量仍可写，随后确认 XX 的函数方法 key 未变，再由夹具显式恢复。原三维 `xx_value` 写入通过全部 24 个父目标属性回读，二维调用原 `xz_value` 在三维条件处拒绝。二维子对象的 `describe` 返回两项已满足的实际条件。
 
-会话保存后，文件入口独立加载二维横观各向同性分量，将其从 `23.25` 改为 `24.5 kg/m^3-s`；目录、旧快照的独立重载核对及输入摘要核对均通过。跨加载按契约移除方向引用的 token/key 后，保存前后的子对象五个属性一致；父张量的分量引用集合和完整方法状态也与独立加载结果一致。产物位于本地 `outputs/catalog-components-20261029/`，该次验证未运行网格或求解。后续材料系数和对称方法的已确认范围见本节开头，方向对象内部轴设置仍未验收。
+会话保存后，文件入口独立加载二维横观各向同性分量，将其从 `23.25` 改为 `24.5 kg/m^3-s`；目录、旧快照的独立重载核对及输入摘要核对均通过。跨加载按契约移除方向引用的 token/key 后，保存前后的子对象五个属性一致；父张量的分量引用集合和完整方法状态也与独立加载结果一致。产物位于本地 `outputs/catalog-components-20261029/`，该次验证未运行网格或求解。后续材料系数和对称方法的已确认范围见本节开头，所关联坐标系或 `LocalOrientation` 的内部设置仍未验收。
 
 本机 2602 Build 21.02.007 已在单相多孔工作副本验证 `set_method`：按 Anisotropic → Orthotropic → Isotropic → TransverseIsotropic → Anisotropic 顺序切换，完整回读对应的 9/3/1/2 项独立分量及方向引用。`describe` 返回四种当前可选方法、条件及影响范围；多相阻力的 `MixturePorousViscousResistanceMethod` 单独列为 `unmapped_methods`，未被标成可执行选项。
 
 过时旧状态、临时映射中当前不可用的方法，以及未活动目标方法的 X 分量改为 `FunctionScalarProfileMethod` 后的切换请求，均在 setter 前拒绝，会话保持 `ready`。夹具恢复后，原 schema 2 `xx_value` 写入仍通过全部 23 个目标属性回读；会话另存并独立加载，方法状态和分量值一致。文件模式另从样例输入执行 Anisotropic → Orthotropic，快照与目录的保存重载核对、原输入摘要核对均通过。验证会话已关闭，产物位于本地 `outputs/catalog-operation-20261029/`。
 
-上述证据覆盖具体转换路径，未证明四种方法间的所有有向转换、不同初始分量方法、方向对象内部轴设置或中断恢复。结构操作只检查完整活动设置及选定方法的未活动设置，不核对所有其他未活动方法的内部配置，也不判断切换后的物理合理性。覆盖工具分别记录操作、目标方法和文件重载样例，不把它们计为普通属性写入或全分支验收。
+上述证据覆盖具体转换路径，未证明四种方法间的所有有向转换、不同初始分量方法、所关联坐标系或 `LocalOrientation` 的内部设置或中断恢复。结构操作只检查完整活动设置及选定方法的未活动设置，不核对所有其他未活动方法的内部配置，也不判断切换后的物理合理性。覆盖工具分别记录操作、目标方法和文件重载样例，不把它们计为普通属性写入或全分支验收。
 
 本机 STAR-CCM+ 2602 Build 21.02.007 的单相 `_TensorSinglePorous` 区域，已在工作副本中显式将 `Porous Viscous Resistance` 从初始 Orthotropic 方法切换到实际可用的 `AnisotropicTensorProfileMethod`，随后由 Bridge 读取 `full` 九分量、`kg/m^3-s` 单位和 `LocalOrientation` 引用，并将 `xx_value` 从 `0` 写为 `10` 后回读成功。`xy` 写入常量表达式 `3` 后回读为 `3.0`，`yx` 仍为 `0`，确认该 full 方法的上下三角是独立分量。该次方法切换由验收夹具准备完成，不作为目录结构操作的验收证据。
 

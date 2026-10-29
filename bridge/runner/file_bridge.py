@@ -94,7 +94,7 @@ def catalog_content(catalog, plan, *, retain_references=False):
             pass
         elif adapter == 'reference':
             value = reference(value)
-        elif adapter in ('collection', 'tensor_components') and isinstance(value, list):
+        elif adapter in ('collection', 'tensor_components', 'tensor_axes') and isinstance(value, list):
             value = [reference(item) for item in value]
         elif (adapter == 'query' and isinstance(value, dict)
               and value.get('mode') == 'static' and isinstance(value.get('objects'), list)):
@@ -102,10 +102,16 @@ def catalog_content(catalog, plan, *, retain_references=False):
         elif (adapter == 'query' and isinstance(value, dict)
               and value.get('mode') == 'query' and 'predicate' in value):
             value = dict(value, predicate=predicate(value['predicate']))
-        elif adapter in ('tensor_profile', 'tensor_basis', 'tensor_method_state', 'tensor_method_basis') and isinstance(value, dict):
-            # 张量的方向和坐标系以对象引用表示；数量、shape 和分量方法仍完整核对。
+        elif adapter in ('tensor_profile', 'tensor_basis', 'tensor_method_state', 'tensor_method_basis',
+                         'tensor_axis_basis') and isinstance(value, dict):
+            # 只规范明确的方向坐标系引用；轴维数、原始向量和其他元数据仍完整核对。
             value = {**value, **{key: reference(value[key]) for key in
                                 ('coordinate_system', 'local_orientation') if key in value}}
+            if isinstance(value.get('direction_axes'), list):
+                value = {**value, 'direction_axes': [
+                    {**axis, 'coordinate_system': reference(axis['coordinate_system'])}
+                    if isinstance(axis, dict) and 'coordinate_system' in axis else axis
+                    for axis in value['direction_axes']]}
         properties[name] = dict(result, value=value)
     stable_target = {key: target[key] for key in ('type', 'name', 'java_class', 'locator')}
     if retain_references:

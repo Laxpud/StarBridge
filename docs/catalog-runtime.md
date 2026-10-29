@@ -66,7 +66,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 本页描述与读取请求的格式版本为整数 `1`；属性修改使用独立的 schema 2 契约，结构操作使用 schema 3。顶层必需字段为 `schema_version`、`action`、`target`，可选字段为 `properties`；未知字段会被拒绝。`properties` 是不重复、非空的属性 ID 数组，省略时选择该类型当前映射中的全部属性，不能据此理解为整个 STAR 对象的全部属性。未映射属性在启动客户端或写入会话活动标记前拒绝。`properties` 只筛选属性；`describe` 另返回该类型全部已配操作，`read` 不返回操作描述。
 
-`target` 使用目录的类型 ID 和精确显示名称。当前定位器从指定管理器枚举对象，按 Java 类型过滤后要求名称唯一匹配。边界和 `tensor_profile` 还必须提供所属区域，`tensor_component` 提供父 `tensor_profile` 的完整定位路径；材料系数则沿连续体、材料模型、材料和物性定位，见[材料物性与系数](#材料物性与系数)。例如边界请求：
+`target` 使用目录的类型 ID 和精确显示名称。当前定位器从指定管理器枚举对象，按 Java 类型过滤后要求名称唯一匹配。边界和 `tensor_profile` 还必须提供所属区域，`tensor_component` 和 `tensor_axis` 提供父 `tensor_profile` 的完整定位路径；材料系数则沿连续体、材料模型、材料和物性定位，见[材料物性与系数](#材料物性与系数)。例如边界请求：
 
 ```json
 {
@@ -147,8 +147,9 @@ python3 bridge/runner/session_bridge.py describe \
 | `user_field_function` | `name`、`definition`、`function_name`、`dimensions`、`value_type`、`ignore_boundary_values`、`sync_name`、`tags` |
 | `region` | `name`、`region_type`、`physics_continuum`、`index`、`tags` |
 | `boundary` | `name`、`boundary_type`、`region`、`index`、`allow_per_part_values`、`tags` |
-| `tensor_profile` | `name`、`profile_method`、`tensor`、`basis`、`method_state`、`components`；`xx`、`xy`、`xz`、`yx`、`yy`、`yz`、`zx`、`zy`、`zz` 及各自的 `_value` 属性 |
+| `tensor_profile` | `name`、`profile_method`、`tensor`、`basis`、`method_state`、`components`、`axes`；`xx`、`xy`、`xz`、`yx`、`yy`、`yz`、`zx`、`zy`、`zz` 及各自的 `_value` 属性 |
 | `tensor_component` | `name`、`profile_method`、`quantity`、`quantity_value`、`basis` |
+| `tensor_axis` | `name`、`profile_method`、`quantity`、`quantity_value`、`coordinate_system`、`basis` |
 | `material_model` | `name`、`material` |
 | `material` | `name`、`properties` |
 | `material_property` | `name`、`property_method`、`dimensions`、`coefficients`、`basis`、`coefficient_state`、`method_state` |
@@ -175,7 +176,9 @@ python3 bridge/runner/session_bridge.py describe \
 | `tensor_basis` | 同一张量的元数据和方向引用，不读取标量分量或 quantity |
 | `tensor_method_state` | 当前二维或三维张量方法的活动设置，保留矩阵、各向同性、主方向或轴对称方法的实际分量组织 |
 | `tensor_components` | 当前方法的独立标量分量引用数组，采用普通集合条目格式，不读取数量 |
-| `tensor_method_basis` | 当前已适配张量方法的元数据和方向引用，不读取任何分量数量 |
+| `tensor_method_basis` | 当前方法的元数据和方向关联；自带轴的方法还保留完整轴向量，不读取标量分量数量 |
+| `tensor_axes` | 当前方法直接拥有的向量轴引用，其他已适配布局返回空集合 |
+| `tensor_axis_basis` | 父方法与各轴元数据，不读取轴数量，用于单轴写入保持布局及坐标关联 |
 | `tensor_layout_valid` | 条件适配器：核对当前方法布局及二维/三维维数后返回 `true`，不支持时报告错误 |
 | `material_coefficient_basis` | 当前多系数材料物性的方法、量纲和有序系数元数据，不读取数量 |
 | `material_coefficient_state` | 同一物性元数据和各系数当前常量方法的数量，保留 API 实际名称和顺序 |
@@ -197,7 +200,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 ### 张量方法状态
 
-`method_state` 与 `tensor` 使用相同的顶层字段，支持二维和三维，并补充各向同性、正交各向异性及横观各向同性方法的活动设置，供[方法切换](catalog-modifier.md#张量-profile-方法切换)核对完整旧状态。应通过 `properties: ["name", "method_state"]` 按需读取；省略 `properties` 会同时读取仍仅适用于复合矩阵方法的 `tensor`、`basis` 和分量属性，这些属性在其他方法下会分别报错。
+`method_state` 保留 `tensor` 的基础顶层字段，支持二维和三维，并补充各向同性、正交各向异性、横观各向同性及自带方向轴方法的活动设置；自带轴的方法另含 `direction_axes`，供[方法切换](catalog-modifier.md#张量-profile-方法切换)核对完整旧状态。应通过 `properties: ["name", "method_state"]` 按需读取；省略 `properties` 会同时读取仍仅适用于复合矩阵方法的 `tensor`、`basis` 和分量属性，这些属性在其他方法下会分别报错。
 
 | 当前方法 | `storage` | `components` |
 |---|---|---|
@@ -206,10 +209,12 @@ python3 bridge/runner/session_bridge.py describe \
 | `IsotropicTensorProfileMethod` | `isotropic` | 一项 `ISOTROPIC` |
 | `OrthotropicTensorProfileMethod` | `principal` | 二维为 `X`、`Y`，三维增加 `Z` |
 | `TransverseIsotropicTensorProfileMethod` | `axisymmetric` | 两项 `AXIAL`、`CROSS_STREAM` |
+| `PrincipalTensorProfileMethodWithAxes` | `principal_axes` | 二维 `X`、`Y`，三维增加 `Z`；另有两个方向轴 |
+| `AxisymmetricTensorProfileMethodWithAxis` | `axisymmetric_axis` | 两项 `AXIAL`、`CROSS_STREAM`；另有一个方向轴 |
 
-后三类的每项包含 `name`、当前标量分量 `method` 和完整 `quantity`，没有 `row`、`column`，不虚构九分量矩阵。`is_3d` 与 `shape` 对应：二维为 `false` 和 `[2,2]`，三维为 `true` 和 `[3,3]`；shape 不表示独立配置项的数量。矩阵和主方向方法的 `getProfileNum()` 必须与实际维数一致。所有分量仍要求当前方法为 `ConstantScalarProfileMethod`，保留数量的定义、单位及数值；未知方法、维数不一致或不支持的分量方法明确报错。
+非矩阵布局的每个标量项包含 `name`、当前标量分量 `method` 和完整 `quantity`，没有 `row`、`column`，不虚构九分量矩阵。`is_3d` 与 `shape` 对应：二维为 `false` 和 `[2,2]`，三维为 `true` 和 `[3,3]`；shape 不表示独立配置项的数量。矩阵和主方向方法的 `getProfileNum()` 必须与实际维数一致。所有分量仍要求当前方法为 `ConstantScalarProfileMethod`，保留数量的定义、单位及数值；未知方法、维数不一致或不支持的分量方法明确报错。
 
-正交和横观各向同性方法保留实际 `local_orientation` 引用，各向同性方法的方向字段为 `null`；矩阵方法沿用上述方向契约。方向对象只保留关联身份，不展开其内部轴设置，不转换坐标系。新增方法分支匹配已核对的精确 Java 类，不推断未知子类的额外设置。
+正交和横观各向同性方法保留实际 `local_orientation` 引用，各向同性方法的方向字段为 `null`；矩阵方法沿用上述方向契约。上述坐标系与 `LocalOrientation` 只保留关联身份，不展开其内部设置；方法直接拥有的轴按下节另行读取，不转换坐标系。新增方法分支匹配已核对的精确 Java 类，不推断未知子类的额外设置。
 
 ### 当前张量分量子对象
 
@@ -217,7 +222,17 @@ python3 bridge/runner/session_bridge.py describe \
 
 `tensor_component` 从父 Profile 当前无参 `getMethod()` 的公开 `getChildren()` 枚举子对象，按 `ScalarProfile` 类型过滤并要求名称唯一；方向轴等非标量子对象被排除。目标父路径必须完整指向区域中的张量，不能跨方法搜索未活动分量。方法切换后应重新枚举；保留旧引用的请求若已不指向活动子对象，会被拒绝。
 
-子对象具有五个属性：`name`、`profile_method`、`quantity`、`quantity_value`、`basis`。两个 quantity 属性读取当前常量方法的同一标量数量；`basis` 使用父张量的 `tensor_method_basis`，保留 shape、存储方式、量纲与方向引用，不访问兄弟分量。支持上述二维和三维布局；原 `tensor_profile.tensor`、`basis` 与 `xx` 等矩阵属性仍仅支持三维复合方法。用子对象修改时的范围与示例见[张量分量修改](catalog-modifier.md#张量-profile-分量)。
+子对象具有五个属性：`name`、`profile_method`、`quantity`、`quantity_value`、`basis`。两个 quantity 属性读取当前常量方法的同一标量数量；`basis` 使用父张量的 `tensor_method_basis`，保留 shape、存储方式、量纲与方向引用；方法直接拥有方向轴时还保存完整轴设置，不访问兄弟标量分量。支持上述二维和三维布局；原 `tensor_profile.tensor`、`basis` 与 `xx` 等矩阵属性仍仅支持三维复合方法。用子对象修改时的范围与示例见[张量分量修改](catalog-modifier.md#张量-profile-分量)。
+
+### 张量方向轴
+
+`PrincipalTensorProfileMethodWithAxes` 和 `AxisymmetricTensorProfileMethodWithAxis` 直接拥有 `VectorProfile` 方向轴，不通过 `LocalOrientation` 关联。两者的 `method_state`、`tensor_component.basis` 在原有字段之外增加 `direction_axes`：主方向按 `X`、`Y` 顺序保存两个轴，轴对称保存一个 `AXIAL` 轴。轴对称的两个标量分别沿轴与轴法向，主方向第三方向由 STAR 推导，Bridge 不展开或计算全局矩阵。
+
+每个轴条目保存 `axis` 标签、实际 `name`、`java_class`、当前 `method`、`dimensions`、轴自身的 `is_3d` 和 `size`、`coordinate_system` 引用，以及完整向量 `quantity`。两个主方向轴可关联不同坐标系。`quantity` 采用已有向量格式 `definition`、`unit`、`components`，保留原始三项，不归一化或变换坐标。真实二维轴的 `is_3d: false`、`size: 2` 与数量的三项原始数组同时存在；`size` 不是该数组长度。当前完整状态只支持 `ConstantVectorProfileMethod`，其他轴方法明确报错。
+
+父 Profile 的 `axes` 返回实际轴对象引用，不读取数量。`tensor_axis` 沿父 Profile 的当前方法子对象定位 `VectorProfile`，以实际名称如 `XX Axis`、`YY Axis` 为准；其 `coordinate_system` 属性独立返回该轴坐标关联。已支持但不直接拥有这些轴的其他方法返回空 `axes`，未知方法仍报错。
+
+轴子对象 `basis` 使用 `tensor_axis_basis`，保留父布局及同一组轴元数据，但每个条目没有 `quantity`，允许修改当前轴数值。它不读取兄弟轴数量，也不要求兄弟轴使用常量方法；标量分量的 `basis` 与结构操作的 `method_state` 则要求完整方向设置可读。坐标系内部基向量未展开。修改请求与保持范围见[方向轴修改](catalog-modifier.md#张量方向轴修改)。
 
 ### 材料物性与系数
 
@@ -289,4 +304,4 @@ Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作�
 
 `describe` 已在 2602 工作副本验证张量目标条件全部满足、缺失重力模型不满足、受控条件适配错误的逐项隔离，以及无条件属性与未实现写入的区分；错误后会话仍为 `ready`，张量读取值和原输入 SHA256 未变。文件模式的标量描述及原输入保护也已核对。产物位于本地 `outputs/catalog-conditions-20261029/`。
 
-张量 Profile 已在单相多孔区域完成二维和三维四种已映射方法的当前分量子对象读写、状态读取与代表性切换；非常量兄弟分量隔离、旧状态/引用/单位拒绝及文件保存重载已验证，原三维矩阵入口也通过回归检查。材料导热系数的代表性标量写入、方法拒绝及保存重载已通过，常量、正交和各向异性导热方法的结构切换也已通过代表性切换、写前拒绝及文件重载；有限元源导数对称张量已核对二维三项、三维六项、XY/YX 别名及保存后的数值和坐标引用。具体转换及未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。分项覆盖报告见[离线目录工具](catalog.md#分项覆盖报告)；已有操作描述覆盖张量 Profile 与材料物性方法切换，其他结构操作、类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。
+张量 Profile 已在单相多孔区域完成二维和三维四种已映射方法的当前分量子对象读写、状态读取与代表性切换；非常量兄弟分量隔离、旧状态/引用/单位拒绝及文件保存重载已验证，原三维矩阵入口也通过回归检查。材料导热系数的代表性标量写入、方法拒绝及保存重载已通过，常量、正交和各向异性导热方法的结构切换也已通过代表性切换、写前拒绝及文件重载；有限元源导数对称张量已核对二维三项、三维六项、XY/YX 别名及保存后的数值和坐标引用。该夹具的主方向与轴对称方法、方向轴向量读写和五类方法代表性切换也已通过二维/三维验收，包含函数轴拒绝、独立坐标关联以及二维非零第三分量的保存重载。具体转换及未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。分项覆盖报告见[离线目录工具](catalog.md#分项覆盖报告)；已有操作描述覆盖张量 Profile 与材料物性方法切换，其他结构操作、类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。

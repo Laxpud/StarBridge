@@ -768,6 +768,22 @@
         "star.material.MaterialPropertyMethod"
       ],
       "effect": "write"
+    },
+    "constant_vector_profile.quantity": {
+      "type": "star.common.ConstantVectorProfileMethod",
+      "member": "getQuantity()",
+      "signature": "public VectorPhysicalQuantity getQuantity()",
+      "fingerprint": "7b14e3e0f1dee1eff7da5a7cef4f0a6674ce392acf1697ce6b524c8bb3cf3b9e",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "vector_profile.coordinate_system": {
+      "type": "star.common.VectorProfile",
+      "member": "getCoordinateSystem()",
+      "signature": "@StarBeanProperty(display=\"Coordinate System\", hint=\"Coordinate system the vector is defined in\") public CoordinateSystem getCoordinateSystem()",
+      "fingerprint": "5b56e3fc4270af37732ca3f1d53db4a24b6c87f1d8b2098d8626996e34e8c6bb",
+      "parameter_types": [],
+      "effect": "read"
     }
   },
   "types": {
@@ -1038,6 +1054,23 @@
           },
           {
             "member": "material_method.coefficients",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "tensor_axis": {
+      "java_class": "star.common.VectorProfile",
+      "parent_type": "tensor_profile",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "profile.method",
+            "arguments": []
+          },
+          {
+            "member": "object.children",
             "arguments": []
           }
         ]
@@ -4972,6 +5005,15 @@
         },
         "writable": false,
         "reason": "列出当前活动张量方法的独立标量分量及其实际显示名称和会话引用，不读取分量数量"
+      },
+      "axes": {
+        "adapter": "tensor_axes",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "列出当前自带方向轴方法拥有的 VectorProfile，不读取数量；其他已适配布局返回空集合"
       }
     },
     "tensor_component": {
@@ -5154,7 +5196,7 @@
           "steps": []
         },
         "writable": false,
-        "reason": "读取所属张量当前方法、维度和方向引用，不读取其他分量的数量"
+        "reason": "读取所属张量当前方法、维度和方向；自带方向轴的方法同时保留轴完整向量设置，不读取其他标量分量的数量"
       }
     },
     "material_model": {
@@ -5514,6 +5556,209 @@
         "writable": false,
         "reason": "读取父物性当前多系数布局，不读取兄弟系数数量或切换其方法"
       }
+    },
+    "tensor_axis": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取已定位方向轴 Profile 的实际显示名称，不重命名或创建方向轴"
+      },
+      "profile_method": {
+        "adapter": "java_class",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取该方向轴当前向量方法，不通过带 Class 参数的 getter 切换方法"
+      },
+      "quantity": {
+        "adapter": "vector",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_vector_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改已定位方向轴的常量向量定义与单位，保持轴方法、坐标系及父张量布局",
+        "write": {
+          "adapter": "vector_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_vector_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "vector.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "supported_tensor_layout",
+              "read": {
+                "root": "parent",
+                "steps": []
+              },
+              "adapter": "tensor_layout_valid",
+              "expected": true,
+              "message": "Tensor axis writes require a supported two- or three-dimensional tensor layout"
+            },
+            {
+              "id": "constant_axis",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantVectorProfileMethod",
+              "message": "Tensor axis writes require the current constant vector method"
+            }
+          ]
+        }
+      },
+      "quantity_value": {
+        "adapter": "vector",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_vector_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改已定位方向轴的三个原始向量分量与单位，二维轴也不裁剪第三项",
+        "write": {
+          "adapter": "vector_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_vector_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "vector.write_value",
+                "arguments": [
+                  {
+                    "context": "x"
+                  },
+                  {
+                    "context": "y"
+                  },
+                  {
+                    "context": "z"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "supported_tensor_layout",
+              "read": {
+                "root": "parent",
+                "steps": []
+              },
+              "adapter": "tensor_layout_valid",
+              "expected": true,
+              "message": "Tensor axis writes require a supported two- or three-dimensional tensor layout"
+            },
+            {
+              "id": "constant_axis",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantVectorProfileMethod",
+              "message": "Tensor axis writes require the current constant vector method"
+            }
+          ]
+        }
+      },
+      "coordinate_system": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "vector_profile.coordinate_system",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取该方向轴自身的坐标系关联，不转换向量或修改坐标系"
+      },
+      "basis": {
+        "adapter": "tensor_axis_basis",
+        "read": {
+          "root": "parent",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "保存父张量布局及各轴的方法、维数和坐标系元数据，不读取轴数量；单轴写入不核对兄弟轴数量"
+      }
     }
   },
   "operations": {
@@ -5540,7 +5785,11 @@
           "isotropic": "star.common.IsotropicTensorProfileMethod",
           "orthotropic": "star.common.OrthotropicTensorProfileMethod",
           "anisotropic": "star.common.AnisotropicTensorProfileMethod",
-          "transverse_isotropic": "star.common.TransverseIsotropicTensorProfileMethod"
+          "transverse_isotropic": "star.common.TransverseIsotropicTensorProfileMethod",
+          "principal_axes": "star.common.PrincipalTensorProfileMethodWithAxes",
+          "axisymmetric_axis": "star.common.AxisymmetricTensorProfileMethodWithAxis",
+          "composite": "star.common.CompositeTensorProfileMethodWithCoordinateSystem",
+          "symmetric": "star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem"
         },
         "available": {
           "root": "object",
@@ -5641,6 +5890,7 @@
         ]
       }
     },
-    "material_coefficient": {}
+    "material_coefficient": {},
+    "tensor_axis": {}
   }
 }

@@ -18,6 +18,7 @@ ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum'
             'name', 'type_name', 'names', 'enum_name', 'presence', 'java_class',
             'tensor_profile', 'tensor_basis', 'tensor_method_state',
             'tensor_components', 'tensor_method_basis', 'tensor_layout_valid',
+            'tensor_axes', 'tensor_axis_basis',
             'material_coefficient_basis', 'material_coefficient_state', 'material_method_state'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
@@ -571,6 +572,38 @@ def _expected_quantity(value, where='expected quantity'):
                  'Expected quantity values must preserve numeric or non-finite readback types')
 
 
+def _expected_vector(value, where='expected vector'):
+    """核对向量原定义、单位和三个原始分量，二维方向轴也保留 API 返回的第三项。"""
+    _keys(value, 'definition unit components', where)
+    _require(isinstance(value['definition'], str) and isinstance(value['unit'], str),
+             'Expected vector requires definition and unit')
+    _require(isinstance(value['components'], list) and len(value['components']) == 3
+             and all((type(number) in (int, float) and math.isfinite(number)) or
+                     (isinstance(number, str) and number in ('NaN', 'Infinity', '-Infinity'))
+                     for number in value['components']), 'Invalid expected vector components')
+
+
+def _tensor_direction_axes(expected, labels):
+    """核对当前方法实际拥有的方向轴，仅规范坐标系引用，完整保留轴元数据和向量设置。"""
+    axes = expected['direction_axes']
+    _require(isinstance(axes, list) and len(axes) == len(labels),
+             'Expected tensor state requires every direction axis')
+    result = []
+    for axis, label in zip(axes, labels):
+        _keys(axis, 'axis name java_class method dimensions is_3d size coordinate_system quantity',
+              'expected direction axis')
+        _require(axis['axis'] == label, 'Expected direction axes must preserve their labels and order')
+        for field in ('name', 'java_class', 'method', 'dimensions'):
+            _text(axis[field], 'expected direction axis.' + field)
+        # 轴自己的维数与父张量分别保存；size 不是 quantity 原始数组的长度。
+        _require(type(axis['is_3d']) is bool and type(axis['size']) is int
+                 and axis['size'] == (3 if axis['is_3d'] else 2),
+                 'Expected direction axis requires matching is_3d and size')
+        _expected_vector(axis['quantity'], 'expected direction axis quantity')
+        result.append({**axis, 'coordinate_system': _reference_state(axis['coordinate_system'])})
+    return result
+
+
 def _material_method_state(expected):
     """核对材料方法旧状态的两种完整布局，不删除或补齐调用方提交的系数设置。"""
     _keys(expected, 'name java_class method dimensions storage quantity coefficients',
@@ -601,8 +634,9 @@ def _material_method_state(expected):
 def _operation_request(plan, request):
     """检查结构操作请求并规范方向引用；保留完整旧状态供 server 严格相等比较。
 
-    方向对象的会话引用不承担跨文件加载身份；只按已有引用契约移除这两个明确
-    字段的 reference。其他旧状态字段不删除、不补默认值，不能掩盖缺失设置。
+    方向对象的会话引用不承担跨文件加载身份；仅规范 coordinate_system、
+    local_orientation 及 direction_axes 内的 coordinate_system 引用。其他旧状态
+    字段不删除、不补默认值，不能掩盖缺失设置。
     """
     _keys(request, 'schema_version action target operation expected arguments', 'operation request')
     _require(type(request['schema_version']) is int and request['schema_version'] == 3,
@@ -622,7 +656,15 @@ def _operation_request(plan, request):
         _material_method_state(expected)
     else:
         _require(operation['adapter'] == 'profile_method', 'Unsupported structural operation adapter')
-        _keys(expected, 'java_class method dimensions is_3d shape storage coordinate_system local_orientation components',
+        # 只有自带方向轴的两个已核对方法增加字段；旧方法的请求形状保持不变。
+        axes_layouts = {
+            'star.common.PrincipalTensorProfileMethodWithAxes': ('principal_axes', ('X', 'Y')),
+            'star.common.AxisymmetricTensorProfileMethodWithAxis': ('axisymmetric_axis', ('AXIAL',)),
+        }
+        _require(isinstance(expected, dict), 'Expected tensor method state must be an object')
+        axes_layout = axes_layouts.get(expected.get('method')) if isinstance(expected.get('method'), str) else None
+        fields = 'java_class method dimensions is_3d shape storage coordinate_system local_orientation components'
+        _keys(expected, fields + (' direction_axes' if axes_layout else ''),
               'expected tensor method state')
         for field in ('java_class', 'method', 'dimensions', 'storage'):
             _text(expected[field], 'expected.' + field)
@@ -637,6 +679,13 @@ def _operation_request(plan, request):
                  'Expected method state requires its component settings')
         expected = {**expected, **{key: _reference_state(expected[key])
                                   for key in ('coordinate_system', 'local_orientation')}}
+        if axes_layout:
+            storage, labels = axes_layout
+            _require(expected['storage'] == storage, 'Expected tensor method and axis storage do not agree')
+            expected = {**expected, 'direction_axes': _tensor_direction_axes(expected, labels)}
+        else:
+            _require(expected['storage'] not in {item[0] for item in axes_layouts.values()},
+                     'Direction-axis storage requires its mapped tensor method')
     _require(expected['method'] in operation['methods'].values(), 'Expected method is outside the operation mapping')
     return {**request, 'expected': expected}
 
@@ -717,14 +766,7 @@ def prepare_modification(catalog_path, execution_path, request_path):
             _require(isinstance(value[field], list) and len(value[field]) == 3
                      and all(type(v) in (int, float) and math.isfinite(v) for v in value[field]),
                      'Vector components must contain three finite numbers')
-        old = request['expected']
-        _keys(old, 'definition unit components', 'expected vector')
-        _require(isinstance(old['definition'], str) and isinstance(old['unit'], str),
-                 'Expected vector requires definition and unit')
-        _require(isinstance(old['components'], list) and len(old['components']) == 3
-                 and all((type(v) in (int, float) and math.isfinite(v)) or
-                         (isinstance(v, str) and v in ('NaN', 'Infinity', '-Infinity'))
-                         for v in old['components']), 'Invalid expected vector components')
+        _expected_vector(request['expected'])
     elif adapter in ('scalar_expression', 'scalar_value'):
         field = 'definition' if adapter == 'scalar_expression' else 'value'
         _keys(value, field + ' unit', 'scalar value')

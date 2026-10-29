@@ -398,11 +398,20 @@ class CatalogRuntime {
         return selected;
     }
 
-    /** 跨加载仅规范化两个方向引用；分量、方法、单位和全部其他状态仍参与严格比较。 */
+    /** 跨加载只规范化方向关联引用；直接拥有的轴向量及其全部其他设置仍参与比较。 */
     private static java.util.Map<String, Object> tensorMethodContent(Object value) {
         java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(object(value, "tensor method state"));
         for (String key : java.util.List.of("coordinate_system", "local_orientation"))
             if (result.containsKey(key)) result.put(key, referenceState(result.get(key)));
+        if (result.containsKey("direction_axes")) {
+            java.util.List<Object> axes = new java.util.ArrayList<>();
+            for (Object raw : list(result.get("direction_axes"), "direction axes")) {
+                java.util.Map<String, Object> axis = new java.util.LinkedHashMap<>(object(raw, "direction axis"));
+                axis.put("coordinate_system", referenceState(axis.get("coordinate_system")));
+                axes.add(axis);
+            }
+            result.put("direction_axes", axes);
+        }
         return result;
     }
 
@@ -1422,14 +1431,14 @@ class CatalogRuntime {
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
-                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state")
+                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
         // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
         if (adapter.equals("presence")) return value != null;
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {
-            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state").contains(adapter),
+            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state").contains(adapter),
                     "Metadata adapter requires a non-null value: " + adapter);
             return null;
         }
@@ -1488,6 +1497,8 @@ class CatalogRuntime {
             case "tensor_method_state": return tensorMethodState(value, sessionToken);
             case "tensor_method_basis": return tensorBasis(value, sessionToken, false);
             case "tensor_components": return collection(tensorComponents(value), sessionToken);
+            case "tensor_axes": return collection(tensorAxes(value), sessionToken);
+            case "tensor_axis_basis": return tensorAxisBasis(value, sessionToken);
             case "tensor_layout_valid": return tensorLayoutValid(value);
             case "material_coefficient_basis": return materialCoefficients(value, false, sessionToken);
             case "material_coefficient_state": return materialCoefficients(value, true, sessionToken);
@@ -1607,9 +1618,20 @@ class CatalogRuntime {
         }
     }
 
+    /** 保存方向标签与实际向量 Profile；标签解释用途，显示名称用于子对象定位。 */
+    private static final class TensorAxis {
+        final String name;
+        final star.common.VectorProfile profile;
+        TensorAxis(String name, star.common.VectorProfile profile) {
+            require(profile != null, "Tensor direction axis is missing: " + name);
+            this.name = name; this.profile = profile;
+        }
+    }
+
     /**
      * 核对二维或三维及真实方法布局；full 先于 symmetric 判型，避免把上三角独立项丢掉。
-     * 原有矩阵子类范围保持兼容，新增主方向、各向同性和轴对称布局只接收已核对的精确类。
+     * 矩阵子类范围保持兼容；主方向、各向同性及轴对称布局只接收已核对的精确类。
+     * 直接拥有轴 Profile 的方法与 LocalOrientation 关联方法分开标记，避免遗漏轴设置。
      */
     private static TensorLayout tensorLayout(star.common.TensorProfile profile, star.common.ProfileMethod method) {
         int dimension = profile.is3D() ? 3 : 2;
@@ -1628,17 +1650,29 @@ class CatalogRuntime {
             require(((star.common.OrthotropicTensorProfileMethod) method).getProfileNum() == dimension,
                     "Tensor profile dimension does not match its principal method: expected " + dimension);
             storage = "principal";
+        } else if (method.getClass() == star.common.PrincipalTensorProfileMethodWithAxes.class) {
+            require(((star.common.PrincipalTensorProfileMethodWithAxes) method).getProfileNum() == dimension,
+                    "Tensor profile dimension does not match its principal axes method: expected " + dimension);
+            storage = "principal_axes";
         } else if (method.getClass() == star.common.TransverseIsotropicTensorProfileMethod.class) {
             storage = "axisymmetric";
+        } else if (method.getClass() == star.common.AxisymmetricTensorProfileMethodWithAxis.class) {
+            storage = "axisymmetric_axis";
         } else {
             throw new IllegalArgumentException("Unsupported tensor profile method: " + method.getClass().getName());
         }
         return new TensorLayout(method, storage, dimension);
     }
 
-    /** 读取指定布局的方向和量纲；子 Profile 即使不是常量方法，也不妨碍这些元数据的读取。 */
+    /** 读取布局与方向；直接拥有的轴保存完整数量，不能把轴内容缩减成关联名称。 */
     private static java.util.Map<String, Object> tensorBasis(star.common.TensorProfile profile,
             TensorLayout layout, String token) {
+        return tensorBasis(profile, layout, token, true);
+    }
+
+    /** 轴子对象写入只保留各轴元数据；标量分量与结构操作则同时保留完整方向向量。 */
+    private static java.util.Map<String, Object> tensorBasis(star.common.TensorProfile profile,
+            TensorLayout layout, String token, boolean withAxisQuantities) {
         star.common.ProfileMethod method = layout.method;
         star.base.neo.ClientServerObject coordinateSystem = null;
         star.base.neo.ClientServerObject localOrientation = null;
@@ -1653,12 +1687,75 @@ class CatalogRuntime {
         else if (method.getClass() == star.common.TransverseIsotropicTensorProfileMethod.class)
             localOrientation = ((star.common.TransverseIsotropicTensorProfileMethod) method).getLocalOrientation();
         // shape 描述当前维度的二阶张量；各向同性、主方向及轴对称配置项不扩充成完整矩阵。
-        // 方向仅保留关联身份，不展开关联对象内部的轴设置，也不转换到全局坐标系。
-        return fields("java_class", profile.getClass().getName(), "method", method.getClass().getName(),
+        // LocalOrientation/坐标系仍只保留关联身份；方法自身拥有的轴需单独展开，不转换坐标。
+        java.util.Map<String, Object> result = fields("java_class", profile.getClass().getName(), "method", method.getClass().getName(),
                 "dimensions", profile.getDimensions().toString(), "is_3d", layout.dimension == 3,
                 "shape", java.util.List.of(layout.dimension, layout.dimension),
                 "storage", layout.storage, "coordinate_system", encode(coordinateSystem, "reference", token),
                 "local_orientation", encode(localOrientation, "reference", token));
+        java.util.List<TensorAxis> entries = tensorAxisEntries(layout);
+        if (!entries.isEmpty()) {
+            java.util.List<Object> axes = new java.util.ArrayList<>();
+            for (TensorAxis axis : entries) axes.add(tensorAxisState(axis, token, withAxisQuantities));
+            result.put("direction_axes", axes);
+        }
+        return result;
+    }
+
+    /** 只访问已核对方法直接拥有的方向轴；二维主方向方法仍保留 X、Y 两个轴对象。 */
+    private static java.util.List<TensorAxis> tensorAxisEntries(TensorLayout layout) {
+        if (layout.storage.equals("principal_axes")) {
+            star.common.PrincipalTensorProfileMethodWithAxes method =
+                    (star.common.PrincipalTensorProfileMethodWithAxes) layout.method;
+            return java.util.List.of(new TensorAxis("X", method.getXAxis()), new TensorAxis("Y", method.getYAxis()));
+        }
+        if (layout.storage.equals("axisymmetric_axis")) {
+            return java.util.List.of(new TensorAxis("AXIAL",
+                    ((star.common.AxisymmetricTensorProfileMethodWithAxis) layout.method).getAxiAxis()));
+        }
+        return java.util.List.of();
+    }
+
+    /**
+     * 保存轴自身的方法、维数和坐标关联，再按需读取常量向量的定义、单位和原始三项分量。
+     * 2602 的二维轴 getSize() 为 2，原始数量仍有三项；不得裁剪、补零或自行归一化。
+     */
+    private static Object tensorAxisState(TensorAxis axis, String token, boolean withQuantity) {
+        star.common.VectorProfile profile = axis.profile;
+        star.common.ProfileMethod method = profile.getMethod();
+        require(method != null, "Tensor direction axis method is missing: " + axis.name);
+        java.util.Map<String, Object> result = fields("axis", axis.name,
+                "name", profile.getPresentationName(), "java_class", profile.getClass().getName(),
+                "method", method.getClass().getName(), "dimensions", profile.getDimensions().toString(),
+                "is_3d", profile.is3D(), "size", profile.getSize(),
+                "coordinate_system", encode(profile.getCoordinateSystem(), "reference", token));
+        if (withQuantity) {
+            require(method.getClass() == star.common.ConstantVectorProfileMethod.class,
+                    "Unsupported tensor direction axis method for " + axis.name + ": " + method.getClass().getName());
+            Object quantity = encode(((star.common.ConstantVectorProfileMethod) method).getQuantity(), "vector", token);
+            require(list(object(quantity, "axis quantity").get("components"), "axis vector components").size() == 3,
+                    "Tensor direction axis requires three raw vector components");
+            result.put("quantity", quantity);
+        }
+        return result;
+    }
+
+    /** 枚举轴供父属性和子对象名称查询；不读取数量或改变当前轴方法。 */
+    private static java.util.List<star.common.VectorProfile> tensorAxes(Object value) {
+        require(value instanceof star.common.TensorProfile, "Tensor axes require a TensorProfile");
+        star.common.TensorProfile profile = (star.common.TensorProfile) value;
+        java.util.List<star.common.VectorProfile> axes = new java.util.ArrayList<>();
+        for (TensorAxis axis : tensorAxisEntries(tensorLayout(profile, profile.getMethod()))) axes.add(axis.profile);
+        return axes;
+    }
+
+    /** 为单轴写入保留父方法、维数及各轴元数据，不把允许修改的向量数量放进不变量。 */
+    private static Object tensorAxisBasis(Object value, String token) {
+        require(value instanceof star.common.TensorProfile, "Tensor axis basis requires a TensorProfile");
+        star.common.TensorProfile profile = (star.common.TensorProfile) value;
+        TensorLayout layout = tensorLayout(profile, profile.getMethod());
+        require(!tensorAxisEntries(layout).isEmpty(), "Tensor method does not own supported direction axes");
+        return tensorBasis(profile, layout, token, false);
     }
 
     /** 描述当前方法的方向与布局；旧 tensor_basis 保留三维矩阵限定，新入口支持全部已适配布局。 */
@@ -1688,14 +1785,14 @@ class CatalogRuntime {
         } else if (layout.storage.equals("isotropic")) {
             components.add(new TensorComponent("ISOTROPIC",
                     ((star.common.IsotropicTensorProfileMethod) method).getIsotropicProfile()));
-        } else if (layout.storage.equals("principal")) {
-            star.common.OrthotropicTensorProfileMethod principal = (star.common.OrthotropicTensorProfileMethod) method;
+        } else if (layout.storage.equals("principal") || layout.storage.equals("principal_axes")) {
+            star.common.PrincipalTensorProfileMethod principal = (star.common.PrincipalTensorProfileMethod) method;
             components.add(new TensorComponent("X", principal.getXProfile()));
             components.add(new TensorComponent("Y", principal.getYProfile()));
             // 二维只具有两个主方向配置项，不能访问或补写第三个分量。
             if (layout.dimension == 3) components.add(new TensorComponent("Z", principal.getZProfile()));
         } else {
-            star.common.TransverseIsotropicTensorProfileMethod axial = (star.common.TransverseIsotropicTensorProfileMethod) method;
+            star.common.AxisymmetricTensorProfileMethod axial = (star.common.AxisymmetricTensorProfileMethod) method;
             components.add(new TensorComponent("AXIAL", axial.getAxiProfile()));
             components.add(new TensorComponent("CROSS_STREAM", axial.getCrossStreamProfile()));
         }
