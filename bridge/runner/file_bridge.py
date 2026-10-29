@@ -94,7 +94,7 @@ def catalog_content(catalog, plan, *, retain_references=False):
             pass
         elif adapter == 'reference':
             value = reference(value)
-        elif adapter == 'collection' and isinstance(value, list):
+        elif adapter in ('collection', 'tensor_components') and isinstance(value, list):
             value = [reference(item) for item in value]
         elif (adapter == 'query' and isinstance(value, dict)
               and value.get('mode') == 'static' and isinstance(value.get('objects'), list)):
@@ -102,7 +102,7 @@ def catalog_content(catalog, plan, *, retain_references=False):
         elif (adapter == 'query' and isinstance(value, dict)
               and value.get('mode') == 'query' and 'predicate' in value):
             value = dict(value, predicate=predicate(value['predicate']))
-        elif adapter in ('tensor_profile', 'tensor_basis', 'tensor_method_state') and isinstance(value, dict):
+        elif adapter in ('tensor_profile', 'tensor_basis', 'tensor_method_state', 'tensor_method_basis') and isinstance(value, dict):
             # 张量的方向和坐标系以对象引用表示；数量、shape 和分量方法仍完整核对。
             value = {**value, **{key: reference(value[key]) for key in
                                 ('coordinate_system', 'local_orientation') if key in value}}

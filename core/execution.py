@@ -16,7 +16,8 @@ from .catalog import CatalogError, _keys, _pinned_member, _require, load, read_j
 
 ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum', 'query',
             'name', 'type_name', 'names', 'enum_name', 'presence', 'java_class',
-            'tensor_profile', 'tensor_basis', 'tensor_method_state'}
+            'tensor_profile', 'tensor_basis', 'tensor_method_state',
+            'tensor_components', 'tensor_method_basis', 'tensor_layout_valid'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
     'field_definition': {'value'},
@@ -563,8 +564,12 @@ def _operation_request(plan, request):
     for field in ('java_class', 'method', 'dimensions', 'storage'):
         _text(expected[field], 'expected.' + field)
     _require(expected['method'] in operation['methods'].values(), 'Expected method is outside the operation mapping')
-    _require(expected['is_3d'] is True and expected['shape'] == [3, 3],
-             'Expected method state must describe a three-dimensional tensor')
+    # shape 表示二维或三维二阶张量；布尔维度标志和整数矩阵尺寸必须一致。
+    dimension = 3 if expected['is_3d'] is True else 2
+    _require(type(expected['is_3d']) is bool and isinstance(expected['shape'], list)
+             and all(type(size) is int for size in expected['shape'])
+             and expected['shape'] == [dimension, dimension],
+             'Expected tensor state requires a boolean is_3d and matching 2D or 3D shape')
     _require(isinstance(expected['components'], list) and bool(expected['components'])
              and all(isinstance(component, dict) for component in expected['components']),
              'Expected method state requires its component settings')

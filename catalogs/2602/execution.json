@@ -702,6 +702,14 @@
         "star.common.ProfileMethod"
       ],
       "effect": "write"
+    },
+    "object.children": {
+      "type": "star.base.neo.ClientServerObject",
+      "member": "getChildren()",
+      "signature": "public Collection<Object> getChildren()",
+      "fingerprint": "35cf3f2f7882f618f4fd2e032e20b8700e80c7fdd0ed8cf0464b09786f7a4939",
+      "parameter_types": [],
+      "effect": "read"
     }
   },
   "types": {
@@ -891,6 +899,23 @@
           },
           {
             "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "tensor_component": {
+      "java_class": "star.common.ScalarProfile",
+      "parent_type": "tensor_profile",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "profile.method",
+            "arguments": []
+          },
+          {
+            "member": "object.children",
             "arguments": []
           }
         ]
@@ -4816,6 +4841,198 @@
         },
         "writable": false,
         "reason": "读取当前张量方法的完整活动设置，供结构操作核对旧状态与回读；方法切换通过 set_method 操作执行"
+      },
+      "components": {
+        "adapter": "tensor_components",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "列出当前活动张量方法的独立标量分量及其实际显示名称和会话引用，不读取分量数量"
+      }
+    },
+    "tensor_component": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取已定位的标量分量实际显示名称，不重命名或创建分量"
+      },
+      "profile_method": {
+        "adapter": "java_class",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取该标量分量当前方法类型，不通过带 Class 参数的 getter 切换方法"
+      },
+      "quantity": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改已定位的二维或三维活动常量分量；保留分量方法、父张量方法与方向引用",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "supported_tensor_layout",
+              "read": {
+                "root": "parent",
+                "steps": []
+              },
+              "adapter": "tensor_layout_valid",
+              "expected": true,
+              "message": "Tensor component writes require a supported two- or three-dimensional tensor layout"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "quantity_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改已定位的二维或三维活动常量分量；保留分量方法、父张量方法与方向引用",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "supported_tensor_layout",
+              "read": {
+                "root": "parent",
+                "steps": []
+              },
+              "adapter": "tensor_layout_valid",
+              "expected": true,
+              "message": "Tensor component writes require a supported two- or three-dimensional tensor layout"
+            },
+            {
+              "id": "constant_component",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Tensor component writes require the current constant scalar method"
+            }
+          ]
+        }
+      },
+      "basis": {
+        "adapter": "tensor_method_basis",
+        "read": {
+          "root": "parent",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取所属张量当前方法、维度和方向引用，不读取其他分量的数量"
       }
     }
   },
@@ -4869,19 +5086,14 @@
         },
         "guards": [
           {
-            "id": "three_dimensional_tensor",
+            "id": "supported_tensor_layout",
             "read": {
               "root": "object",
-              "steps": [
-                {
-                  "member": "tensor.is_3d",
-                  "arguments": []
-                }
-              ]
+              "steps": []
             },
-            "adapter": "primitive",
+            "adapter": "tensor_layout_valid",
             "expected": true,
-            "message": "Tensor method switching requires a three-dimensional profile"
+            "message": "Tensor method switching requires a supported two- or three-dimensional tensor layout"
           }
         ],
         "impacts": [
@@ -4898,6 +5110,7 @@
           "name"
         ]
       }
-    }
+    },
+    "tensor_component": {}
   }
 }

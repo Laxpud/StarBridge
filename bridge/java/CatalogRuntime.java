@@ -1330,14 +1330,14 @@ class CatalogRuntime {
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
-                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state")
+                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
         // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
         if (adapter.equals("presence")) return value != null;
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {
-            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state").contains(adapter),
+            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_layout_valid").contains(adapter),
                     "Metadata adapter requires a non-null value: " + adapter);
             return null;
         }
@@ -1392,46 +1392,73 @@ class CatalogRuntime {
                 return fields("selected", selected == null ? null : selected.name(), "allowed", allowed);
             case "query": return query(value, sessionToken);
             case "tensor_profile": return tensorProfile(value, sessionToken);
-            case "tensor_basis": return tensorState(value, sessionToken).basis;
+            case "tensor_basis": return tensorBasis(value, sessionToken, true);
             case "tensor_method_state": return tensorMethodState(value, sessionToken);
+            case "tensor_method_basis": return tensorBasis(value, sessionToken, false);
+            case "tensor_components": return collection(tensorComponents(value), sessionToken);
+            case "tensor_layout_valid": return tensorLayoutValid(value);
             default: throw new IllegalArgumentException("Unsupported value adapter: " + adapter);
         }
     }
 
-    /** 保存已选定的方法和方向信息；活动读取与切换前检查均复用同一个已验证方法对象。 */
-    private static final class TensorState {
-        final star.common.CompositeSymmetricTensorProfileMethod matrix;
-        final boolean full;
-        final java.util.Map<String, Object> basis;
-        TensorState(star.common.CompositeSymmetricTensorProfileMethod matrix, boolean full,
-                java.util.Map<String, Object> basis) {
-            this.matrix = matrix; this.full = full; this.basis = basis;
+    /** 保存一次取得的方法及其独立分量布局；这里只描述组织，不访问 quantity 或切换方法。 */
+    private static final class TensorLayout {
+        final star.common.ProfileMethod method;
+        final String storage;
+        final int dimension;
+        TensorLayout(star.common.ProfileMethod method, String storage, int dimension) {
+            this.method = method; this.storage = storage; this.dimension = dimension;
+        }
+        boolean matrix() { return storage.equals("full") || storage.equals("symmetric_lower"); }
+    }
+
+    /** 保存实际标量子 Profile 及输出标签；非矩阵布局不用虚构 row/column。 */
+    private static final class TensorComponent {
+        final String name;
+        final star.common.ScalarProfile profile;
+        final int row, column;
+        TensorComponent(String name, star.common.ScalarProfile profile, int row, int column) {
+            require(profile != null, "Unsupported tensor component: missing " + name);
+            this.name = name; this.profile = profile; this.row = row; this.column = column;
+        }
+        TensorComponent(String name, star.common.ScalarProfile profile) {
+            this(name, profile, -1, -1);
         }
     }
 
     /**
-     * 读取当前三维张量的存储方式、维度和方向，不访问任何标量分量或 quantity。
-     * 带 Class 参数的 getMethod 会切换当前方法，因此这里只使用无参 getter。
+     * 核对二维或三维及真实方法布局；full 先于 symmetric 判型，避免把上三角独立项丢掉。
+     * 原有矩阵子类范围保持兼容，新增主方向、各向同性和轴对称布局只接收已核对的精确类。
      */
-    private static TensorState tensorState(Object value, String token) {
-        require(value instanceof star.common.TensorProfile, "Tensor adapter requires a TensorProfile");
-        star.common.TensorProfile profile = (star.common.TensorProfile) value;
-        return tensorState(profile, profile.getMethod(), token);
+    private static TensorLayout tensorLayout(star.common.TensorProfile profile, star.common.ProfileMethod method) {
+        int dimension = profile.is3D() ? 3 : 2;
+        require(method != null, "Tensor profile method is missing");
+        String storage;
+        if (method instanceof star.common.CompositeTensorProfileMethod
+                || method instanceof star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem) {
+            star.common.CompositeSymmetricTensorProfileMethod matrix = (star.common.CompositeSymmetricTensorProfileMethod) method;
+            // getProfileNum 表示矩阵维数，不是 full/symmetric 的独立分量总数。
+            require(matrix.getProfileNum() == dimension,
+                    "Tensor profile dimension does not match its matrix method: expected " + dimension);
+            storage = method instanceof star.common.CompositeTensorProfileMethod ? "full" : "symmetric_lower";
+        } else if (method.getClass() == star.common.IsotropicTensorProfileMethod.class) {
+            storage = "isotropic";
+        } else if (method.getClass() == star.common.OrthotropicTensorProfileMethod.class) {
+            require(((star.common.OrthotropicTensorProfileMethod) method).getProfileNum() == dimension,
+                    "Tensor profile dimension does not match its principal method: expected " + dimension);
+            storage = "principal";
+        } else if (method.getClass() == star.common.TransverseIsotropicTensorProfileMethod.class) {
+            storage = "axisymmetric";
+        } else {
+            throw new IllegalArgumentException("Unsupported tensor profile method: " + method.getClass().getName());
+        }
+        return new TensorLayout(method, storage, dimension);
     }
 
-    /** 读取指定方法的矩阵组织与方向；方法可尚未激活，此函数不会重新获取或切换当前方法。 */
-    private static TensorState tensorState(star.common.TensorProfile profile,
-            star.common.ProfileMethod method, String token) {
-        require(profile.is3D(), "Unsupported tensor profile: only 3D profiles are supported");
-        // 1. full 方法继承 symmetric 基类，必须先按 full 判型，避免丢掉上三角独立分量。
-        boolean full = method instanceof star.common.CompositeTensorProfileMethod;
-        require(full || method instanceof star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem,
-                "Unsupported tensor profile method: " + (method == null ? "null" : method.getClass().getName()));
-        star.common.CompositeSymmetricTensorProfileMethod matrix = (star.common.CompositeSymmetricTensorProfileMethod) method;
-        // getProfileNum 来自该公开基类，表示矩阵维数，不是 full/symmetric 的独立分量总数。
-        require(matrix.getProfileNum() == 3, "Unsupported tensor profile dimension: expected 3");
-
-        // 2. 方向只从实际方法类型公开的 getter 读取；局部方向不能被等价替换成坐标系。
+    /** 读取指定布局的方向和量纲；子 Profile 即使不是常量方法，也不妨碍这些元数据的读取。 */
+    private static java.util.Map<String, Object> tensorBasis(star.common.TensorProfile profile,
+            TensorLayout layout, String token) {
+        star.common.ProfileMethod method = layout.method;
         star.base.neo.ClientServerObject coordinateSystem = null;
         star.base.neo.ClientServerObject localOrientation = null;
         if (method instanceof star.common.CompositeTensorProfileMethodWithCoordinateSystem)
@@ -1440,113 +1467,126 @@ class CatalogRuntime {
             coordinateSystem = ((star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem) method).getCoordinateSystem();
         if (method instanceof star.common.AnisotropicTensorProfileMethod)
             localOrientation = ((star.common.AnisotropicTensorProfileMethod) method).getLocalOrientation();
-        java.util.Map<String, Object> basis = fields("java_class", profile.getClass().getName(), "method", method.getClass().getName(),
-                "dimensions", profile.getDimensions().toString(), "is_3d", true, "shape", java.util.List.of(3, 3),
-                "storage", full ? "full" : "symmetric_lower", "coordinate_system", encode(coordinateSystem, "reference", token),
+        else if (method.getClass() == star.common.OrthotropicTensorProfileMethod.class)
+            localOrientation = ((star.common.OrthotropicTensorProfileMethod) method).getLocalOrientation();
+        else if (method.getClass() == star.common.TransverseIsotropicTensorProfileMethod.class)
+            localOrientation = ((star.common.TransverseIsotropicTensorProfileMethod) method).getLocalOrientation();
+        // shape 描述当前维度的二阶张量；各向同性、主方向及轴对称配置项不扩充成完整矩阵。
+        // 方向仅保留关联身份，不展开关联对象内部的轴设置，也不转换到全局坐标系。
+        return fields("java_class", profile.getClass().getName(), "method", method.getClass().getName(),
+                "dimensions", profile.getDimensions().toString(), "is_3d", layout.dimension == 3,
+                "shape", java.util.List.of(layout.dimension, layout.dimension),
+                "storage", layout.storage, "coordinate_system", encode(coordinateSystem, "reference", token),
                 "local_orientation", encode(localOrientation, "reference", token));
-        return new TensorState(matrix, full, basis);
     }
 
-    /** 在已核对的 basis 后添加当前独立常量分量；非常量方法明确失败，不自动切换。 */
-    private static Object tensorProfile(Object value, String token) {
-        return tensorProfile(tensorState(value, token), token);
+    /** 描述当前方法的方向与布局；旧 tensor_basis 保留三维矩阵限定，新入口支持全部已适配布局。 */
+    private static Object tensorBasis(Object value, String token, boolean matrixOnly) {
+        require(value instanceof star.common.TensorProfile, "Tensor adapter requires a TensorProfile");
+        star.common.TensorProfile profile = (star.common.TensorProfile) value;
+        TensorLayout layout = tensorLayout(profile, profile.getMethod());
+        require(!matrixOnly || layout.dimension == 3, "Unsupported tensor profile: only 3D profiles are supported");
+        require(!matrixOnly || layout.matrix(), "Unsupported tensor profile method: " + layout.method.getClass().getName());
+        return tensorBasis(profile, layout, token);
     }
 
-    /** 仅沿指定状态中的方法读取分量；准备阶段可据此识别目标方法的不可回读设置。 */
-    private static Object tensorProfile(TensorState state, String token) {
-        // full 按行输出九项；对称存储仅输出下三角六项，不补写镜像或二维缺失分量。
-        java.util.List<Object> components = new java.util.ArrayList<>();
-        String axes = "XYZ";
-        for (int row = 0; row < 3; row++) {
-            for (int column = 0; column < 3; column++) {
-                if (!state.full && column > row) continue;
-                String name = "" + axes.charAt(row) + axes.charAt(column);
-                star.common.ScalarProfile component = state.matrix.getProfile(row, column);
-                require(component != null, "Unsupported tensor component: missing " + name);
-                star.common.ProfileMethod componentMethod = component.getMethod();
-                require(componentMethod instanceof star.common.ConstantScalarProfileMethod,
-                        "Unsupported tensor component method for " + name + ": "
-                        + (componentMethod == null ? "null" : componentMethod.getClass().getName()));
-                components.add(fields("name", name, "row", row, "column", column,
-                        "method", componentMethod.getClass().getName(), "quantity", encode(
-                                ((star.common.ConstantScalarProfileMethod) componentMethod).getQuantity(), "quantity", token)));
+    /** 枚举指定布局实际拥有的独立分量，不读取分量的方法、quantity，也不包含未激活的其他方法。 */
+    private static java.util.List<TensorComponent> tensorComponentEntries(TensorLayout layout) {
+        star.common.ProfileMethod method = layout.method;
+        java.util.List<TensorComponent> components = new java.util.ArrayList<>();
+        if (layout.matrix()) {
+            star.common.CompositeSymmetricTensorProfileMethod matrix = (star.common.CompositeSymmetricTensorProfileMethod) method;
+            String axes = "XYZ";
+            for (int row = 0; row < layout.dimension; row++) {
+                for (int column = 0; column < layout.dimension; column++) {
+                    if (layout.storage.equals("symmetric_lower") && column > row) continue;
+                    components.add(new TensorComponent("" + axes.charAt(row) + axes.charAt(column),
+                            matrix.getProfile(row, column), row, column));
+                }
             }
+        } else if (layout.storage.equals("isotropic")) {
+            components.add(new TensorComponent("ISOTROPIC",
+                    ((star.common.IsotropicTensorProfileMethod) method).getIsotropicProfile()));
+        } else if (layout.storage.equals("principal")) {
+            star.common.OrthotropicTensorProfileMethod principal = (star.common.OrthotropicTensorProfileMethod) method;
+            components.add(new TensorComponent("X", principal.getXProfile()));
+            components.add(new TensorComponent("Y", principal.getYProfile()));
+            // 二维只具有两个主方向配置项，不能访问或补写第三个分量。
+            if (layout.dimension == 3) components.add(new TensorComponent("Z", principal.getZProfile()));
+        } else {
+            star.common.TransverseIsotropicTensorProfileMethod axial = (star.common.TransverseIsotropicTensorProfileMethod) method;
+            components.add(new TensorComponent("AXIAL", axial.getAxiProfile()));
+            components.add(new TensorComponent("CROSS_STREAM", axial.getCrossStreamProfile()));
         }
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(state.basis);
-        result.put("components", components);
-        return result;
+        return components;
     }
 
-    /**
-     * 读取方法切换需要核对的当前活动设置；不同方法保留自己的独立分量组织。
-     * 各向同性、主方向和轴对称数据不能被补成九项矩阵；方向仅保留关联身份，
-     * 不读取或修改关联方向对象的内部轴设置，也不变换到全局坐标系。
-     */
+    /** 从当前无参方法枚举可定位的实际子 Profile；此结果不依赖分量数量的读取适配器。 */
+    private static java.util.List<star.common.ScalarProfile> tensorComponents(Object value) {
+        require(value instanceof star.common.TensorProfile, "Tensor components require a TensorProfile");
+        star.common.TensorProfile profile = (star.common.TensorProfile) value;
+        TensorLayout layout = tensorLayout(profile, profile.getMethod());
+        java.util.List<star.common.ScalarProfile> profiles = new java.util.ArrayList<>();
+        for (TensorComponent component : tensorComponentEntries(layout)) profiles.add(component.profile);
+        return profiles;
+    }
+
+    /** 只校验当前布局和维度供写入前提使用；不读取方向、分量或 quantity，未知布局明确报错。 */
+    private static boolean tensorLayoutValid(Object value) {
+        require(value instanceof star.common.TensorProfile, "Tensor layout requires a TensorProfile");
+        star.common.TensorProfile profile = (star.common.TensorProfile) value;
+        tensorLayout(profile, profile.getMethod());
+        return true;
+    }
+
+    /** 原完整张量读取入口仍只接受三维 full/symmetric；字段、分量顺序与常量方法约束保持不变。 */
+    private static Object tensorProfile(Object value, String token) {
+        require(value instanceof star.common.TensorProfile, "Tensor adapter requires a TensorProfile");
+        star.common.TensorProfile profile = (star.common.TensorProfile) value;
+        TensorLayout layout = tensorLayout(profile, profile.getMethod());
+        require(layout.dimension == 3, "Unsupported tensor profile: only 3D profiles are supported");
+        require(layout.matrix(), "Unsupported tensor profile method: " + layout.method.getClass().getName());
+        return tensorMethodState(profile, layout, token);
+    }
+
+    /** 读取方法切换需要核对的当前活动设置；无参 getter 不会切换当前方法。 */
     private static Object tensorMethodState(Object value, String token) {
         require(value instanceof star.common.TensorProfile, "Tensor method state requires a TensorProfile");
         star.common.TensorProfile profile = (star.common.TensorProfile) value;
-        star.common.ProfileMethod method = profile.getMethod();
-        require(method != null, "Tensor profile has no current method");
-        return tensorMethodState(profile, method, token);
+        return tensorMethodState(profile, profile.getMethod(), token);
     }
 
     /**
      * 读取指定方法的独立设置，供结构操作在 setter 前验证将要选择的方法能完整回读。
      * 调用方从目标 Profile 的可选方法中取得 method；此处不重新获取目标 Profile 的当前方法，
-     * 仅用无参 getter 读取其标量子 Profile 的方法。预检查不会提前激活目标方法，
-     * 也不保证激活后设置绝不被 STAR 初始化。
+     * 只用无参 getter 读取其标量子 Profile 的方法，不提前激活目标方法。
+     * 返回值不保证激活后设置绝不被 STAR 初始化；实际修改仍须重新读取。
      */
     private static Object tensorMethodState(star.common.TensorProfile profile,
             star.common.ProfileMethod method, String token) {
-        require(profile.is3D(), "Unsupported tensor method state: only 3D profiles are supported");
-        require(method != null, "Tensor profile method is missing");
-
-        // 1. 现有完整矩阵和对称矩阵继续沿原读取契约处理，避免新增状态字段缩小旧写入范围。
-        // 其余方法只接收下方已核对的精确类，不推断未知子类的额外设置。
-        if (method instanceof star.common.CompositeTensorProfileMethod
-                || method instanceof star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem)
-            return tensorProfile(tensorState(profile, method, token), token);
-        java.util.List<Object> components = new java.util.ArrayList<>();
-        star.common.LocalOrientationBase orientation = null;
-        String storage;
-        if (method.getClass() == star.common.IsotropicTensorProfileMethod.class) {
-            storage = "isotropic";
-            star.common.IsotropicTensorProfileMethod isotropic = (star.common.IsotropicTensorProfileMethod) method;
-            components.add(tensorMethodComponent("ISOTROPIC", isotropic.getIsotropicProfile(), token));
-        } else if (method.getClass() == star.common.OrthotropicTensorProfileMethod.class) {
-            storage = "principal";
-            star.common.OrthotropicTensorProfileMethod principal = (star.common.OrthotropicTensorProfileMethod) method;
-            require(principal.getProfileNum() == 3, "Unsupported principal tensor profile dimension: expected 3");
-            orientation = principal.getLocalOrientation();
-            components.add(tensorMethodComponent("X", principal.getXProfile(), token));
-            components.add(tensorMethodComponent("Y", principal.getYProfile(), token));
-            components.add(tensorMethodComponent("Z", principal.getZProfile(), token));
-        } else if (method.getClass() == star.common.TransverseIsotropicTensorProfileMethod.class) {
-            storage = "axisymmetric";
-            star.common.TransverseIsotropicTensorProfileMethod axial = (star.common.TransverseIsotropicTensorProfileMethod) method;
-            orientation = axial.getLocalOrientation();
-            components.add(tensorMethodComponent("AXIAL", axial.getAxiProfile(), token));
-            components.add(tensorMethodComponent("CROSS_STREAM", axial.getCrossStreamProfile(), token));
-        } else {
-            throw new IllegalArgumentException("Unsupported tensor method state: " + method.getClass().getName());
-        }
-        // 2. shape 描述三维二阶张量，components 则保存 API 实际独立配置项，二者不强行对应。
-        return fields("java_class", profile.getClass().getName(), "method", method.getClass().getName(),
-                "dimensions", profile.getDimensions().toString(), "is_3d", true, "shape", java.util.List.of(3, 3),
-                "storage", storage, "coordinate_system", null,
-                "local_orientation", encode(orientation, "reference", token), "components", components);
+        return tensorMethodState(profile, tensorLayout(profile, method), token);
     }
 
-    /** 只读标量子 Profile 当前常量方法，保留表达式、结果单位和数值，不调用会切换方法的重载。 */
-    private static java.util.Map<String, Object> tensorMethodComponent(String name,
-            star.common.ScalarProfile component, String token) {
-        require(component != null, "Unsupported tensor component: missing " + name);
-        star.common.ProfileMethod method = component.getMethod();
-        require(method instanceof star.common.ConstantScalarProfileMethod,
-                "Unsupported tensor component method for " + name + ": "
-                + (method == null ? "null" : method.getClass().getName()));
-        return fields("name", name, "method", method.getClass().getName(), "quantity", encode(
-                ((star.common.ConstantScalarProfileMethod) method).getQuantity(), "quantity", token));
+    /** 在共同元数据和分量枚举后读取标量数量；非常量分量明确失败，不把错误当成零值。 */
+    private static Object tensorMethodState(star.common.TensorProfile profile, TensorLayout layout, String token) {
+        java.util.Map<String, Object> result = tensorBasis(profile, layout, token);
+        java.util.List<Object> components = new java.util.ArrayList<>();
+        for (TensorComponent component : tensorComponentEntries(layout)) {
+            star.common.ProfileMethod method = component.profile.getMethod();
+            require(method instanceof star.common.ConstantScalarProfileMethod,
+                    "Unsupported tensor component method for " + component.name + ": "
+                    + (method == null ? "null" : method.getClass().getName()));
+            java.util.Map<String, Object> item = fields("name", component.name);
+            if (component.row >= 0) {
+                item.put("row", component.row);
+                item.put("column", component.column);
+            }
+            item.put("method", method.getClass().getName());
+            item.put("quantity", encode(((star.common.ConstantScalarProfileMethod) method).getQuantity(), "quantity", token));
+            components.add(item);
+        }
+        result.put("components", components);
+        return result;
     }
 
     /** 查询保留规则本身；未知谓词明确失败，不能把动态规则变成一次性的对象列表。 */
