@@ -234,6 +234,7 @@ class CatalogRuntime {
                 java.util.Map<String, Object> description = fields("adapter", adapter, "writable", property.get("writable"),
                                         "reason", string(property.get("reason"), "property.reason"),
                                         "guards", property.getOrDefault("guards", java.util.List.of()),
+                                        "preserved_properties", property.getOrDefault("preserved_properties", java.util.List.of()),
                                         "value_types", property.getOrDefault("value_types", java.util.List.of()),
                                         "value_guards", property.getOrDefault("value_guards", java.util.List.of()));
                 description.putAll(describeConditions(sim, resolved, property, sessionToken));
@@ -629,7 +630,7 @@ class CatalogRuntime {
         }
 
         /**
-         * setter 前重新定位并核对 guards，写入后核对目的属性和对象身份。
+         * setter 前重新定位并核对 guards，写入后核对目的属性、对象身份及声明的额外不变项。
          * 这些检查不锁定 GUI；一旦进入 apply，任何异常都沿结果不确定路径处理，不能重试。
          */
         public synchronized java.util.Map<String, Object> apply() throws Exception {
@@ -659,6 +660,14 @@ class CatalogRuntime {
                 java.util.Map<String, Object> original = object(before.get("properties"), "before.properties");
                 if (original.containsKey(key) && !sameValue(propertyValue(before, key), propertyValue(after, key)))
                     throw new IllegalStateException("Modification identity property changed: " + key);
+            }
+            // 额外不变项比较完整编码值；关联引用元数据也保留，读取失败不能视作相等。
+            // before/after 已要求完整读取，不在此吞掉异常或重新执行 setter。
+            for (Object raw : list(writer.getOrDefault("preserved_properties", java.util.List.of()),
+                    "write.preserved_properties")) {
+                String name = string(raw, "preserved property");
+                if (!sameValue(propertyValue(before, name), propertyValue(after, name)))
+                    throw new IllegalStateException("Modification preserved property changed: " + name);
             }
             return after;
         }

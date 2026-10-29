@@ -287,7 +287,7 @@ def load_execution(catalog_path, execution_path):
     catalog = load(catalog_path)
     rules = read_json(execution_path)
     _require(isinstance(rules, dict), 'Execution rules must be an object')
-    _require(type(rules.get('schema_version')) is int and rules['schema_version'] in (1, 2, 3, 4, 5),
+    _require(type(rules.get('schema_version')) is int and rules['schema_version'] in (1, 2, 3, 4, 5, 6),
              'Unsupported execution schema_version')
     _keys(rules, 'schema_version target members types properties'
           + (' operations' if rules['schema_version'] >= 5 else ''), 'execution')
@@ -354,7 +354,18 @@ def load_execution(catalog_path, execution_path):
                 fields += ' value_types' if related else ''
                 fields += ' value_guards' if write.get('adapter') == 'reference' else ''
                 fields += ' guards' if 'guards' in write else ''
+                _require(rules['schema_version'] >= 6 or 'preserved_properties' not in write,
+                         'Writer preserved_properties require execution schema 6')
+                fields += ' preserved_properties' if 'preserved_properties' in write else ''
                 _keys(write, fields, identifier + '.' + name + '.write')
+                # 本列表只增加写后不变项，不替代运行时内置的身份字段核对。
+                # 引用本类型的完整读取属性，既不能跨类型取值，也不能把写入目标声明为不变项。
+                preserved = write.get('preserved_properties', [])
+                _require(isinstance(preserved, list)
+                         and all(isinstance(item, str) and bool(item) and item in entries
+                                 and item != name for item in preserved)
+                         and len(preserved) == len(set(preserved)),
+                         f'Writer preserved_properties must be unique other mapped properties: {identifier}.{name}')
                 _require(not related or rules['schema_version'] >= 4,
                          'Reference and selection writers require execution schema 4')
                 if rules['schema_version'] == 2:
@@ -385,7 +396,7 @@ def load_execution(catalog_path, execution_path):
                              f'Write property has no parent context: {identifier}.{name}')
                 guards = _guards(catalog, methods, write.get('guards', []),
                                  has_parent=types[identifier]['parent_type'] is not None)
-                writer = {**write, 'guards': guards}
+                writer = {**write, 'guards': guards, 'preserved_properties': preserved}
                 writer.update({'pipelines': compiled} if selection else {'pipeline': compiled['single']})
                 if related:
                     _require(isinstance(write['value_types'], list) and bool(write['value_types'])
@@ -400,6 +411,8 @@ def load_execution(catalog_path, execution_path):
                 if related:
                     properties[identifier][name]['value_types'] = write['value_types']
                 properties[identifier][name]['write'] = writer
+                # describe 不携带 setter，仍应展示写入承诺保留的额外属性名称。
+                properties[identifier][name]['preserved_properties'] = preserved
                 # describe 去除执行管线后仍可展示前提；不把描述当作已完成运行检查。
                 properties[identifier][name]['guards'] = [
                     {key: guard[key] for key in ('id', 'expected', 'message')} for guard in guards]

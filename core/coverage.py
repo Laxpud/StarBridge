@@ -201,6 +201,7 @@ def coverage(catalog_path, *, execution_path=None, overrides=None, results=(), r
                             'write_adapter': prop.get('write', {}).get('adapter'),
                             'conditions': prop.get('guards', []),
                             'value_conditions': prop.get('value_guards', []),
+                            'preserved_properties': prop.get('preserved_properties', []),
                             'runtime_state': 'not_checked', 'full_branch_verification': 'not_assessed',
                             'evidence': records, 'missing': missing})
     counts = {'mapped_types': len(plan['types']) if plan else 0, 'mapped_properties': len(entries),

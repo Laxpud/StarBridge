@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "target": {
     "release": "2602",
     "build": "21.02.007"
@@ -784,6 +784,30 @@
       "fingerprint": "5b56e3fc4270af37732ca3f1d53db4a24b6c87f1d8b2098d8626996e34e8c6bb",
       "parameter_types": [],
       "effect": "read"
+    },
+    "profile.dimensions": {
+      "type": "star.common.Profile",
+      "member": "getDimensions()",
+      "signature": "@StarBeanProperty(display=\"Dimensions\", link=\"DimensionsVector\", hint=\"Physical dimensions\", readOnly=true) public Dimensions getDimensions()",
+      "fingerprint": "d7ee4fb8a76fa96527240797553dcf5f9e3560e099fff685a3d7df169d2673fc",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "vector_profile.is_3d": {
+      "type": "star.common.VectorProfile",
+      "member": "is3D()",
+      "signature": "public boolean is3D()",
+      "fingerprint": "a04847e39b39e1bd258899f3f70fe9436c840d9421eba5ac4e2fc18bd811dd1b",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "vector_profile.size": {
+      "type": "star.common.VectorProfile",
+      "member": "getSize()",
+      "signature": "public int getSize()",
+      "fingerprint": "cd5f9f36aa8fd8ad8e9a5ef4651031d80379ec268dca2d4acc6ecd20e05fe09e",
+      "parameter_types": [],
+      "effect": "read"
     }
   },
   "types": {
@@ -1071,6 +1095,40 @@
           },
           {
             "member": "object.children",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "boundary_scalar_profile": {
+      "java_class": "star.common.ScalarProfile",
+      "parent_type": "boundary",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "model_part.values",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    "boundary_vector_profile": {
+      "java_class": "star.common.VectorProfile",
+      "parent_type": "boundary",
+      "locate": {
+        "root": "parent",
+        "steps": [
+          {
+            "member": "model_part.values",
+            "arguments": []
+          },
+          {
+            "member": "manager.objects",
             "arguments": []
           }
         ]
@@ -1893,6 +1951,24 @@
             ]
           }
         }
+      },
+      "values": {
+        "adapter": "collection",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "model_part.values",
+              "arguments": []
+            },
+            {
+              "member": "manager.objects",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "枚举边界当前实际拥有的值对象；返回实际类和引用，不创建缺失 Profile，也不读取各对象数量"
       }
     },
     "user_tag": {
@@ -5759,6 +5835,674 @@
         "writable": false,
         "reason": "保存父张量布局及各轴的方法、维数和坐标系元数据，不读取轴数量；单轴写入不核对兄弟轴数量"
       }
+    },
+    "boundary_scalar_profile": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前边界 Profile 名称，不改名或创建对象"
+      },
+      "profile_method": {
+        "adapter": "java_class",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前方法的实际类；无参 getter 不切换方法"
+      },
+      "method": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留当前方法对象身份，写后不能由同名同类新对象替代"
+      },
+      "dimensions": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.dimensions",
+              "arguments": []
+            },
+            {
+              "member": "dimensions.text",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取 Profile 物理量纲文本，不改变其定义"
+      },
+      "boundary": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取直接父边界的身份"
+      },
+      "boundary_type": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": [
+            {
+              "member": "boundary.type",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留父边界类型，不改变边界条件类别"
+      },
+      "region": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": [
+            {
+              "member": "boundary.region",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留所属区域身份"
+      },
+      "physics_continuum": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": [
+            {
+              "member": "boundary.region",
+              "arguments": []
+            },
+            {
+              "member": "region.physics_continuum",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留所属区域的物理连续体关联，不启停模型"
+      },
+      "allow_per_part_values": {
+        "adapter": "primitive",
+        "read": {
+          "root": "parent",
+          "steps": [
+            {
+              "member": "boundary.allow_per_part_values",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取是否允许局部表面值；当前写入要求关闭此选项"
+      },
+      "quantity": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改当前常量 Profile 的数量并保持方法、边界类型、区域和物理连续体；不切换方法或局部表面值",
+        "write": {
+          "adapter": "scalar_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "constant_profile",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Boundary profile writes require the current constant method"
+            },
+            {
+              "id": "whole_boundary_values",
+              "read": {
+                "root": "parent",
+                "steps": [
+                  {
+                    "member": "boundary.allow_per_part_values",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": false,
+              "message": "Boundary profile writes do not support per-part values"
+            }
+          ],
+          "preserved_properties": [
+            "name",
+            "profile_method",
+            "method",
+            "dimensions",
+            "boundary",
+            "boundary_type",
+            "region",
+            "physics_continuum",
+            "allow_per_part_values"
+          ]
+        }
+      },
+      "quantity_value": {
+        "adapter": "quantity",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改当前常量 Profile 的数量并保持方法、边界类型、区域和物理连续体；不切换方法或局部表面值",
+        "write": {
+          "adapter": "scalar_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "scalar.write_value",
+                "arguments": [
+                  {
+                    "context": "number"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "constant_profile",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantScalarProfileMethod",
+              "message": "Boundary profile writes require the current constant method"
+            },
+            {
+              "id": "whole_boundary_values",
+              "read": {
+                "root": "parent",
+                "steps": [
+                  {
+                    "member": "boundary.allow_per_part_values",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": false,
+              "message": "Boundary profile writes do not support per-part values"
+            }
+          ],
+          "preserved_properties": [
+            "name",
+            "profile_method",
+            "method",
+            "dimensions",
+            "boundary",
+            "boundary_type",
+            "region",
+            "physics_continuum",
+            "allow_per_part_values"
+          ]
+        }
+      }
+    },
+    "boundary_vector_profile": {
+      "name": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "object.name",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前边界 Profile 名称，不改名或创建对象"
+      },
+      "profile_method": {
+        "adapter": "java_class",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取当前方法的实际类；无参 getter 不切换方法"
+      },
+      "method": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留当前方法对象身份，写后不能由同名同类新对象替代"
+      },
+      "dimensions": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.dimensions",
+              "arguments": []
+            },
+            {
+              "member": "dimensions.text",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取 Profile 物理量纲文本，不改变其定义"
+      },
+      "boundary": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取直接父边界的身份"
+      },
+      "boundary_type": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": [
+            {
+              "member": "boundary.type",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留父边界类型，不改变边界条件类别"
+      },
+      "region": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": [
+            {
+              "member": "boundary.region",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留所属区域身份"
+      },
+      "physics_continuum": {
+        "adapter": "reference",
+        "read": {
+          "root": "parent",
+          "steps": [
+            {
+              "member": "boundary.region",
+              "arguments": []
+            },
+            {
+              "member": "region.physics_continuum",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留所属区域的物理连续体关联，不启停模型"
+      },
+      "allow_per_part_values": {
+        "adapter": "primitive",
+        "read": {
+          "root": "parent",
+          "steps": [
+            {
+              "member": "boundary.allow_per_part_values",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取是否允许局部表面值；当前写入要求关闭此选项"
+      },
+      "coordinate_system": {
+        "adapter": "reference",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "vector_profile.coordinate_system",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "读取向量 Profile 自身坐标系，不变换或归一化分量"
+      },
+      "is_3d": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "vector_profile.is_3d",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留向量 Profile 的二维或三维标志"
+      },
+      "size": {
+        "adapter": "primitive",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "vector_profile.size",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": false,
+        "reason": "保留 Profile 分量维数，数量仍沿用三个原始分量契约"
+      },
+      "quantity": {
+        "adapter": "vector",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_vector_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改当前常量 Profile 的数量并保持方法、边界类型、区域和物理连续体；不切换方法或局部表面值",
+        "write": {
+          "adapter": "vector_expression",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_vector_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "vector.write_definition",
+                "arguments": [
+                  {
+                    "context": "definition"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "constant_profile",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantVectorProfileMethod",
+              "message": "Boundary profile writes require the current constant method"
+            },
+            {
+              "id": "whole_boundary_values",
+              "read": {
+                "root": "parent",
+                "steps": [
+                  {
+                    "member": "boundary.allow_per_part_values",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": false,
+              "message": "Boundary profile writes do not support per-part values"
+            }
+          ],
+          "preserved_properties": [
+            "name",
+            "profile_method",
+            "method",
+            "dimensions",
+            "boundary",
+            "boundary_type",
+            "region",
+            "physics_continuum",
+            "allow_per_part_values",
+            "coordinate_system",
+            "is_3d",
+            "size"
+          ]
+        }
+      },
+      "quantity_value": {
+        "adapter": "vector",
+        "read": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.method",
+              "arguments": []
+            },
+            {
+              "member": "constant_vector_profile.quantity",
+              "arguments": []
+            }
+          ]
+        },
+        "writable": true,
+        "reason": "修改当前常量 Profile 的数量并保持方法、边界类型、区域和物理连续体；不切换方法或局部表面值",
+        "write": {
+          "adapter": "vector_value",
+          "pipeline": {
+            "root": "object",
+            "steps": [
+              {
+                "member": "profile.method",
+                "arguments": []
+              },
+              {
+                "member": "constant_vector_profile.quantity",
+                "arguments": []
+              },
+              {
+                "member": "vector.write_value",
+                "arguments": [
+                  {
+                    "context": "x"
+                  },
+                  {
+                    "context": "y"
+                  },
+                  {
+                    "context": "z"
+                  },
+                  {
+                    "context": "units"
+                  }
+                ]
+              }
+            ]
+          },
+          "guards": [
+            {
+              "id": "constant_profile",
+              "read": {
+                "root": "object",
+                "steps": [
+                  {
+                    "member": "profile.method",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "java_class",
+              "expected": "star.common.ConstantVectorProfileMethod",
+              "message": "Boundary profile writes require the current constant method"
+            },
+            {
+              "id": "whole_boundary_values",
+              "read": {
+                "root": "parent",
+                "steps": [
+                  {
+                    "member": "boundary.allow_per_part_values",
+                    "arguments": []
+                  }
+                ]
+              },
+              "adapter": "primitive",
+              "expected": false,
+              "message": "Boundary profile writes do not support per-part values"
+            }
+          ],
+          "preserved_properties": [
+            "name",
+            "profile_method",
+            "method",
+            "dimensions",
+            "boundary",
+            "boundary_type",
+            "region",
+            "physics_continuum",
+            "allow_per_part_values",
+            "coordinate_system",
+            "is_3d",
+            "size"
+          ]
+        }
+      }
     }
   },
   "operations": {
@@ -5891,6 +6635,8 @@
       }
     },
     "material_coefficient": {},
-    "tensor_axis": {}
+    "tensor_axis": {},
+    "boundary_scalar_profile": {},
+    "boundary_vector_profile": {}
   }
 }

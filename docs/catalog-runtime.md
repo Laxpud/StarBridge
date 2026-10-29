@@ -66,7 +66,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 本页描述与读取请求的格式版本为整数 `1`；属性修改使用独立的 schema 2 契约，结构操作使用 schema 3。顶层必需字段为 `schema_version`、`action`、`target`，可选字段为 `properties`；未知字段会被拒绝。`properties` 是不重复、非空的属性 ID 数组，省略时选择该类型当前映射中的全部属性，不能据此理解为整个 STAR 对象的全部属性。未映射属性在启动客户端或写入会话活动标记前拒绝。`properties` 只筛选属性；`describe` 另返回该类型全部已配操作，`read` 不返回操作描述。
 
-`target` 使用目录的类型 ID 和精确显示名称。当前定位器从指定管理器枚举对象，按 Java 类型过滤后要求名称唯一匹配。边界和 `tensor_profile` 还必须提供所属区域，`tensor_component` 和 `tensor_axis` 提供父 `tensor_profile` 的完整定位路径；材料系数则沿连续体、材料模型、材料和物性定位，见[材料物性与系数](#材料物性与系数)。例如边界请求：
+`target` 使用目录的类型 ID 和精确显示名称。当前定位器从指定管理器枚举对象，按 Java 类型过滤后要求名称唯一匹配。边界和 `tensor_profile` 还必须提供所属区域，边界标量/向量 Profile 提供完整的区域—边界父路径，`tensor_component` 和 `tensor_axis` 提供父 `tensor_profile` 的完整定位路径；材料系数则沿连续体、材料模型、材料和物性定位，见[材料物性与系数](#材料物性与系数)。例如边界请求：
 
 ```json
 {
@@ -103,7 +103,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 `read` 的每项成功结果为 `{"status":"ok","value":...}`，失败结果为 `{"status":"error","error":"..."}`。单项读取失败保留其他属性结果，`inspection_complete` 为 `false`，CLI 输出警告但仍可返回零退出码。使用者必须检查每项状态，不能把失败当成空集合或 `null`。
 
-`describe` 的每项保留 `adapter`、`writable`、`reason`、`guards`、`value_types` 和 `value_guards`。`writable` 只表示该目录属性已有写入实现。`guards` 列出目标条件的 `id`、`expected`、`message`；`value_types` 与 `value_guards` 分别描述新关联允许的目录类型和关联对象条件。
+`describe` 的每项保留 `adapter`、`writable`、`reason`、`guards`、`preserved_properties`、`value_types` 和 `value_guards`。`preserved_properties` 列出写后要完整核对的额外不变属性，不替代内置身份字段检查。`writable` 只表示该目录属性已有写入实现。`guards` 列出目标条件的 `id`、`expected`、`message`；`value_types` 与 `value_guards` 分别描述新关联允许的目录类型和关联对象条件。
 
 描述命令执行已声明的目标条件只读管线，新增 `guard_checks` 与 `target_condition_status`：
 
@@ -146,7 +146,9 @@ python3 bridge/runner/session_bridge.py describe \
 | `physics_continuum` | `name`、`gravity`、`gravity_value` |
 | `user_field_function` | `name`、`definition`、`function_name`、`dimensions`、`value_type`、`ignore_boundary_values`、`sync_name`、`tags` |
 | `region` | `name`、`region_type`、`physics_continuum`、`index`、`tags` |
-| `boundary` | `name`、`boundary_type`、`region`、`index`、`allow_per_part_values`、`tags` |
+| `boundary` | `name`、`boundary_type`、`region`、`index`、`allow_per_part_values`、`tags`、`values` |
+| `boundary_scalar_profile` | `name`、`profile_method`、`method`、`dimensions`、`boundary`、`boundary_type`、`region`、`physics_continuum`、`allow_per_part_values`、`quantity`、`quantity_value` |
+| `boundary_vector_profile` | 上述属性，加 `coordinate_system`、`is_3d`、`size` |
 | `tensor_profile` | `name`、`profile_method`、`tensor`、`basis`、`method_state`、`components`、`axes`；`xx`、`xy`、`xz`、`yx`、`yy`、`yz`、`zx`、`zy`、`zz` 及各自的 `_value` 属性 |
 | `tensor_component` | `name`、`profile_method`、`quantity`、`quantity_value`、`basis` |
 | `tensor_axis` | `name`、`profile_method`、`quantity`、`quantity_value`、`coordinate_system`、`basis` |
@@ -187,6 +189,30 @@ python3 bridge/runner/session_bridge.py describe \
 | `query` | 静态模式为 `mode: static` 和 `objects`；动态模式为 `mode: query`、`predicate` 和 `modifiers` |
 
 动态查询保留规则本身，不求值成当时匹配的对象列表。当前编码 `NamePredicate`、`TypePredicate`、`CompoundPredicate`、`TagPredicate`、`CommentPredicate`、`IncludesPredicate` 和 `IdentityPredicate`，分别返回 `type: name`、`java_type`、`compound`、`tag`、`comment`、`includes` 或 `identity`。复合规则保留有序 `predicates`，标签规则的 `value` 是名称、实际 Java 类和会话引用。身份规则的 `value` 是完整引用数组，注释规则使用文本 `value`，includes 只有 `All`/`None` 算子且没有 `value`；`Placeholder` 和元数据等未适配规则明确报错。读取从深度 `0` 开始，最多允许深度 `16`、总计 `256` 个谓词节点；未知谓词或超限逐属性报错，不执行 `asJournal()` 生成的代码。此入口不求报告值、不生成网格、不运行求解或工作流。静态/动态选择写入以及标签旧引用与新定位对象的区别见[对象引用与选择](catalog-modifier.md#对象引用与选择)。
+
+### 边界 Profile
+
+先读取 `boundary.values` 获取边界当前实际拥有的值对象。该列表可能包含数组 Profile 或其他物理值，不能把所有项都当作标量或向量；类型 ID `boundary_scalar_profile` 和 `boundary_vector_profile` 分别只接受实际属于 `ScalarProfile` 和 `VectorProfile` 的对象。例如：
+
+```json
+{
+  "schema_version": 1,
+  "action": "read",
+  "target": {
+    "type": "boundary_scalar_profile",
+    "name": "Turbulence Intensity",
+    "parent": {
+      "type": "boundary",
+      "name": "BackgroundBlock.Inlet",
+      "parent": {"type": "region", "name": "Background"}
+    }
+  }
+}
+```
+
+`profile_method` 返回当前方法类，`method` 保留方法对象身份；`dimensions` 为 Profile 量纲文本。其他上下文字段保留父边界、边界类型、区域、物理连续体、按表面值开关，以及向量的坐标系和维数。当前数量管线只适配常量方法；函数或其他方法仍可按需读取这些上下文字段，数量项明确报错，不隐式切换方法。读取使用无参 `getMethod()`；带 Class 参数的 getter 具有切换副作用，不用于探测。
+
+标量和向量分别沿用已有数量格式；向量始终返回三个原始分量，`is_3d` 和 `size` 只描述 Profile 自身，不触发裁剪、坐标变换或归一化。`allow_per_part_values=true` 时读取的是父 Profile，不代表所有局部表面值；当前写入明确拒绝该状态。用法见[边界 Profile 修改](catalog-modifier.md#边界-profile-修改)。
 
 ### 张量读取格式
 
@@ -280,13 +306,15 @@ python3 bridge/runner/session_bridge.py describe \
 
 [`catalogs/2602/execution.json`](../catalogs/2602/execution.json) 是维护者审阅的调用映射，由 [`core/execution.py`](../core/execution.py) 与候选目录共同校验；它与仅供离线核对的 `overrides.json` 修改语义分开维护。请求只能选择目标、属性或操作及其参数，不能覆盖映射、方法的 `effect`、Java 类或参数来源。
 
-映射格式版本当前为 `5`，加载器兼容仅含读取管线的 schema 1 和原有写入 schema 2/3/4；顶层包含 `target`、`members`、`types`、`properties`、`operations`。旧格式没有结构操作，加载时使用空操作集合。每个 member 锁定候选声明的签名和指纹，并声明反射参数类型及 `effect: read` 或 `effect: write`。定位和读取管线只允许 `read`；写入管线仅最后一步允许 `write`，读取计划会移除写入管线。当前只接收已核对的 public 实例方法，不开放字段、构造器、静态调用或通过 `setAccessible()` 访问非 public 方法。参数类型必须能由候选材料证明，裸泛型变量 `T` 不能冒充可加载类；枚举 setter `EnumeratedOption.setSelected(T)` 仅在候选类声明和官方类型链接证明其首个上界为 `Enum` 时，使用已核对的泛型擦除规则。其他未解析泛型仍拒绝猜测；嵌套类按已核对类型页转换为 JVM 名称。
+映射格式版本当前为 `6`，加载器兼容仅含读取管线的 schema 1 和原有写入 schema 2/3/4/5；顶层包含 `target`、`members`、`types`、`properties`、`operations`。旧格式没有结构操作，加载时使用空操作集合。每个 member 锁定候选声明的签名和指纹，并声明反射参数类型及 `effect: read` 或 `effect: write`。定位和读取管线只允许 `read`；写入管线仅最后一步允许 `write`，读取计划会移除写入管线。当前只接收已核对的 public 实例方法，不开放字段、构造器、静态调用或通过 `setAccessible()` 访问非 public 方法。参数类型必须能由候选材料证明，裸泛型变量 `T` 不能冒充可加载类；枚举 setter `EnumeratedOption.setSelected(T)` 仅在候选类声明和官方类型链接证明其首个上界为 `Enum` 时，使用已核对的泛型擦除规则。其他未解析泛型仍拒绝猜测；嵌套类按已核对类型页转换为 JVM 名称。
 
 类型的 `locate` 和属性的 `read` 都是调用管线：`root` 可为 `simulation`、当前 `object` 或 `parent`，后续每一步以上一步返回值作为接收对象。参数来源只能是已核对的类字面量、JSON 标量 `literal` 或当前 `object`/`parent` 上下文，数量和类型必须与指定方法相符。只读管线允许 `steps: []`，直接将所选 root 传给适配器；张量 `tensor`/`basis`/`method_state` 和材料系数元数据使用此形式读取当前对象或父对象。写入管线仍要求非空并以受控 setter 结束。对象定位管线最终必须返回集合，父类型关系须明确且不能成环。
 
 schema 3 新增通用 `primitive`、`enum`、`vector_expression` 和 `vector_value` 写适配器，并将场函数定义命名为 `field_definition`；schema 2 的旧 `primitive` 加载时规范化为 `field_definition`。`write.guards` 使用同样受 `effect: read` 限制的管线，在修改准备和 setter 前检查；读计划移除写入执行管线；`describe` 额外保留目标条件的只读管线，以返回实际检查结果，新关联条件仍只提供摘要。schema 4 新增 `reference` 与 `object_selection`：`value_types` 限定允许的关联类型，引用写入的 `value_guards` 在新关联上检查；对象选择以 `pipelines.static` 和 `pipelines.query` 分别声明最终 setter，每次请求只选一条。属性请求版本仍为读取 schema 1、修改 schema 2，详细值格式与条件行为见[目录修改](catalog-modifier.md#写入条件)。
 
 材料系数读取沿 `MaterialProperty.getMethod()` → `MultiCoefficientMaterialPropertyMethod.getScalarProperties()` → 各子属性当前 `getMethod()` 取得数据。本机 2602 实现中，`MaterialProperty.getObjects()` 只返回当前方法，不能用它枚举全部可用方法；`getMaterialPropertyMethod(Class)` 只查找既有方法，缺失时抛错。`MultiCoefficientMaterialPropertyMethod.getMethod(int)` 在系数当前不是函数方法时会切换到 `FunctionMaterialPropertyMethod`，因此没有将它映射为只读调用。
+
+schema 6 的属性 `write` 可声明 `preserved_properties`，默认空数组；各项必须是同一类型内已配置且不同于所写属性的唯一名称。修改后完整比较这些属性，包括引用 token/key；它增加写后不变检查，不替代原有身份检查，也不表示请求提供了这些字段的预期旧状态。schema 1–5 不接受该字段。
 
 schema 5 按类型新增 `operations`。`profile_method` 与 `material_method` 操作声明方法 ID、只读 `available` 管线、`guards`、独立 `read_properties`、`state_property`、`preserved_properties` 和 `impacts`，以及最终 `write` 管线。Profile 的 `available` 从目标枚举现有方法；材料的 `available` 必须为当前目标自身的空读取管线，由适配器按已映射类查找。setter 的唯一 `method` 参数必须来自选定的实际 `ProfileMethod` 或 `MaterialPropertyMethod` 对象；加载器校验映射方法的继承关系、相应状态适配器和 setter 参数类型。属性 writer 不能使用这个操作专用参数。描述计划移除操作 setter，普通读取和兼容修改计划移除操作集合；结构修改计划则只保留所选操作与声明的读取集合。结构请求独立使用 schema 3。
 
@@ -295,6 +323,8 @@ schema 5 按类型新增 `operations`。`profile_method` 与 `material_method` �
 Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作为 setter 或访问路径；`readOnly` 元数据也不能替代实际条件检查。现有写入流程核对预期旧状态、类型、单位、允许枚举值、向量分量及标签并回读；重力模型存在性、报告新关联的标量场函数类型以及张量布局、维数、分量方法和材料系数当前方法已配置为声明式条件，其他模型条件与适配器仍待补齐，新增路径的实际验证状态见[修改验证范围](catalog-modifier.md#验证范围与迁移边界)。写入参数、单次 setter 尝试及失败契约见[目录修改](catalog-modifier.md)。
 
 ## 验证范围与剩余工作
+
+边界实际值对象枚举、常量标量/向量 Profile 的完整上下文读取、数量写入、方法与局部表面值拒绝及保存重载已通过代表性验收，范围见[边界修改验证](catalog-modifier.md#验证范围与迁移边界)。函数方法仍可读取上下文，数量项明确报错；这些结果不证明所有边界条件或 Profile 方法已适配。
 
 本机 Linux、2602 Build 21.02.007 已通过文件标量读取并确认原输入 SHA256 不变。后台工作副本中，当时 7 种类型共 33 个已配属性均返回 `status: ok`，`describe` 也已运行。向量来自工作副本专用对象，分量为 `[1.25, -2.5, 3.75]`；动态查询分别完整回读 `NamePredicate` 的 `Matches Background` 和 `TypePredicate` 的 `Is Region` 规则，没有求值成匹配对象列表。
 
