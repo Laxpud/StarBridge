@@ -42,6 +42,10 @@ QUERY_OPERATORS = {
     'java_type': {'Is', 'IsNot'},
     'compound': {'And', 'Or'},
     'tag': {'Contains', 'DoesNotContain', 'ContainsInherited', 'DoesNotContainInherited'},
+    'comment': {'Contains', 'DoesNotContain', 'Matches', 'DoesNotMatch', 'StartsWith',
+                'DoesNotStartWith', 'EndsWith', 'DoesNotEndWith'},
+    'includes': {'All', 'None'},
+    'identity': {'Equals', 'DoesNotEqual'},
 }
 
 
@@ -502,8 +506,8 @@ def _reference_state(value):
 def _selection_value(plan, writer, value, *, expected=False):
     """校验完整静态选择或动态规则；新引用保留定位路径，旧引用去掉会话元数据。
 
-    动态规则不在本地求值。类型谓词只能使用写映射允许的类，标签谓词只解析
-    已映射的用户标签；两种参数都不能变成调用者提供的任意 Java 类加载。
+    动态规则不在本地求值。类型和身份谓词受写映射的对象类型限制，标签谓词
+    只解析已映射的用户标签；请求不能变成调用者提供的任意 Java 类加载。
     """
     _require(isinstance(value, dict), 'Object selection must be an object')
     mode = value.get('mode')
@@ -535,12 +539,19 @@ def _selection_value(plan, writer, value, *, expected=False):
         _require(isinstance(rule, dict), 'Query predicate must be an object')
         kind = rule.get('type')
         _require(isinstance(kind, str) and kind in QUERY_OPERATORS, 'Unsupported query predicate')
-        _keys(rule, 'type operator ' + ('predicates' if kind == 'compound' else 'value'), 'predicate')
+        fields = {'compound': 'predicates', 'includes': ''}.get(kind, 'value')
+        _keys(rule, 'type operator ' + fields, 'predicate')
         _require(isinstance(rule['operator'], str) and rule['operator'] in QUERY_OPERATORS[kind],
                  'Unsupported query operator')
         if kind == 'compound':
             _require(isinstance(rule['predicates'], list), 'Compound predicates must be a list')
             return {**rule, 'predicates': [predicate(p, depth + 1) for p in rule['predicates']]}
+        if kind == 'includes':
+            return rule
+        if kind == 'identity':
+            # 身份谓词接受集合；复用静态对象的定位限制与旧引用规范化，但不求值规则。
+            selection = _selection_value(plan, writer, {'mode': 'static', 'objects': rule['value']}, expected=expected)
+            return {**rule, 'value': selection['objects']}
         if kind == 'tag':
             if expected:
                 tag = _reference_state(rule['value'])

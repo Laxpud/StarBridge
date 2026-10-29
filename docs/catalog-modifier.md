@@ -348,10 +348,15 @@ python3 bridge/runner/session_bridge.py modify \
 | `java_type` | `Is`、`IsNot` | 当前写映射允许的 Java 类：`star.common.Region` 或 `star.common.Boundary` |
 | `compound` | `And`、`Or` | `predicates` 数组，保持子规则顺序 |
 | `tag` | `Contains`、`DoesNotContain`、`ContainsInherited`、`DoesNotContainInherited` | 新写入使用 `type: user_tag` 定位对象，可带同会话引用 |
+| `comment` | `Contains`、`DoesNotContain`、`Matches`、`DoesNotMatch`、`StartsWith`、`DoesNotStartWith`、`EndsWith`、`DoesNotEndWith` | `value` 为注释匹配文本，可为空，不按正则解释 |
+| `includes` | `All`、`None` | 无 `value` 字段；编辑器 `Placeholder` 不支持 |
+| `identity` | `Equals`、`DoesNotEqual` | `value` 为定位对象数组，可为空；当前允许区域及边界，每项可带同会话引用 |
 
 标签谓词的读取值与 `expected` 中的 `value` 是标签的名称、Java 类及可选引用；新规则必须改用上述用户标签定位对象。复合规则中的标签也会递归处理。旧规则的标签 token/key 从预期状态中移除，新规则的标签则在准备时固定身份，并在 `apply()` 前重新核对。
 
-查询根节点深度为 `0`，最大深度为 `16`，整个谓词树最多 `256` 个节点；读取、旧状态规范化与新规则构造均受限制。`modifiers` 当前只能是 `[]` 或 `["PrefilterNamedObjects"]`，不接受重复项。`value_types` 限制静态定位对象和 `java_type` 谓词可用的类；动态名称或标签规则仍由 STAR 选择管理器解释，Bridge 不枚举或推断所有匹配对象。
+身份谓词的读取值与 `expected.value` 是完整引用数组，新值改用定位对象数组；边界需包含区域父路径。旧值按名称和实际类排序，保留同名项数量，移除 token/key；新值逐项固定身份并在 setter 前复查，重复指向同一个对象时拒绝。身份集合不使用单对象 getter，不会截断多对象规则。规则仅保存和回读，不承诺在当前算例中匹配到对象。
+
+查询根节点深度为 `0`，最大深度为 `16`，整个谓词树最多 `256` 个节点；读取、旧状态规范化与新规则构造均受限制。`modifiers` 当前只能是 `[]` 或 `["PrefilterNamedObjects"]`，不接受重复项。`value_types` 限制静态及身份集合定位对象和 `java_type` 谓词可用的类；动态名称或标签规则仍由 STAR 选择管理器解释，Bridge 不枚举或推断所有匹配对象。
 
 静态和动态模式分别选择一条最终 setter 管线，每个请求只调用一次选中的 setter。STAR 的 `setObjects` 内部会先清除 query 再替换列表，这不是原子事务；即使只有一次外部 setter 调用，失败时也可能已有部分状态改变，仍按 `uncertain` 处理，不自动重试或回滚。
 
@@ -383,11 +388,18 @@ python3 bridge/runner/session_bridge.py modify \
 
 配置了写入条件并准备成功时，`catalog_before.checks` 记录各项 `id`、`expected` 和 `actual`。这是准备阶段通过的检查记录，不是全部模型状态报告，也不表示修改后的条件仍成立。
 
-对象引用写入还在 `catalog_before.value_checks` 中记录新关联对象及其条件检查。静态选择和查询标签会固定对象身份，但不据此生成完整模型检查报告。
+对象引用写入还在 `catalog_before.value_checks` 中记录新关联对象及其条件检查。静态选择、查询标签和身份集合会固定对象身份，但不据此生成完整模型检查报告。
 
-两层 Diff 都使用 `path`、`before`、`after`，路径是相应比较对象的 JSON Pointer。`snapshot_diff` 覆盖旧 Inspector 已读取的对象字段；`catalog_diff` 比较目标及本次计划读取的属性：属性赋值覆盖该类型已配置属性，结构操作覆盖声明的 `read_properties`。同会话保留对象 key 变化，跨加载则移除协议引用中的 token/key，以名称和实际类型核对可重定位内容；查询内标签引用也递归规范化，张量 `tensor`/`basis`/`method_state` 内的坐标系与局部方向引用同样移除会话 token/key，其他谓词字段及组合顺序保持不变，不会任意删除业务字典中的同名字段。Diff 不涵盖整个 STAR 对象树，不能证明未读取设置均未变化。
+两层 Diff 都使用 `path`、`before`、`after`，路径是相应比较对象的 JSON Pointer。`snapshot_diff` 覆盖旧 Inspector 已读取的对象字段；`catalog_diff` 比较目标及本次计划读取的属性：属性赋值覆盖该类型已配置属性，结构操作覆盖声明的 `read_properties`。同会话保留对象 key 变化，跨加载则移除协议引用中的 token/key，以名称和实际类型核对可重定位内容；查询内标签及身份集合引用也递归规范化，张量 `tensor`/`basis`/`method_state` 内的坐标系与局部方向引用同样移除会话 token/key，其他谓词字段及组合顺序保持不变，不会任意删除业务字典中的同名字段。Diff 不涵盖整个 STAR 对象树，不能证明未读取设置均未变化。
 
 ## 验证范围与迁移边界
+
+本机 2602 Build 21.02.007 已在工作副本的 `_SelectionReport` 上验证注释谓词八个算子、`includes` 的 `All`/`None`、身份规则的空集合、单项和区域加边界多项，回读保留文本、算子和完整对象集合。空文本与中文文本均保持；组合规则同时包含 includes、comment、identity 和已有 tag 分支。此批未求查询匹配结果或报告值，不把成功保存规则等同于规则匹配到预期对象。
+
+过期会话引用、错误 key、重复身份对象、缺失对象和过时旧规则均在 setter 前拒绝，拒绝前后报告目录状态一致，会话保持 `ready`。体积平均报告的静态“区域加边界”选择由过滤模型拒绝，两个区域的静态选择通过；同样的区域加边界身份查询可以保存，体现动态规则与静态选择的不同约束。旧身份集合改变数组顺序及 token/key 后仍按名称、实际类和数量核对，其余规则字段保持严格比较。本地契约检查另拒绝 Placeholder、includes 多余 value、错误身份集合形状、不允许的对象类型、缺失边界父路径以及错误注释算子/值。
+
+会话保存关闭后，文件修改前的完整报告目录状态与保存前跨加载规范化一致；文件入口将嵌套身份规则从 `Equals` 改为 `DoesNotEqual`，其他规则及报告属性保持，目录与旧快照独立重载匹配，输入摘要未变。产物位于本地 `outputs/catalog-query-extended-20261029/`。本批未运行网格或求解，未覆盖元数据、继承部件等谓词、并发变更或中断恢复；这些规则继续明确拒绝。目录候选重复生成一致，原有类型声明未变化。
+
 
 本机 2602 Build 21.02.007 已在已有二维/三维有限元源导数张量上验证自带方向轴的方法。两种维数均沿 Symmetric → PrincipalWithAxes → AxisymmetricWithAxis → PrincipalWithAxes → Composite → Symmetric → Isotropic → PrincipalWithAxes 完成产品切换，按真实布局回读主值、全部轴及矩阵分量。主值 `XX Component` 分别写入三维 `13.5`、二维 `9.25`；主方向和轴对称方向轴均通过原始向量写入，主方向 Y 轴还通过向量定义写入。切回主方向后已修改设置保持。三维 Y 轴关联了夹具创建的 `_PrincipalAxisY 1`，X 轴仍关联 `Laboratory`；坐标系创建与关联选择属于夹具准备，不计为产品写入能力。
 

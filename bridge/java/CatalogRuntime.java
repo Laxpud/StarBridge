@@ -639,7 +639,7 @@ class CatalogRuntime {
             Resolved current = locate(sim, object(plan.get("types"), "plan.types"),
                     object(readRequest.get("target"), "read target"), token, 0);
             checkGuards(sim, current, writer, token);
-            // 新关联和标签谓词也固定到准备阶段的 key；同名重建不能替代原对象。
+            // 新关联、标签及身份谓词均固定到准备阶段的 key；同名重建不能替代原对象。
             for (ReferenceBinding binding : bindings) {
                 Resolved referenced = locate(sim, object(plan.get("types"), "plan.types"), binding.target, token, 0);
                 checkGuards(sim, referenced, fields("guards", binding.guards), token);
@@ -953,7 +953,33 @@ class CatalogRuntime {
                 children.add(buildPredicate(sim, plan, writer, child, token, bindings, depth + 1, nodes));
             return new star.base.query.CompoundPredicate(star.base.query.CompoundOperator.valueOf(operator), children);
         }
+        if (type.equals("includes")) {
+            require(rule.keySet().equals(java.util.Set.of("type", "operator")), "Invalid includes predicate fields");
+            // Placeholder 是编辑器占位选项，不作为可写规则发布。
+            require(operator.equals("All") || operator.equals("None"), "Unsupported includes operator");
+            return new star.base.query.IncludesPredicate(star.base.query.IncludesOperator.valueOf(operator));
+        }
         require(rule.keySet().equals(java.util.Set.of("type", "operator", "value")), "Invalid predicate fields");
+        if (type.equals("comment")) {
+            require(rule.get("value") instanceof String, "Predicate comment must be a string");
+            return new star.base.query.CommentPredicate(star.base.query.CommentOperator.valueOf(operator),
+                    (String) rule.get("value"));
+        }
+        if (type.equals("identity")) {
+            // 完整保留多对象规则，不能用只适用于单对象的 getClientServerObject 截断集合。
+            // 每项按目录定位并固定身份，apply 前由公共 ReferenceBinding 再次核对。
+            java.util.List<star.base.neo.ClientServerObject> objects = new java.util.ArrayList<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (Object item : list(rule.get("value"), "identity predicate objects")) {
+                java.util.Map<String, Object> target = object(item, "identity predicate target");
+                require(list(writer.get("value_types"), "write.value_types").contains(target.get("type")),
+                        "Identity predicate target type is not allowed");
+                Resolved resolved = bindReference(sim, plan, target, token, java.util.List.of(), bindings);
+                require(seen.add(resolved.object.getObjectKeyAsString()), "Duplicate identity predicate object");
+                objects.add(resolved.object);
+            }
+            return new star.base.query.IdentityPredicate(star.base.query.IdentityOperator.valueOf(operator), objects);
+        }
         if (type.equals("name")) {
             // 空名称也是合法匹配值；只有正则算子才解释模式，其余算子保持原始文本。
             require(rule.get("value") instanceof String, "Predicate name must be a string");
@@ -1002,7 +1028,7 @@ class CatalogRuntime {
         return result;
     }
 
-    /** 静态列表和标签叶节点中的引用元数据不构成旧规则的业务状态。 */
+    /** 静态列表、标签和身份集合中的引用元数据不构成旧规则的业务状态。 */
     private static Object selectionState(Object value) {
         java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(object(value, "selection state"));
         if ("static".equals(result.get("mode"))) {
@@ -1019,12 +1045,17 @@ class CatalogRuntime {
         return result;
     }
 
-    /** 只去掉 tag.value 内的引用，保留其他谓词字段和组合顺序，避免误删业务值。 */
+    /** 只规范标签和身份集合内的引用，保留其他谓词字段和组合顺序。 */
     private static Object predicateState(Object value, int depth, int[] nodes) {
         checkPredicateBudget(depth, nodes);
         java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(object(value, "predicate state"));
         if ("tag".equals(result.get("type"))) result.put("value", referenceState(result.get("value")));
-        else if ("compound".equals(result.get("type"))) {
+        else if ("identity".equals(result.get("type"))) {
+            // 与静态选择共用集合比较：移除身份元数据后排序，保留同名同类项的数量。
+            java.util.Map<String, Object> normalized = object(selectionState(
+                    fields("mode", "static", "objects", result.get("value"))), "identity predicate state");
+            result.put("value", normalized.get("objects"));
+        } else if ("compound".equals(result.get("type"))) {
             java.util.List<Object> children = new java.util.ArrayList<>();
             for (Object child : list(result.get("predicates"), "compound predicates"))
                 children.add(predicateState(child, depth + 1, nodes));
@@ -1890,6 +1921,20 @@ class CatalogRuntime {
     /** 仅编码公开 getter 已核对的精确谓词类；未知子类不能假装成已支持规则。 */
     private static Object encodePredicate(star.base.query.QueryPredicate predicate, String token, int depth, int[] nodes) {
         checkPredicateBudget(depth, nodes);
+        if (predicate != null && predicate.getClass() == star.base.query.CommentPredicate.class) {
+            star.base.query.CommentPredicate comment = (star.base.query.CommentPredicate) predicate;
+            return fields("type", "comment", "operator", comment.getOperator().name(), "value", comment.getText());
+        }
+        if (predicate != null && predicate.getClass() == star.base.query.IncludesPredicate.class) {
+            star.base.query.IncludesPredicate includes = (star.base.query.IncludesPredicate) predicate;
+            require(includes.getOperator() != star.base.query.IncludesOperator.Placeholder, "Unsupported includes placeholder");
+            return fields("type", "includes", "operator", includes.getOperator().name());
+        }
+        if (predicate != null && predicate.getClass() == star.base.query.IdentityPredicate.class) {
+            star.base.query.IdentityPredicate identity = (star.base.query.IdentityPredicate) predicate;
+            return fields("type", "identity", "operator", identity.getOperator().name(),
+                    "value", collection(identity.getObjects(), token));
+        }
         if (predicate != null && predicate.getClass() == star.base.query.NamePredicate.class) {
             star.base.query.NamePredicate name = (star.base.query.NamePredicate) predicate;
             return fields("type", "name", "operator", name.getOperator().name(), "value", name.getName());

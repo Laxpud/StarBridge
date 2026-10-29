@@ -31,8 +31,14 @@
       "star.base.neo.ClientServerObject",
       "star.base.neo.ClientServerObjectManager",
       "star.base.query.AbstractQuery",
+      "star.base.query.CommentOperator",
+      "star.base.query.CommentPredicate",
       "star.base.query.CompoundOperator",
       "star.base.query.CompoundPredicate",
+      "star.base.query.IdentityOperator",
+      "star.base.query.IdentityPredicate",
+      "star.base.query.IncludesOperator",
+      "star.base.query.IncludesPredicate",
       "star.base.query.ManagerWithQuery",
       "star.base.query.NameOperator",
       "star.base.query.NamePredicate",
@@ -11054,6 +11060,333 @@
       "inherited_members": [],
       "status": "discovered"
     },
+    "star.base.query.CommentOperator": {
+      "java_class": "star.base.query.CommentOperator",
+      "signature": "public enum CommentOperator extends Enum<CommentOperator> implements Localizable, SerializableEnum",
+      "links": [
+        "../neo/Localizable.html",
+        "../neo/SerializableEnum.html",
+        "CommentOperator.html",
+        "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Enum.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/base/query/CommentOperator.html",
+        "sha256": "b56cd5232691bfe6eb654511f61c9d8537b133eed44ee585f416e7b5d55953c3"
+      },
+      "members": {
+        "Contains": {
+          "name": "Contains",
+          "signature": "@StarField(\"contains\") public static final CommentOperator Contains",
+          "return_type": "CommentOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"contains\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "CommentOperator.html"
+          ]
+        },
+        "DoesNotContain": {
+          "name": "DoesNotContain",
+          "signature": "@StarField(\"does not contain\") public static final CommentOperator DoesNotContain",
+          "return_type": "CommentOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"does not contain\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "CommentOperator.html"
+          ]
+        },
+        "DoesNotEndWith": {
+          "name": "DoesNotEndWith",
+          "signature": "@StarField(\"does not end with\") public static final CommentOperator DoesNotEndWith",
+          "return_type": "CommentOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"does not end with\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "CommentOperator.html"
+          ]
+        },
+        "DoesNotMatch": {
+          "name": "DoesNotMatch",
+          "signature": "@StarField(\"does not match\") public static final CommentOperator DoesNotMatch",
+          "return_type": "CommentOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"does not match\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "CommentOperator.html"
+          ]
+        },
+        "DoesNotStartWith": {
+          "name": "DoesNotStartWith",
+          "signature": "@StarField(\"does not start with\") public static final CommentOperator DoesNotStartWith",
+          "return_type": "CommentOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"does not start with\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "CommentOperator.html"
+          ]
+        },
+        "EndsWith": {
+          "name": "EndsWith",
+          "signature": "@StarField(\"ends with\") public static final CommentOperator EndsWith",
+          "return_type": "CommentOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"ends with\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "CommentOperator.html"
+          ]
+        },
+        "Matches": {
+          "name": "Matches",
+          "signature": "@StarField(\"matches\") public static final CommentOperator Matches",
+          "return_type": "CommentOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"matches\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "CommentOperator.html"
+          ]
+        },
+        "StartsWith": {
+          "name": "StartsWith",
+          "signature": "@StarField(\"starts with\") public static final CommentOperator StartsWith",
+          "return_type": "CommentOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"starts with\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "CommentOperator.html"
+          ]
+        },
+        "getPresentationName()": {
+          "name": "getPresentationName",
+          "signature": "public String getPresentationName()",
+          "return_type": "String",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "getValue()": {
+          "name": "getValue",
+          "signature": "public int getValue()",
+          "return_type": "int",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "valueOf(java.lang.String)": {
+          "name": "valueOf",
+          "signature": "public static CommentOperator valueOf(String name)",
+          "return_type": "CommentOperator",
+          "parameters": "(String name)",
+          "modifiers": "public static",
+          "annotations": "",
+          "links": [
+            "CommentOperator.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "values()": {
+          "name": "values",
+          "signature": "public static CommentOperator[] values()",
+          "return_type": "CommentOperator[]",
+          "parameters": "",
+          "modifiers": "public static",
+          "annotations": "",
+          "links": [
+            "CommentOperator.html"
+          ]
+        }
+      },
+      "property_candidates": {},
+      "inherited_members": [],
+      "status": "discovered"
+    },
+    "star.base.query.CommentPredicate": {
+      "java_class": "star.base.query.CommentPredicate",
+      "signature": "@StarBean(display=\"Comment\", hint=\"Any comments by string\") public class CommentPredicate extends QueryPredicate",
+      "links": [
+        "../../locale/annotation/StarBean.html",
+        "../../locale/annotation/StarBean.html#display()",
+        "../../locale/annotation/StarBean.html#hint()",
+        "QueryPredicate.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/base/query/CommentPredicate.html",
+        "sha256": "7dd14b59695ae062d5dfaae50ec520c7c94b49e33a42f849b7dfe77878d7812c"
+      },
+      "members": {
+        "<init>(star.base.query.CommentOperator,java.lang.String)": {
+          "name": "CommentPredicate",
+          "signature": "public CommentPredicate(CommentOperator operator, String text)",
+          "return_type": "",
+          "parameters": "(CommentOperator operator, String text)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "CommentOperator.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "equals(java.lang.Object)": {
+          "name": "equals",
+          "signature": "public boolean equals(Object obj)",
+          "return_type": "boolean",
+          "parameters": "(Object obj)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html"
+          ]
+        },
+        "getJournalConstructorArgs()": {
+          "name": "getJournalConstructorArgs",
+          "signature": "protected List<NeoJournableArgument> getJournalConstructorArgs()",
+          "return_type": "List<NeoJournableArgument>",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "../neo/NeoJournableArgument.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/List.html"
+          ]
+        },
+        "getOperator()": {
+          "name": "getOperator",
+          "signature": "public CommentOperator getOperator()",
+          "return_type": "CommentOperator",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "CommentOperator.html"
+          ]
+        },
+        "getText()": {
+          "name": "getText",
+          "signature": "public String getText()",
+          "return_type": "String",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "hashCode()": {
+          "name": "hashCode",
+          "signature": "public int hashCode()",
+          "return_type": "int",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "toMap()": {
+          "name": "toMap",
+          "signature": "protected Map<String,Object> toMap()",
+          "return_type": "Map<String,Object>",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Map.html"
+          ]
+        },
+        "toProperties()": {
+          "name": "toProperties",
+          "signature": "protected NeoProperty toProperties()",
+          "return_type": "NeoProperty",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "../neo/NeoProperty.html"
+          ]
+        },
+        "toString(boolean)": {
+          "name": "toString",
+          "signature": "protected String toString(boolean includeChildren)",
+          "return_type": "String",
+          "parameters": "(boolean includeChildren)",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        }
+      },
+      "property_candidates": {},
+      "inherited_members": [
+        {
+          "member": "asJournal()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "asJournal(star.base.neo.NeoJournal)",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "createConstructorArg()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "equalTo(java.lang.Object,star.coremodule.CsoEqualityComparator)",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "getRequiredPackages()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "getRootCriteriaDescriptor()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "isCompound()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "toString()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "evaluate(star.base.neo.ClientServerObject)",
+          "type": "star.base.query.QueryPredicate"
+        },
+        {
+          "member": "getObjects()",
+          "type": "star.base.query.QueryPredicate"
+        },
+        {
+          "member": "merge(star.base.query.QueryPredicate)",
+          "type": "star.base.query.QueryPredicate"
+        },
+        {
+          "member": "removeReferences()",
+          "type": "star.base.query.QueryPredicate"
+        }
+      ],
+      "status": "discovered"
+    },
     "star.base.query.CompoundOperator": {
       "java_class": "star.base.query.CompoundOperator",
       "signature": "public enum CompoundOperator extends Enum<CompoundOperator> implements CompoundOperatorBase",
@@ -11538,6 +11871,640 @@
       },
       "property_candidates": {},
       "inherited_members": [],
+      "status": "discovered"
+    },
+    "star.base.query.IdentityOperator": {
+      "java_class": "star.base.query.IdentityOperator",
+      "signature": "public enum IdentityOperator extends Enum<IdentityOperator> implements Localizable, SerializableEnum",
+      "links": [
+        "../neo/Localizable.html",
+        "../neo/SerializableEnum.html",
+        "IdentityOperator.html",
+        "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Enum.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/base/query/IdentityOperator.html",
+        "sha256": "61360fb0b8ba5591320cf265297b695a61195578b8cab785e4cde43a5a7c7f76"
+      },
+      "members": {
+        "DoesNotEqual": {
+          "name": "DoesNotEqual",
+          "signature": "@StarField(\"are not\") public static final IdentityOperator DoesNotEqual",
+          "return_type": "IdentityOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"are not\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "IdentityOperator.html"
+          ]
+        },
+        "Equals": {
+          "name": "Equals",
+          "signature": "@StarField(\"are\") public static final IdentityOperator Equals",
+          "return_type": "IdentityOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"are\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "IdentityOperator.html"
+          ]
+        },
+        "getPresentationName()": {
+          "name": "getPresentationName",
+          "signature": "public String getPresentationName()",
+          "return_type": "String",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "getValue()": {
+          "name": "getValue",
+          "signature": "public int getValue()",
+          "return_type": "int",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "valueOf(java.lang.String)": {
+          "name": "valueOf",
+          "signature": "public static IdentityOperator valueOf(String name)",
+          "return_type": "IdentityOperator",
+          "parameters": "(String name)",
+          "modifiers": "public static",
+          "annotations": "",
+          "links": [
+            "IdentityOperator.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "values()": {
+          "name": "values",
+          "signature": "public static IdentityOperator[] values()",
+          "return_type": "IdentityOperator[]",
+          "parameters": "",
+          "modifiers": "public static",
+          "annotations": "",
+          "links": [
+            "IdentityOperator.html"
+          ]
+        }
+      },
+      "property_candidates": {},
+      "inherited_members": [],
+      "status": "discovered"
+    },
+    "star.base.query.IdentityPredicate": {
+      "java_class": "star.base.query.IdentityPredicate",
+      "signature": "@StarBean(display=\"Objects (Static)\", hint=\"Specific objects to get or ignore\") public class IdentityPredicate extends QueryPredicate",
+      "links": [
+        "../../locale/annotation/StarBean.html",
+        "../../locale/annotation/StarBean.html#display()",
+        "../../locale/annotation/StarBean.html#hint()",
+        "QueryPredicate.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/base/query/IdentityPredicate.html",
+        "sha256": "ac2d35f65bcf3156dc43a0f19b30cd1031c06985ea076f2d2e5cf6db7488b4b6"
+      },
+      "members": {
+        "<init>(star.base.query.IdentityOperator,java.util.Collection)": {
+          "name": "IdentityPredicate",
+          "signature": "public IdentityPredicate(IdentityOperator operator, Collection<? extends ClientServerObject> objects)",
+          "return_type": "",
+          "parameters": "(IdentityOperator operator, Collection<? extends ClientServerObject> objects)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../neo/ClientServerObject.html",
+            "IdentityOperator.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Collection.html"
+          ]
+        },
+        "<init>(star.base.query.IdentityOperator,star.base.neo.ClientServerObject)": {
+          "name": "IdentityPredicate",
+          "signature": "public IdentityPredicate(IdentityOperator operator, ClientServerObject object)",
+          "return_type": "",
+          "parameters": "(IdentityOperator operator, ClientServerObject object)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../neo/ClientServerObject.html",
+            "IdentityOperator.html"
+          ]
+        },
+        "equalTo(java.lang.Object,star.coremodule.CsoEqualityComparator)": {
+          "name": "equalTo",
+          "signature": "public boolean equalTo(Object obj, CsoEqualityComparator comparator)",
+          "return_type": "boolean",
+          "parameters": "(Object obj, CsoEqualityComparator comparator)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../../coremodule/CsoEqualityComparator.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html"
+          ]
+        },
+        "equals(java.lang.Object)": {
+          "name": "equals",
+          "signature": "public boolean equals(Object obj)",
+          "return_type": "boolean",
+          "parameters": "(Object obj)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html"
+          ]
+        },
+        "getClientServerObject()": {
+          "name": "getClientServerObject",
+          "signature": "@Deprecated public ClientServerObject getClientServerObject()",
+          "return_type": "ClientServerObject",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "@Deprecated",
+          "links": [
+            "../neo/ClientServerObject.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Deprecated.html"
+          ]
+        },
+        "getJournalConstructorArgs()": {
+          "name": "getJournalConstructorArgs",
+          "signature": "protected List<NeoJournableArgument> getJournalConstructorArgs()",
+          "return_type": "List<NeoJournableArgument>",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "../neo/NeoJournableArgument.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/List.html"
+          ]
+        },
+        "getObjectNames()": {
+          "name": "getObjectNames",
+          "signature": "protected String getObjectNames()",
+          "return_type": "String",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "getObjectType()": {
+          "name": "getObjectType",
+          "signature": "protected Class<ClientServerObject> getObjectType()",
+          "return_type": "Class<ClientServerObject>",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "../neo/ClientServerObject.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Class.html"
+          ]
+        },
+        "getObjects()": {
+          "name": "getObjects",
+          "signature": "public Collection<ClientServerObject> getObjects()",
+          "return_type": "Collection<ClientServerObject>",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../neo/ClientServerObject.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Collection.html"
+          ]
+        },
+        "getOperator()": {
+          "name": "getOperator",
+          "signature": "public IdentityOperator getOperator()",
+          "return_type": "IdentityOperator",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "IdentityOperator.html"
+          ]
+        },
+        "getOperatorIndex()": {
+          "name": "getOperatorIndex",
+          "signature": "protected int getOperatorIndex()",
+          "return_type": "int",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": []
+        },
+        "getOperatorJournalArgument()": {
+          "name": "getOperatorJournalArgument",
+          "signature": "protected Enum<IdentityOperator> getOperatorJournalArgument()",
+          "return_type": "Enum<IdentityOperator>",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "IdentityOperator.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Enum.html"
+          ]
+        },
+        "hashCode()": {
+          "name": "hashCode",
+          "signature": "public int hashCode()",
+          "return_type": "int",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "merge(star.base.query.QueryPredicate)": {
+          "name": "merge",
+          "signature": "public QueryPredicate merge(QueryPredicate newPredicate)",
+          "return_type": "QueryPredicate",
+          "parameters": "(QueryPredicate newPredicate)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "QueryPredicate.html"
+          ]
+        },
+        "removeReferences()": {
+          "name": "removeReferences",
+          "signature": "protected QueryPredicate removeReferences()",
+          "return_type": "QueryPredicate",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "QueryPredicate.html"
+          ]
+        },
+        "setOperatorIndex(int)": {
+          "name": "setOperatorIndex",
+          "signature": "protected void setOperatorIndex(int index)",
+          "return_type": "void",
+          "parameters": "(int index)",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": []
+        },
+        "toMap()": {
+          "name": "toMap",
+          "signature": "protected Map<String,Object> toMap()",
+          "return_type": "Map<String,Object>",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Map.html"
+          ]
+        },
+        "toProperties()": {
+          "name": "toProperties",
+          "signature": "protected NeoProperty toProperties()",
+          "return_type": "NeoProperty",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "../neo/NeoProperty.html"
+          ]
+        },
+        "toString(boolean)": {
+          "name": "toString",
+          "signature": "protected String toString(boolean includeChildren)",
+          "return_type": "String",
+          "parameters": "(boolean includeChildren)",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        }
+      },
+      "property_candidates": {},
+      "inherited_members": [
+        {
+          "member": "asJournal()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "asJournal(star.base.neo.NeoJournal)",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "createConstructorArg()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "getRequiredPackages()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "getRootCriteriaDescriptor()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "isCompound()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "toString()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "evaluate(star.base.neo.ClientServerObject)",
+          "type": "star.base.query.QueryPredicate"
+        }
+      ],
+      "status": "discovered"
+    },
+    "star.base.query.IncludesOperator": {
+      "java_class": "star.base.query.IncludesOperator",
+      "signature": "@Internal public enum IncludesOperator extends Enum<IncludesOperator> implements Localizable, SerializableEnum",
+      "links": [
+        "../../annotation/Internal.html",
+        "../neo/Localizable.html",
+        "../neo/SerializableEnum.html",
+        "IncludesOperator.html",
+        "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Enum.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/base/query/IncludesOperator.html",
+        "sha256": "a052d89325776967017433ca3414656f53142db0f3b4a40b951380cce8846715"
+      },
+      "members": {
+        "All": {
+          "name": "All",
+          "signature": "@StarField(\"all\") public static final IncludesOperator All",
+          "return_type": "IncludesOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"all\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "IncludesOperator.html"
+          ]
+        },
+        "None": {
+          "name": "None",
+          "signature": "@StarField(\"none\") public static final IncludesOperator None",
+          "return_type": "IncludesOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@StarField(\"none\")",
+          "links": [
+            "../../locale/annotation/StarField.html",
+            "IncludesOperator.html"
+          ]
+        },
+        "Placeholder": {
+          "name": "Placeholder",
+          "signature": "@Internal @StarField(\"none\") public static final IncludesOperator Placeholder",
+          "return_type": "IncludesOperator",
+          "parameters": "",
+          "modifiers": "public static final",
+          "annotations": "@Internal @StarField(\"none\")",
+          "links": [
+            "../../annotation/Internal.html",
+            "../../locale/annotation/StarField.html",
+            "IncludesOperator.html"
+          ]
+        },
+        "getPresentationName()": {
+          "name": "getPresentationName",
+          "signature": "public String getPresentationName()",
+          "return_type": "String",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "getValue()": {
+          "name": "getValue",
+          "signature": "public int getValue()",
+          "return_type": "int",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "valueOf(java.lang.String)": {
+          "name": "valueOf",
+          "signature": "public static IncludesOperator valueOf(String name)",
+          "return_type": "IncludesOperator",
+          "parameters": "(String name)",
+          "modifiers": "public static",
+          "annotations": "",
+          "links": [
+            "IncludesOperator.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "values()": {
+          "name": "values",
+          "signature": "public static IncludesOperator[] values()",
+          "return_type": "IncludesOperator[]",
+          "parameters": "",
+          "modifiers": "public static",
+          "annotations": "",
+          "links": [
+            "IncludesOperator.html"
+          ]
+        }
+      },
+      "property_candidates": {},
+      "inherited_members": [],
+      "status": "discovered"
+    },
+    "star.base.query.IncludesPredicate": {
+      "java_class": "star.base.query.IncludesPredicate",
+      "signature": "@Internal @StarBean(display=\"Includes\", hint=\"Everything or Nothing\") public class IncludesPredicate extends QueryPredicate",
+      "links": [
+        "../../annotation/Internal.html",
+        "../../locale/annotation/StarBean.html",
+        "../../locale/annotation/StarBean.html#display()",
+        "../../locale/annotation/StarBean.html#hint()",
+        "QueryPredicate.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/base/query/IncludesPredicate.html",
+        "sha256": "75ade16d689d204ad949ad45753922dbbc8d9ac3dca3da410b4218caf5418c95"
+      },
+      "members": {
+        "<init>(java.util.Map)": {
+          "name": "IncludesPredicate",
+          "signature": "public IncludesPredicate(Map<String,Object> map)",
+          "return_type": "",
+          "parameters": "(Map<String,Object> map)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Map.html"
+          ]
+        },
+        "<init>(star.base.query.IncludesOperator)": {
+          "name": "IncludesPredicate",
+          "signature": "public IncludesPredicate(IncludesOperator operator)",
+          "return_type": "",
+          "parameters": "(IncludesOperator operator)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "IncludesOperator.html"
+          ]
+        },
+        "<init>(star.base.query.QueryPredicateCreator,star.base.neo.NeoProperty)": {
+          "name": "IncludesPredicate",
+          "signature": "public IncludesPredicate(star.base.query.QueryPredicateCreator creator, NeoProperty properties)",
+          "return_type": "",
+          "parameters": "(star.base.query.QueryPredicateCreator creator, NeoProperty properties)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../neo/NeoProperty.html"
+          ]
+        },
+        "equals(java.lang.Object)": {
+          "name": "equals",
+          "signature": "public boolean equals(Object obj)",
+          "return_type": "boolean",
+          "parameters": "(Object obj)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html"
+          ]
+        },
+        "getJournalConstructorArgs()": {
+          "name": "getJournalConstructorArgs",
+          "signature": "protected List<NeoJournableArgument> getJournalConstructorArgs()",
+          "return_type": "List<NeoJournableArgument>",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "../neo/NeoJournableArgument.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/List.html"
+          ]
+        },
+        "getOperator()": {
+          "name": "getOperator",
+          "signature": "public IncludesOperator getOperator()",
+          "return_type": "IncludesOperator",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "IncludesOperator.html"
+          ]
+        },
+        "hashCode()": {
+          "name": "hashCode",
+          "signature": "public int hashCode()",
+          "return_type": "int",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "toMap()": {
+          "name": "toMap",
+          "signature": "protected Map<String,Object> toMap()",
+          "return_type": "Map<String,Object>",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Map.html"
+          ]
+        },
+        "toProperties()": {
+          "name": "toProperties",
+          "signature": "protected NeoProperty toProperties()",
+          "return_type": "NeoProperty",
+          "parameters": "",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "../neo/NeoProperty.html"
+          ]
+        },
+        "toString(boolean)": {
+          "name": "toString",
+          "signature": "protected String toString(boolean includeChildren)",
+          "return_type": "String",
+          "parameters": "(boolean includeChildren)",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        }
+      },
+      "property_candidates": {},
+      "inherited_members": [
+        {
+          "member": "asJournal()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "asJournal(star.base.neo.NeoJournal)",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "createConstructorArg()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "equalTo(java.lang.Object,star.coremodule.CsoEqualityComparator)",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "getRequiredPackages()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "getRootCriteriaDescriptor()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "isCompound()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "toString()",
+          "type": "star.base.query.Predicate"
+        },
+        {
+          "member": "evaluate(star.base.neo.ClientServerObject)",
+          "type": "star.base.query.QueryPredicate"
+        },
+        {
+          "member": "getObjects()",
+          "type": "star.base.query.QueryPredicate"
+        },
+        {
+          "member": "merge(star.base.query.QueryPredicate)",
+          "type": "star.base.query.QueryPredicate"
+        },
+        {
+          "member": "removeReferences()",
+          "type": "star.base.query.QueryPredicate"
+        }
+      ],
       "status": "discovered"
     },
     "star.base.query.ListCriteriaDescriptor": {

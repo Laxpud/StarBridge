@@ -74,11 +74,13 @@ def catalog_content(catalog, plan, *, retain_references=False):
         return value
 
     def predicate(value):
-        """仅规范化已支持标签谓词的对象引用；组合顺序和其他规则字段保持不变。"""
+        """仅规范化标签及身份集合的对象引用；组合顺序和其他规则字段保持不变。"""
         if not isinstance(value, dict):
             return value
         if value.get('type') == 'tag' and 'value' in value:
             return dict(value, value=reference(value['value']))
+        if value.get('type') == 'identity' and isinstance(value.get('value'), list):
+            return dict(value, value=[reference(item) for item in value['value']])
         if value.get('type') == 'compound' and isinstance(value.get('predicates'), list):
             return dict(value, predicates=[predicate(item) for item in value['predicates']])
         return value

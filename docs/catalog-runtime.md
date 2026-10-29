@@ -186,7 +186,7 @@ python3 bridge/runner/session_bridge.py describe \
 | `enum` | `selected` 和当前 API 返回的 `allowed` 集合，不以枚举类全部常量替代当前允许值 |
 | `query` | 静态模式为 `mode: static` 和 `objects`；动态模式为 `mode: query`、`predicate` 和 `modifiers` |
 
-动态查询保留规则本身，不求值成当时匹配的对象列表。当前编码 `NamePredicate`、`TypePredicate`、`CompoundPredicate` 和 `TagPredicate`，分别返回 `type: name`、`java_type`、`compound` 或 `tag`。复合规则保留有序 `predicates`，标签规则的 `value` 是名称、实际 Java 类和会话引用。读取从深度 `0` 开始，最多允许深度 `16`、总计 `256` 个谓词节点；未知谓词或超限逐属性报错，不执行 `asJournal()` 生成的代码。此入口不求报告值、不生成网格、不运行求解或工作流。静态/动态选择写入以及标签旧引用与新定位对象的区别见[对象引用与选择](catalog-modifier.md#对象引用与选择)。
+动态查询保留规则本身，不求值成当时匹配的对象列表。当前编码 `NamePredicate`、`TypePredicate`、`CompoundPredicate`、`TagPredicate`、`CommentPredicate`、`IncludesPredicate` 和 `IdentityPredicate`，分别返回 `type: name`、`java_type`、`compound`、`tag`、`comment`、`includes` 或 `identity`。复合规则保留有序 `predicates`，标签规则的 `value` 是名称、实际 Java 类和会话引用。身份规则的 `value` 是完整引用数组，注释规则使用文本 `value`，includes 只有 `All`/`None` 算子且没有 `value`；`Placeholder` 和元数据等未适配规则明确报错。读取从深度 `0` 开始，最多允许深度 `16`、总计 `256` 个谓词节点；未知谓词或超限逐属性报错，不执行 `asJournal()` 生成的代码。此入口不求报告值、不生成网格、不运行求解或工作流。静态/动态选择写入以及标签旧引用与新定位对象的区别见[对象引用与选择](catalog-modifier.md#对象引用与选择)。
 
 ### 张量读取格式
 
