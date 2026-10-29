@@ -17,7 +17,7 @@ Catalog-driven `describe` and `read` commands now check the running server versi
 
 The existing schema 1 `modify` and `set-scalar` commands now use the same catalog modifier automatically, with their arguments and existing result fields preserved. They use the bundled catalog and require the running server to match 2602 Build 21.02.007 exactly; `set-scalar` still has no caller-provided expected state.
 
-The existing Inspector snapshot now also uses the shared catalog through a separate snapshot layout while preserving its schema 1 fields; `inspect` and `save` enforce the same exact server version. [Coverage reporting](docs/catalog.md#分项覆盖报告) now separates discovery, implementation, and observed runtime evidence; `describe` evaluates declared target conditions. Other write adapters, operation descriptions, structural operations, and broader model-state checks remain unfinished.
+The existing Inspector snapshot now also uses the shared catalog through a separate snapshot layout while preserving its schema 1 fields; `inspect` and `save` enforce the same exact server version. [Coverage reporting](docs/catalog.md#分项覆盖报告) now separates discovery, implementation, and observed runtime evidence; `describe` evaluates declared target conditions. The first tensor method operation includes descriptions, affected-object scope, expected-state checks, and readback. Other write adapters, further structural operations, and broader model-state checks remain unfinished.
 
 The proposed system combines structured simulation access, workflow Skills, persistent working memory, and long-lived background or GUI simulation sessions. See the [design document](StarBridge.md) for scope and boundaries.
 

@@ -47,6 +47,8 @@ def catalog_readback(plan, request):
     for properties in readonly['properties'].values():
         for property_plan in properties.values():
             property_plan.pop('write', None)
+    # 操作计划已按其声明裁剪读取字段；重载只核对这些状态，不携带结构修改入口。
+    readonly.pop('operations', None)
 
     def locator(target):
         """只移除目标契约明确规定的会话引用，不处理属性值中的同名字段。"""
@@ -100,7 +102,7 @@ def catalog_content(catalog, plan, *, retain_references=False):
         elif (adapter == 'query' and isinstance(value, dict)
               and value.get('mode') == 'query' and 'predicate' in value):
             value = dict(value, predicate=predicate(value['predicate']))
-        elif adapter in ('tensor_profile', 'tensor_basis') and isinstance(value, dict):
+        elif adapter in ('tensor_profile', 'tensor_basis', 'tensor_method_state') and isinstance(value, dict):
             # 张量的方向和坐标系以对象引用表示；数量、shape 和分量方法仍完整核对。
             value = {**value, **{key: reference(value[key]) for key in
                                 ('coordinate_system', 'local_orientation') if key in value}}

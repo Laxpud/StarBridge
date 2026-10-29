@@ -16,7 +16,7 @@ from .catalog import CatalogError, _keys, _pinned_member, _require, load, read_j
 
 ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum', 'query',
             'name', 'type_name', 'names', 'enum_name', 'presence', 'java_class',
-            'tensor_profile', 'tensor_basis'}
+            'tensor_profile', 'tensor_basis', 'tensor_method_state'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
     'field_definition': {'value'},
@@ -29,6 +29,8 @@ WRITE_ADAPTERS = {
     'object_selection': {'value'},
     'user_tags': {'value'},
 }
+# 结构操作的参数只用于其最终调用，不能混入普通属性 writer 的契约。
+OPERATION_ADAPTERS = {'profile_method': {'method'}}
 JAVA_TYPE = re.compile(r'[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\[\])*\Z')
 PRIMITIVES = {'boolean', 'byte', 'char', 'short', 'int', 'long', 'float', 'double'}
 QUERY_OPERATORS = {
@@ -149,7 +151,8 @@ def _pipeline(catalog, methods, pipeline, where, *, write_adapter=None):
             elif 'literal' in arg:
                 _literal(arg['literal'])
             elif 'context' in arg:
-                allowed = {'object', 'parent'} | (WRITE_ADAPTERS[write_adapter] if is_final_write else set())
+                contexts = {**WRITE_ADAPTERS, **OPERATION_ADAPTERS}
+                allowed = {'object', 'parent'} | (contexts[write_adapter] if is_final_write else set())
                 _require(isinstance(arg['context'], str) and arg['context'] in allowed,
                          'Unsupported argument context')
             else:
@@ -177,6 +180,78 @@ def _guards(catalog, methods, source, *, has_parent):
     return guards
 
 
+def _operations(catalog, methods, source, types, properties):
+    """编译结构操作及其影响范围，确保操作使用独立的读取集合和最终调用。
+
+    Profile 方法切换可能改变分量组织，不能强制读取当前方法不存在的矩阵属性。
+    read_properties 显式声明修改前后必须完整读取的状态，preserved_properties
+    声明应保持不变的字段；状态属性自身允许随方法改变，但必须能完整回读。
+    """
+    _require(isinstance(source, dict) and source.keys() == types.keys(),
+             'Operations must describe every execution type exactly once')
+    operations = {}
+    for type_id, entries in source.items():
+        _require(isinstance(entries, dict), f'Invalid operations: {type_id}')
+        operations[type_id] = {}
+        for name, entry in entries.items():
+            _text(name, 'operation ID')
+            where = type_id + '.' + name
+            _keys(entry, 'adapter reason read_properties state_property methods available write guards '
+                         'impacts preserved_properties', where)
+            _require(entry['adapter'] == 'profile_method', f'Unsupported operation adapter: {where}')
+            _text(entry['reason'], 'operation.reason')
+            for key in ('read_properties', 'preserved_properties'):
+                value = entry[key]
+                _require(isinstance(value, list) and bool(value)
+                         and all(isinstance(item, str) and item in properties[type_id] for item in value)
+                         and len(value) == len(set(value)), f'Invalid operation {key}: {where}')
+            state = entry['state_property']
+            _require(isinstance(state, str) and state in entry['read_properties'],
+                     f'Operation state property must be read: {where}')
+            _require(properties[type_id][state]['adapter'] == 'tensor_method_state',
+                     f'Profile method operation requires tensor_method_state: {where}')
+            _require(set(entry['preserved_properties']) <= set(entry['read_properties'])
+                     and state not in entry['preserved_properties'],
+                     f'Operation preserved properties must exclude its mutable state: {where}')
+
+            # 1. 方法 ID 只映射目录内的已知类；请求不能指定任意 Java 类。
+            choices = entry['methods']
+            _require(isinstance(choices, dict) and bool(choices), f'Missing operation methods: {where}')
+            compiled_choices = {}
+            for method_id, java_class in choices.items():
+                _text(method_id, 'method ID')
+                _require(isinstance(java_class, str) and java_class in catalog['types'],
+                         f'Unknown operation method class: {where}.{method_id}')
+                compiled_choices[method_id] = _binary_class(catalog, java_class)
+            _require(len(set(compiled_choices.values())) == len(compiled_choices),
+                     f'Duplicate operation method classes: {where}')
+
+            # 2. 可选方法只能只读枚举；最终 setter 仅消费运行时选中的方法对象。
+            available = _pipeline(catalog, methods, entry['available'], where + '.available')
+            write = _pipeline(catalog, methods, entry['write'], where + '.write',
+                              write_adapter=entry['adapter'])
+            _require(available['root'] == 'object' and write['root'] == 'object',
+                     f'Profile method operations must start at the target object: {where}')
+            _require(write['steps'][-1]['arguments'] == [{'context': 'method'}]
+                     and write['steps'][-1]['parameter_types'] == ['star.common.ProfileMethod'],
+                     f'Profile method setter must consume exactly one ProfileMethod: {where}')
+            guards = _guards(catalog, methods, entry['guards'],
+                             has_parent=types[type_id]['parent_type'] is not None)
+            _require(isinstance(entry['impacts'], list) and bool(entry['impacts']),
+                     f'Operation requires affected-object descriptions: {where}')
+            scopes = set()
+            for impact in entry['impacts']:
+                _keys(impact, 'scope description', 'operation impact')
+                _require(impact['scope'] in ('target', 'owned_objects') and impact['scope'] not in scopes,
+                         f'Unsupported or duplicate operation impact scope: {where}')
+                scopes.add(impact['scope'])
+                _text(impact['description'], 'impact.description')
+            _require('target' in scopes, f'Operation must describe its target impact: {where}')
+            operations[type_id][name] = {**entry, 'methods': compiled_choices, 'available': available,
+                                         'write': write, 'guards': guards}
+    return operations
+
+
 def load_execution(catalog_path, execution_path):
     """加载共享候选目录及人工执行映射，返回已校验的完整运行时目录。
 
@@ -185,9 +260,11 @@ def load_execution(catalog_path, execution_path):
     """
     catalog = load(catalog_path)
     rules = read_json(execution_path)
-    _keys(rules, 'schema_version target members types properties', 'execution')
-    _require(type(rules['schema_version']) is int and rules['schema_version'] in (1, 2, 3, 4),
+    _require(isinstance(rules, dict), 'Execution rules must be an object')
+    _require(type(rules.get('schema_version')) is int and rules['schema_version'] in (1, 2, 3, 4, 5),
              'Unsupported execution schema_version')
+    _keys(rules, 'schema_version target members types properties'
+          + (' operations' if rules['schema_version'] >= 5 else ''), 'execution')
     _require(rules['target'] == catalog['target'], 'Execution catalog version mismatch')
     _require(isinstance(rules['members'], dict) and bool(rules['members']), 'Missing execution members')
     methods = {}
@@ -300,10 +377,12 @@ def load_execution(catalog_path, execution_path):
                 # describe 去除执行管线后仍可展示前提；不把描述当作已完成运行检查。
                 properties[identifier][name]['guards'] = [
                     {key: guard[key] for key in ('id', 'expected', 'message')} for guard in guards]
+    operations = _operations(catalog, methods, rules.get('operations', {name: {} for name in types}),
+                             types, properties)
     fingerprint = json.dumps(rules, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
     return {'schema_version': 1, 'target': catalog['target'],
             'catalog_id': hashlib.sha256(fingerprint.encode('utf-8')).hexdigest(),
-            'types': types, 'properties': properties}
+            'types': types, 'properties': properties, 'operations': operations}
 
 
 def _target(plan, target, depth=0):
@@ -365,7 +444,10 @@ def prepare_read(catalog_path, execution_path, request_path, action):
         if action == 'describe':
             entry['condition_reads'] = source.get('write', {}).get('guards', [])
         properties[name] = entry
-    return ({**plan, 'types': required, 'properties': {identifier: properties}}, request)
+    operations = {identifier: {name: {key: value for key, value in entry.items() if key != 'write'}
+                              for name, entry in plan['operations'][identifier].items()}}
+    return ({**plan, 'types': required, 'properties': {identifier: properties},
+             'operations': operations if action == 'describe' else {}}, request)
 
 
 def _json_value(value):
@@ -456,14 +538,67 @@ def _selection_value(plan, writer, value, *, expected=False):
     return {**value, 'predicate': predicate(value['predicate']), 'modifiers': sorted(modifiers)}
 
 
+def _operation_request(plan, request):
+    """检查结构操作请求并规范方向引用；保留完整旧状态供 server 严格相等比较。
+
+    方向对象的会话引用不承担跨文件加载身份；只按已有引用契约移除这两个明确
+    字段的 reference。其他旧状态字段不删除、不补默认值，不能掩盖缺失设置。
+    """
+    _keys(request, 'schema_version action target operation expected arguments', 'operation request')
+    _require(type(request['schema_version']) is int and request['schema_version'] == 3,
+             'Structural operations require schema_version 3')
+    _require(request['action'] == 'modify', 'Structural operation action must be modify')
+    _target(plan, request['target'])
+    type_id = request['target']['type']
+    _text(request['operation'], 'operation ID')
+    _require(request['operation'] in plan['operations'].get(type_id, {}), 'Unknown structural operation')
+    operation = plan['operations'][type_id][request['operation']]
+    _keys(request['arguments'], 'method', 'operation arguments')
+    _text(request['arguments']['method'], 'operation method')
+    _require(request['arguments']['method'] in operation['methods'], 'Unknown or unsupported profile method')
+    _json_value(request['expected'])
+    expected = request['expected']
+    _keys(expected, 'java_class method dimensions is_3d shape storage coordinate_system local_orientation components',
+          'expected tensor method state')
+    for field in ('java_class', 'method', 'dimensions', 'storage'):
+        _text(expected[field], 'expected.' + field)
+    _require(expected['method'] in operation['methods'].values(), 'Expected method is outside the operation mapping')
+    _require(expected['is_3d'] is True and expected['shape'] == [3, 3],
+             'Expected method state must describe a three-dimensional tensor')
+    _require(isinstance(expected['components'], list) and bool(expected['components'])
+             and all(isinstance(component, dict) for component in expected['components']),
+             'Expected method state requires its component settings')
+    expected = {**expected, **{key: _reference_state(expected[key])
+                              for key in ('coordinate_system', 'local_orientation')}}
+    return {**request, 'expected': expected}
+
+
+def _prepare_operation(plan, request):
+    """仅保留选定操作及其完整读取集合；其他属性和操作的 setter 不进入宏。"""
+    request = _operation_request(plan, request)
+    type_id = request['target']['type']
+    operation = plan['operations'][type_id][request['operation']]
+    required = {}
+    current = type_id
+    while current is not None:
+        required[current] = plan['types'][current]
+        current = plan['types'][current]['parent_type']
+    properties = {name: {key: value for key, value in plan['properties'][type_id][name].items()
+                         if key != 'write'} for name in operation['read_properties']}
+    return ({**plan, 'types': required, 'properties': {type_id: properties},
+             'operations': {type_id: {request['operation']: operation}}}, request)
+
+
 def prepare_modification(catalog_path, execution_path, request_path):
-    """校验单属性修改请求并裁剪写入计划；旧状态和实际可写条件在 server 再核对。
+    """校验属性或结构操作请求并裁剪写入计划；旧状态和实际可写条件在 server 再核对。
 
     修改请求格式与旧 Modifier 分开版本化。新值在本地按适配器检查，最终方法和
     参数在 Java 准备阶段解析；活动请求标记之前不会启动客户端或尝试 setter。
     """
     plan = load_execution(catalog_path, execution_path)
     request = read_json(request_path)
+    if isinstance(request, dict) and type(request.get('schema_version')) is int and request['schema_version'] == 3:
+        return _prepare_operation(plan, request)
     _keys(request, 'schema_version action target property expected value', 'modification')
     _require(type(request['schema_version']) is int and request['schema_version'] == 2,
              'Catalog modification requires schema_version 2')
@@ -575,7 +710,7 @@ def prepare_modification(catalog_path, execution_path, request_path):
     clipped = {name: {key: item for key, item in value.items()
                       if key != 'write' or name == request['property']}
                for name, value in properties.items()}
-    return ({**plan, 'types': required, 'properties': {identifier: clipped}}, request)
+    return ({**plan, 'types': required, 'properties': {identifier: clipped}, 'operations': {}}, request)
 
 
 def prepare_legacy(modification=None):
@@ -609,4 +744,4 @@ def prepare_legacy(modification=None):
     properties = {name: {key: value for key, value in entry.items()
                          if key != 'write' or name == property_name}
                   for name, entry in plan['properties'][identifier].items()}
-    return {**plan, 'types': required, 'properties': {identifier: properties}}
+    return {**plan, 'types': required, 'properties': {identifier: properties}, 'operations': {}}

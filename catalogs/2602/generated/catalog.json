@@ -76,11 +76,13 @@
       "star.common.Interface",
       "star.common.InterfaceManager",
       "star.common.InterfaceType",
+      "star.common.IsotropicTensorProfileMethod",
       "star.common.LocalOrientationBase",
       "star.common.ManagerWithFilterModel",
       "star.common.Model",
       "star.common.ModelManager",
       "star.common.ModelPart",
+      "star.common.OrthotropicTensorProfileMethod",
       "star.common.PartGroup",
       "star.common.PhysicalQuantityParser",
       "star.common.PhysicalTimeStoppingCriterion",
@@ -106,6 +108,7 @@
       "star.common.TagGroup",
       "star.common.TagManager",
       "star.common.TensorProfile",
+      "star.common.TransverseIsotropicTensorProfileMethod",
       "star.common.Units",
       "star.common.UnitsManager",
       "star.common.UserFieldFunction",
@@ -27501,6 +27504,652 @@
         {
           "member": "journalChild(star.base.neo.ClientServerObject)",
           "type": "star.common.CompositeTensorProfileMethod"
+        },
+        {
+          "member": "equals(java.lang.Object)",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSimulation()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSourceProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "hide()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "inlineJournalSymbol()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "toString()",
+          "type": "star.common.ProfileMethod"
+        }
+      ],
+      "status": "discovered"
+    },
+    "star.common.AxisymmetricTensorProfileMethod": {
+      "java_class": "star.common.AxisymmetricTensorProfileMethod",
+      "signature": "public abstract class AxisymmetricTensorProfileMethod extends ProfileMethod implements ComponentNameProvider",
+      "links": [
+        "ComponentNameProvider.html",
+        "ProfileMethod.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/common/AxisymmetricTensorProfileMethod.html",
+        "sha256": "d5b820fc22433c2b104981bb3ff32536aea2877d6a581f95e26a89e7602e5887"
+      },
+      "members": {
+        "<init>(star.base.neo.ClientServerObjectKey)": {
+          "name": "AxisymmetricTensorProfileMethod",
+          "signature": "public AxisymmetricTensorProfileMethod(ClientServerObjectKey key)",
+          "return_type": "",
+          "parameters": "(ClientServerObjectKey key)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../base/neo/ClientServerObjectKey.html"
+          ]
+        },
+        "getAxiAxis()": {
+          "name": "getAxiAxis",
+          "signature": "public abstract VectorProfile getAxiAxis()",
+          "return_type": "VectorProfile",
+          "parameters": "",
+          "modifiers": "public abstract",
+          "annotations": "",
+          "links": [
+            "VectorProfile.html"
+          ]
+        },
+        "getAxiProfile()": {
+          "name": "getAxiProfile",
+          "signature": "public ScalarProfileWithDynamicMethods getAxiProfile()",
+          "return_type": "ScalarProfileWithDynamicMethods",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "ScalarProfileWithDynamicMethods.html"
+          ]
+        },
+        "getCrossStreamProfile()": {
+          "name": "getCrossStreamProfile",
+          "signature": "public ScalarProfileWithDynamicMethods getCrossStreamProfile()",
+          "return_type": "ScalarProfileWithDynamicMethods",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "ScalarProfileWithDynamicMethods.html"
+          ]
+        }
+      },
+      "property_candidates": {},
+      "inherited_members": [
+        {
+          "member": "CS_OBJECT_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_TITLE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROPERTY_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROP_IN_USE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "TAGS_PROPERTY_KEY",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "VISUAL_ID",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "asJournal()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyManagedProperties(star.base.neo.ClientServerObject,star.base.neo.ClientServerObjectManager)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "disconnect()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "firePropertyChange(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "firePropertyChange(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAllowShowDependencies()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAsStringArg()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBoolean(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBooleanVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChildren()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChildrenComparator()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getClientServerObject(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDouble(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDoubleVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getEnum(java.lang.String,java.lang.Class)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFile(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFiles(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFont(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIcon()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIconChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getInt(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIntVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getJournalKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLinkedBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLong(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMenuPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMessage(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMethodNameFor(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getNeoProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKeyAsString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectRegistry()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getParent()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPropertyChangeObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getQualifiedName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getReferences()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getServer()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getString(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getStringVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getTagGroup()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVisualId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "hasProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "inUse()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "invokeOnClientExecutorService(java.lang.Runnable)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isConnected()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isEmpty()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameRootObject(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameSimulation(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isGraphicsObject()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "journalChild(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "macroPlaying()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "methodToJournal(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "notifyDeleted(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "registerDefaultChildListener(star.base.neo.ClientServerObject,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,T)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.awt.Font)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.io.File)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.BooleanVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.DoubleVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.IntVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.StringVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.common.FieldFunction)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.lang.Class,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.util.Vector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObjectKey)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.SerializableEnum)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarize(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeChildren(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeProperties(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "toMenuString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "CSO_KEY_PROVIDER_DATA_FLAVOR",
+          "type": "star.base.neo.CsoKeyProvider"
+        },
+        {
+          "member": "asJournal(star.base.neo.NeoJournal)",
+          "type": "star.base.neo.NeoJournableArgument"
+        },
+        {
+          "member": "addJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "asJournalSymbol()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "firePropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournal()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournalClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getTypeCast(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getVariableName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "hasAmbiguousClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "isJournaling()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "journalPropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument...)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "notifyProgress(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removeJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "startNewJournalMethod(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[])",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getNameForComponent(java.lang.Object)",
+          "type": "star.common.ComponentNameProvider"
         },
         {
           "member": "equals(java.lang.Object)",
@@ -56722,6 +57371,669 @@
       ],
       "status": "discovered"
     },
+    "star.common.IsotropicTensorProfileMethod": {
+      "java_class": "star.common.IsotropicTensorProfileMethod",
+      "signature": "@StarBean(display=\"Isotropic Tensor\", hint=\"Tensor profile defined using isotropic components\") public class IsotropicTensorProfileMethod extends ProfileMethod implements ComponentNameProvider",
+      "links": [
+        "../locale/annotation/StarBean.html",
+        "../locale/annotation/StarBean.html#display()",
+        "../locale/annotation/StarBean.html#hint()",
+        "ComponentNameProvider.html",
+        "ProfileMethod.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/common/IsotropicTensorProfileMethod.html",
+        "sha256": "fe1ebf2f796fec8bc4dc480de0a28fd5664a4aeeb48e833045dfd27d63f689fa"
+      },
+      "members": {
+        "<init>(star.base.neo.ClientServerObjectKey)": {
+          "name": "IsotropicTensorProfileMethod",
+          "signature": "public IsotropicTensorProfileMethod(ClientServerObjectKey key)",
+          "return_type": "",
+          "parameters": "(ClientServerObjectKey key)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../base/neo/ClientServerObjectKey.html"
+          ]
+        },
+        "firePropertyChange(java.lang.String)": {
+          "name": "firePropertyChange",
+          "signature": "protected void firePropertyChange(String property)",
+          "return_type": "void",
+          "parameters": "(String property)",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "getChildren()": {
+          "name": "getChildren",
+          "signature": "public Collection<Object> getChildren()",
+          "return_type": "Collection<Object>",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Collection.html"
+          ]
+        },
+        "getIsotropicProfile()": {
+          "name": "getIsotropicProfile",
+          "signature": "public ScalarProfileWithDynamicMethods getIsotropicProfile()",
+          "return_type": "ScalarProfileWithDynamicMethods",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "ScalarProfileWithDynamicMethods.html"
+          ]
+        },
+        "getNameForComponent(java.lang.Object)": {
+          "name": "getNameForComponent",
+          "signature": "public String getNameForComponent(Object obj)",
+          "return_type": "String",
+          "parameters": "(Object obj)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "isEmpty()": {
+          "name": "isEmpty",
+          "signature": "public boolean isEmpty()",
+          "return_type": "boolean",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "journalChild(star.base.neo.ClientServerObject)": {
+          "name": "journalChild",
+          "signature": "public String journalChild(ClientServerObject child)",
+          "return_type": "String",
+          "parameters": "(ClientServerObject child)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../base/neo/ClientServerObject.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        }
+      },
+      "property_candidates": {},
+      "inherited_members": [
+        {
+          "member": "CS_OBJECT_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_TITLE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROPERTY_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROP_IN_USE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "TAGS_PROPERTY_KEY",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "VISUAL_ID",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "asJournal()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyManagedProperties(star.base.neo.ClientServerObject,star.base.neo.ClientServerObjectManager)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "disconnect()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "firePropertyChange(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAllowShowDependencies()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAsStringArg()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBoolean(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBooleanVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChildrenComparator()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getClientServerObject(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDouble(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDoubleVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getEnum(java.lang.String,java.lang.Class)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFile(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFiles(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFont(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIcon()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIconChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getInt(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIntVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getJournalKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLinkedBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLong(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMenuPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMessage(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMethodNameFor(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getNeoProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKeyAsString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectRegistry()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getParent()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPropertyChangeObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getQualifiedName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getReferences()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getServer()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getString(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getStringVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getTagGroup()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVisualId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "hasProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "inUse()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "invokeOnClientExecutorService(java.lang.Runnable)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isConnected()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameRootObject(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameSimulation(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isGraphicsObject()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "macroPlaying()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "methodToJournal(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "notifyDeleted(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "registerDefaultChildListener(star.base.neo.ClientServerObject,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,T)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.awt.Font)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.io.File)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.BooleanVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.DoubleVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.IntVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.StringVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.common.FieldFunction)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.lang.Class,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.util.Vector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObjectKey)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.SerializableEnum)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarize(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeChildren(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeProperties(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "toMenuString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "CSO_KEY_PROVIDER_DATA_FLAVOR",
+          "type": "star.base.neo.CsoKeyProvider"
+        },
+        {
+          "member": "asJournal(star.base.neo.NeoJournal)",
+          "type": "star.base.neo.NeoJournableArgument"
+        },
+        {
+          "member": "addJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "asJournalSymbol()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "firePropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournal()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournalClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getTypeCast(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getVariableName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "hasAmbiguousClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "isJournaling()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "journalPropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument...)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "notifyProgress(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removeJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "startNewJournalMethod(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[])",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "equals(java.lang.Object)",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSimulation()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSourceProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "hide()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "inlineJournalSymbol()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "toString()",
+          "type": "star.common.ProfileMethod"
+        }
+      ],
+      "status": "discovered"
+    },
     "star.common.LocalOrientationBase": {
       "java_class": "star.common.LocalOrientationBase",
       "signature": "public abstract class LocalOrientationBase extends NamedObject",
@@ -61613,6 +62925,736 @@
       },
       "property_candidates": {},
       "inherited_members": [],
+      "status": "discovered"
+    },
+    "star.common.OrthotropicTensorProfileMethod": {
+      "java_class": "star.common.OrthotropicTensorProfileMethod",
+      "signature": "@StarBean(display=\"Orthotropic Tensor\", hint=\"Tensor profile defined using principal axes\") public class OrthotropicTensorProfileMethod extends PrincipalTensorProfileMethod implements ComponentNameProvider",
+      "links": [
+        "../locale/annotation/StarBean.html",
+        "../locale/annotation/StarBean.html#display()",
+        "../locale/annotation/StarBean.html#hint()",
+        "ComponentNameProvider.html",
+        "PrincipalTensorProfileMethod.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/common/OrthotropicTensorProfileMethod.html",
+        "sha256": "9c14539fc75693f1d2011ea72d020979dc5091d77d217b311674a337734a85b2"
+      },
+      "members": {
+        "<init>(star.base.neo.ClientServerObjectKey)": {
+          "name": "OrthotropicTensorProfileMethod",
+          "signature": "public OrthotropicTensorProfileMethod(ClientServerObjectKey key)",
+          "return_type": "",
+          "parameters": "(ClientServerObjectKey key)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../base/neo/ClientServerObjectKey.html"
+          ]
+        },
+        "firePropertyChange(java.lang.String)": {
+          "name": "firePropertyChange",
+          "signature": "protected void firePropertyChange(String property)",
+          "return_type": "void",
+          "parameters": "(String property)",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "getChildren()": {
+          "name": "getChildren",
+          "signature": "public Collection<Object> getChildren()",
+          "return_type": "Collection<Object>",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Collection.html"
+          ]
+        },
+        "getLocalOrientation()": {
+          "name": "getLocalOrientation",
+          "signature": "@StarBeanProperty(display=\"Orientation\", hint=\"Local orientation the tensor is defined on\", editor=LocalOrientationEditor.class) public LocalOrientationBase getLocalOrientation()",
+          "return_type": "LocalOrientationBase",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "@StarBeanProperty(display=\"Orientation\", hint=\"Local orientation the tensor is defined on\", editor=LocalOrientationEditor.class)",
+          "links": [
+            "../locale/annotation/StarBeanProperty.html",
+            "../locale/annotation/StarBeanProperty.html#display()",
+            "../locale/annotation/StarBeanProperty.html#editor()",
+            "../locale/annotation/StarBeanProperty.html#hint()",
+            "LocalOrientationBase.html",
+            "LocalOrientationEditor.html"
+          ]
+        },
+        "getNameForComponent(java.lang.Object)": {
+          "name": "getNameForComponent",
+          "signature": "public String getNameForComponent(Object obj)",
+          "return_type": "String",
+          "parameters": "(Object obj)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "getXAxis()": {
+          "name": "getXAxis",
+          "signature": "@Deprecated public VectorProfile getXAxis()",
+          "return_type": "VectorProfile",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "@Deprecated",
+          "links": [
+            "VectorProfile.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Deprecated.html"
+          ]
+        },
+        "getYAxis()": {
+          "name": "getYAxis",
+          "signature": "@Deprecated public VectorProfile getYAxis()",
+          "return_type": "VectorProfile",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "@Deprecated",
+          "links": [
+            "VectorProfile.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Deprecated.html"
+          ]
+        },
+        "isEmpty()": {
+          "name": "isEmpty",
+          "signature": "public boolean isEmpty()",
+          "return_type": "boolean",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "journalChild(star.base.neo.ClientServerObject)": {
+          "name": "journalChild",
+          "signature": "public String journalChild(ClientServerObject child)",
+          "return_type": "String",
+          "parameters": "(ClientServerObject child)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../base/neo/ClientServerObject.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "setLocalOrientation(star.common.LocalOrientationBase)": {
+          "name": "setLocalOrientation",
+          "signature": "public void setLocalOrientation(LocalOrientationBase orientation)",
+          "return_type": "void",
+          "parameters": "(LocalOrientationBase orientation)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "LocalOrientationBase.html"
+          ]
+        }
+      },
+      "property_candidates": {
+        "getLocalOrientation()": {
+          "member": "getLocalOrientation()",
+          "metadata": "@StarBeanProperty(display=\"Orientation\", hint=\"Local orientation the tensor is defined on\", editor=LocalOrientationEditor.class)",
+          "status": "discovered",
+          "adapter": null
+        }
+      },
+      "inherited_members": [
+        {
+          "member": "CS_OBJECT_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_TITLE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROPERTY_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROP_IN_USE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "TAGS_PROPERTY_KEY",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "VISUAL_ID",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "asJournal()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyManagedProperties(star.base.neo.ClientServerObject,star.base.neo.ClientServerObjectManager)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "disconnect()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "firePropertyChange(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAllowShowDependencies()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAsStringArg()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBoolean(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBooleanVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChildrenComparator()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getClientServerObject(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDouble(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDoubleVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getEnum(java.lang.String,java.lang.Class)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFile(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFiles(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFont(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIcon()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIconChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getInt(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIntVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getJournalKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLinkedBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLong(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMenuPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMessage(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMethodNameFor(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getNeoProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKeyAsString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectRegistry()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getParent()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPropertyChangeObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getQualifiedName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getReferences()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getServer()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getString(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getStringVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getTagGroup()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVisualId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "hasProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "inUse()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "invokeOnClientExecutorService(java.lang.Runnable)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isConnected()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameRootObject(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameSimulation(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isGraphicsObject()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "macroPlaying()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "methodToJournal(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "notifyDeleted(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "registerDefaultChildListener(star.base.neo.ClientServerObject,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,T)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.awt.Font)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.io.File)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.BooleanVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.DoubleVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.IntVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.StringVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.common.FieldFunction)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.lang.Class,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.util.Vector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObjectKey)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.SerializableEnum)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarize(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeChildren(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeProperties(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "toMenuString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "CSO_KEY_PROVIDER_DATA_FLAVOR",
+          "type": "star.base.neo.CsoKeyProvider"
+        },
+        {
+          "member": "asJournal(star.base.neo.NeoJournal)",
+          "type": "star.base.neo.NeoJournableArgument"
+        },
+        {
+          "member": "addJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "asJournalSymbol()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "firePropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournal()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournalClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getTypeCast(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getVariableName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "hasAmbiguousClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "isJournaling()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "journalPropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument...)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "notifyProgress(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removeJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "startNewJournalMethod(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[])",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getProfile(int)",
+          "type": "star.common.PrincipalTensorProfileMethod"
+        },
+        {
+          "member": "getProfileNum()",
+          "type": "star.common.PrincipalTensorProfileMethod"
+        },
+        {
+          "member": "getXProfile()",
+          "type": "star.common.PrincipalTensorProfileMethod"
+        },
+        {
+          "member": "getYProfile()",
+          "type": "star.common.PrincipalTensorProfileMethod"
+        },
+        {
+          "member": "getZProfile()",
+          "type": "star.common.PrincipalTensorProfileMethod"
+        },
+        {
+          "member": "equals(java.lang.Object)",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSimulation()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSourceProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "hide()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "inlineJournalSymbol()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "toString()",
+          "type": "star.common.ProfileMethod"
+        }
+      ],
       "status": "discovered"
     },
     "star.common.ParameterBase": {
@@ -67363,6 +69405,689 @@
         {
           "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
           "type": "star.base.neo.NeoJournalObject"
+        }
+      ],
+      "status": "discovered"
+    },
+    "star.common.PrincipalTensorProfileMethod": {
+      "java_class": "star.common.PrincipalTensorProfileMethod",
+      "signature": "public abstract class PrincipalTensorProfileMethod extends ProfileMethod",
+      "links": [
+        "ProfileMethod.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/common/PrincipalTensorProfileMethod.html",
+        "sha256": "1ff1da3eedbae53936b511499fe85c7b4e3c7d5ae5a816055c37058458c68958"
+      },
+      "members": {
+        "<init>(star.base.neo.ClientServerObjectKey)": {
+          "name": "PrincipalTensorProfileMethod",
+          "signature": "public PrincipalTensorProfileMethod(ClientServerObjectKey key)",
+          "return_type": "",
+          "parameters": "(ClientServerObjectKey key)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../base/neo/ClientServerObjectKey.html"
+          ]
+        },
+        "getProfile(int)": {
+          "name": "getProfile",
+          "signature": "public ScalarProfileWithDynamicMethods getProfile(int i)",
+          "return_type": "ScalarProfileWithDynamicMethods",
+          "parameters": "(int i)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "ScalarProfileWithDynamicMethods.html"
+          ]
+        },
+        "getProfileNum()": {
+          "name": "getProfileNum",
+          "signature": "public int getProfileNum()",
+          "return_type": "int",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "getXAxis()": {
+          "name": "getXAxis",
+          "signature": "public abstract VectorProfile getXAxis()",
+          "return_type": "VectorProfile",
+          "parameters": "",
+          "modifiers": "public abstract",
+          "annotations": "",
+          "links": [
+            "VectorProfile.html"
+          ]
+        },
+        "getXProfile()": {
+          "name": "getXProfile",
+          "signature": "public ScalarProfileWithDynamicMethods getXProfile()",
+          "return_type": "ScalarProfileWithDynamicMethods",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "ScalarProfileWithDynamicMethods.html"
+          ]
+        },
+        "getYAxis()": {
+          "name": "getYAxis",
+          "signature": "public abstract VectorProfile getYAxis()",
+          "return_type": "VectorProfile",
+          "parameters": "",
+          "modifiers": "public abstract",
+          "annotations": "",
+          "links": [
+            "VectorProfile.html"
+          ]
+        },
+        "getYProfile()": {
+          "name": "getYProfile",
+          "signature": "public ScalarProfileWithDynamicMethods getYProfile()",
+          "return_type": "ScalarProfileWithDynamicMethods",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "ScalarProfileWithDynamicMethods.html"
+          ]
+        },
+        "getZProfile()": {
+          "name": "getZProfile",
+          "signature": "public ScalarProfileWithDynamicMethods getZProfile()",
+          "return_type": "ScalarProfileWithDynamicMethods",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "ScalarProfileWithDynamicMethods.html"
+          ]
+        }
+      },
+      "property_candidates": {},
+      "inherited_members": [
+        {
+          "member": "CS_OBJECT_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_TITLE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROPERTY_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROP_IN_USE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "TAGS_PROPERTY_KEY",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "VISUAL_ID",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "asJournal()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyManagedProperties(star.base.neo.ClientServerObject,star.base.neo.ClientServerObjectManager)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "disconnect()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "firePropertyChange(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "firePropertyChange(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAllowShowDependencies()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAsStringArg()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBoolean(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBooleanVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChildren()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChildrenComparator()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getClientServerObject(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDouble(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDoubleVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getEnum(java.lang.String,java.lang.Class)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFile(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFiles(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFont(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIcon()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIconChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getInt(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIntVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getJournalKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLinkedBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLong(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMenuPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMessage(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMethodNameFor(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getNeoProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKeyAsString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectRegistry()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getParent()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPropertyChangeObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getQualifiedName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getReferences()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getServer()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getString(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getStringVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getTagGroup()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVisualId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "hasProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "inUse()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "invokeOnClientExecutorService(java.lang.Runnable)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isConnected()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isEmpty()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameRootObject(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameSimulation(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isGraphicsObject()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "journalChild(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "macroPlaying()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "methodToJournal(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "notifyDeleted(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "registerDefaultChildListener(star.base.neo.ClientServerObject,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,T)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.awt.Font)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.io.File)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.BooleanVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.DoubleVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.IntVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.StringVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.common.FieldFunction)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.lang.Class,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.util.Vector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObjectKey)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.SerializableEnum)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarize(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeChildren(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeProperties(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "toMenuString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "CSO_KEY_PROVIDER_DATA_FLAVOR",
+          "type": "star.base.neo.CsoKeyProvider"
+        },
+        {
+          "member": "asJournal(star.base.neo.NeoJournal)",
+          "type": "star.base.neo.NeoJournableArgument"
+        },
+        {
+          "member": "addJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "asJournalSymbol()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "firePropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournal()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournalClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getTypeCast(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getVariableName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "hasAmbiguousClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "isJournaling()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "journalPropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument...)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "notifyProgress(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removeJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "startNewJournalMethod(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[])",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "equals(java.lang.Object)",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSimulation()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSourceProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "hide()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "inlineJournalSymbol()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "toString()",
+          "type": "star.common.ProfileMethod"
         }
       ],
       "status": "discovered"
@@ -87150,6 +89875,720 @@
         {
           "member": "setMethod(star.common.ProfileMethod)",
           "type": "star.common.Profile"
+        }
+      ],
+      "status": "discovered"
+    },
+    "star.common.TransverseIsotropicTensorProfileMethod": {
+      "java_class": "star.common.TransverseIsotropicTensorProfileMethod",
+      "signature": "@StarBean(display=\"Transverse Isotropic Tensor\", hint=\"Tensor profile defined using single axis\") public class TransverseIsotropicTensorProfileMethod extends AxisymmetricTensorProfileMethod",
+      "links": [
+        "../locale/annotation/StarBean.html",
+        "../locale/annotation/StarBean.html#display()",
+        "../locale/annotation/StarBean.html#hint()",
+        "AxisymmetricTensorProfileMethod.html"
+      ],
+      "source": {
+        "path": "doc/client/html/star/common/TransverseIsotropicTensorProfileMethod.html",
+        "sha256": "14a969e929d5461d9e766f19fd6c416c76f95b61c60827d2eaa4fe4a5953a802"
+      },
+      "members": {
+        "<init>(star.base.neo.ClientServerObjectKey)": {
+          "name": "TransverseIsotropicTensorProfileMethod",
+          "signature": "public TransverseIsotropicTensorProfileMethod(ClientServerObjectKey key)",
+          "return_type": "",
+          "parameters": "(ClientServerObjectKey key)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../base/neo/ClientServerObjectKey.html"
+          ]
+        },
+        "firePropertyChange(java.lang.String)": {
+          "name": "firePropertyChange",
+          "signature": "protected void firePropertyChange(String property)",
+          "return_type": "void",
+          "parameters": "(String property)",
+          "modifiers": "protected",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "getAxiAxis()": {
+          "name": "getAxiAxis",
+          "signature": "@Deprecated public VectorProfile getAxiAxis()",
+          "return_type": "VectorProfile",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "@Deprecated",
+          "links": [
+            "VectorProfile.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Deprecated.html"
+          ]
+        },
+        "getChildren()": {
+          "name": "getChildren",
+          "signature": "public Collection<Object> getChildren()",
+          "return_type": "Collection<Object>",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Collection.html"
+          ]
+        },
+        "getLocalOrientation()": {
+          "name": "getLocalOrientation",
+          "signature": "@StarBeanProperty(display=\"Orientation\", hint=\"Local orientation the tensor is defined on\", editor=LocalOrientationEditor.class) public LocalOrientationBase getLocalOrientation()",
+          "return_type": "LocalOrientationBase",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "@StarBeanProperty(display=\"Orientation\", hint=\"Local orientation the tensor is defined on\", editor=LocalOrientationEditor.class)",
+          "links": [
+            "../locale/annotation/StarBeanProperty.html",
+            "../locale/annotation/StarBeanProperty.html#display()",
+            "../locale/annotation/StarBeanProperty.html#editor()",
+            "../locale/annotation/StarBeanProperty.html#hint()",
+            "LocalOrientationBase.html",
+            "LocalOrientationEditor.html"
+          ]
+        },
+        "getNameForComponent(java.lang.Object)": {
+          "name": "getNameForComponent",
+          "signature": "public String getNameForComponent(Object obj)",
+          "return_type": "String",
+          "parameters": "(Object obj)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Object.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "getProfileNum()": {
+          "name": "getProfileNum",
+          "signature": "public int getProfileNum()",
+          "return_type": "int",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "isEmpty()": {
+          "name": "isEmpty",
+          "signature": "public boolean isEmpty()",
+          "return_type": "boolean",
+          "parameters": "",
+          "modifiers": "public",
+          "annotations": "",
+          "links": []
+        },
+        "journalChild(star.base.neo.ClientServerObject)": {
+          "name": "journalChild",
+          "signature": "public String journalChild(ClientServerObject child)",
+          "return_type": "String",
+          "parameters": "(ClientServerObject child)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "../base/neo/ClientServerObject.html",
+            "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/String.html"
+          ]
+        },
+        "setLocalOrientation(star.common.LocalOrientationBase)": {
+          "name": "setLocalOrientation",
+          "signature": "public void setLocalOrientation(LocalOrientationBase orientation)",
+          "return_type": "void",
+          "parameters": "(LocalOrientationBase orientation)",
+          "modifiers": "public",
+          "annotations": "",
+          "links": [
+            "LocalOrientationBase.html"
+          ]
+        }
+      },
+      "property_candidates": {
+        "getLocalOrientation()": {
+          "member": "getLocalOrientation()",
+          "metadata": "@StarBeanProperty(display=\"Orientation\", hint=\"Local orientation the tensor is defined on\", editor=LocalOrientationEditor.class)",
+          "status": "discovered",
+          "adapter": null
+        }
+      },
+      "inherited_members": [
+        {
+          "member": "CS_OBJECT_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_TITLE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_DISABLED_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PASTE_WARNING_MESSAGE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROPERTY_TAG",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "PROP_IN_USE",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "TAGS_PROPERTY_KEY",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "VISUAL_ID",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "asJournal()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyManagedProperties(star.base.neo.ClientServerObject,star.base.neo.ClientServerObjectManager)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "copyProperties(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "disconnect()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "execute(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "executeAndWait(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "firePropertyChange(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAllowShowDependencies()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getAsStringArg()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBoolean(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getBooleanVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getChildrenComparator()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getClientServerObject(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDisplayName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDouble(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getDoubleVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getEnum(java.lang.String,java.lang.Class)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFile(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFiles(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getFont(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIcon()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIconChangedObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getInt(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getIntVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getJournalKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLinkedBeanPropertyDescriptors()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getLong(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMenuPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMessage(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getMethodNameFor(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getNeoProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKey(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectKeyAsString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectRegistry()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getObjectVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getParent()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPresentationName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getPropertyChangeObservable()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getQualifiedName()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getReferences()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getServer()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getString(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getStringVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getTagGroup()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVector(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "getVisualId()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "hasProperty(java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "inUse()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "invokeOnClientExecutorService(java.lang.Runnable)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isConnected()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameRootObject(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isFromSameSimulation(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "isGraphicsObject()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "macroPlaying()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "methodToJournal(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "notifyDeleted(star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "registerDefaultChildListener(star.base.neo.ClientServerObject,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,T)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.awt.Font)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.io.File)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.BooleanVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.DoubleVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.IntVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.base.neo.StringVector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "set(java.lang.String,star.common.FieldFunction)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.lang.Class,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setObjectVector(java.lang.String,java.util.Collection)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,boolean)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,double)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,int)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.lang.String)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,java.util.Vector)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,long)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.ClientServerObjectKey)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.NeoProperty)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(java.lang.String,star.base.neo.SerializableEnum)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "setSilently(star.base.neo.ClientServerObject)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarize(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeChildren(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "summarizeProperties(star.base.neo.SummaryReport)",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "toMenuString()",
+          "type": "star.base.neo.ClientServerObject"
+        },
+        {
+          "member": "CSO_KEY_PROVIDER_DATA_FLAVOR",
+          "type": "star.base.neo.CsoKeyProvider"
+        },
+        {
+          "member": "asJournal(star.base.neo.NeoJournal)",
+          "type": "star.base.neo.NeoJournableArgument"
+        },
+        {
+          "member": "addJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "addPropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "asJournalSymbol()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "firePropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournal()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getJournalClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getTypeCast(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getVariableName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "hasAmbiguousClassName()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "isJournaling()",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "journalPropertyChange(java.lang.String,star.base.neo.NeoJournableArgument)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument...)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "methodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "notifyProgress(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removeJournalProgressObserver(java.util.Observer)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "removePropertyChangeListener(java.lang.String,java.beans.PropertyChangeListener)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "startNewJournalMethod(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[])",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournableArgument[],star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "staticMethodToJournal(java.lang.String,star.base.neo.NeoJournalObject,java.lang.Class)",
+          "type": "star.base.neo.NeoJournalObject"
+        },
+        {
+          "member": "getAxiProfile()",
+          "type": "star.common.AxisymmetricTensorProfileMethod"
+        },
+        {
+          "member": "getCrossStreamProfile()",
+          "type": "star.common.AxisymmetricTensorProfileMethod"
+        },
+        {
+          "member": "equals(java.lang.Object)",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSimulation()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "getSourceProfile()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "hide()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "inlineJournalSymbol()",
+          "type": "star.common.ProfileMethod"
+        },
+        {
+          "member": "toString()",
+          "type": "star.common.ProfileMethod"
         }
       ],
       "status": "discovered"

@@ -1,7 +1,7 @@
 /**
  * 在已核对版本的 STAR 会话中执行目录裁剪后的定位、读取和单项修改管线。
  * 本类作为同文件辅助类追加到 BridgeFileMacro 源码；计划由 Python 校验，
- * 请求只能选择目录属性，不能提供 Java 类、方法或任意调用片段。
+ * 请求只能选择目录属性或操作，不能提供 Java 类、方法或任意调用片段。
  */
 class CatalogRuntime {
     /** 返回当前 server 的版本与 Runner 会话世代；不使用保存文件的原始版本。 */
@@ -252,8 +252,212 @@ class CatalogRuntime {
             }
         }
         result.put("properties", values);
+        if (action.equals("describe")) {
+            // 操作描述只执行 available 与 guards 的读取；参数选择和源状态完整性在修改准备时检查。
+            java.util.Map<String, Object> operations = object(plan.getOrDefault("operations", fields()), "plan.operations");
+            java.util.Map<String, Object> descriptions = new java.util.LinkedHashMap<>();
+            for (java.util.Map.Entry<String, Object> entry : object(operations.getOrDefault(typeId, fields()),
+                    "type operations").entrySet()) {
+                java.util.Map<String, Object> description = describeOperation(sim, resolved,
+                        object(entry.getValue(), "operation"), sessionToken);
+                if (description.get("target_condition_status").equals("error")
+                        || !Boolean.TRUE.equals(description.get("method_choices_checked"))) complete = false;
+                descriptions.put(entry.getKey(), description);
+            }
+            result.put("operations", descriptions);
+        }
         result.put("inspection_complete", complete);
         return result;
+    }
+
+    /** 描述操作的范围和当前方法选项；选项未出现表示当前不可选，不依据类名创建新方法。 */
+    private static java.util.Map<String, Object> describeOperation(star.common.Simulation sim,
+            Resolved resolved, java.util.Map<String, Object> operation, String token) {
+        java.util.Map<String, Object> result = fields("adapter", operation.get("adapter"),
+                "implemented", true, "reason", operation.get("reason"),
+                "read_properties", operation.get("read_properties"), "state_property", operation.get("state_property"),
+                "preserved_properties", operation.get("preserved_properties"), "impacts", operation.get("impacts"));
+        result.putAll(describeConditions(sim, resolved, fields("writable", true,
+                "condition_reads", operation.get("guards")), token));
+        java.util.List<Object> choices = new java.util.ArrayList<>();
+        java.util.List<Object> unmapped = new java.util.ArrayList<>();
+        try {
+            java.util.List<star.common.ProfileMethod> available = availableMethods(sim, resolved, operation);
+            java.util.Map<String, Object> mappings = object(operation.get("methods"), "operation.methods");
+            // 可发现的方法不自动成为可执行能力；保留未映射项供调用方理解当前限制。
+            for (star.common.ProfileMethod method : available)
+                if (!mappings.containsValue(method.getClass().getName())) unmapped.add(reference(method, token));
+            for (java.util.Map.Entry<String, Object> mapping : mappings.entrySet()) {
+                java.util.List<Object> matches = new java.util.ArrayList<>();
+                for (star.common.ProfileMethod method : available)
+                    if (method.getClass().getName().equals(mapping.getValue())) matches.add(reference(method, token));
+                choices.add(fields("id", mapping.getKey(), "java_class", mapping.getValue(),
+                        "available", matches.size() == 1, "matches", matches));
+            }
+            result.put("method_choices_checked", true);
+        } catch (Exception error) {
+            result.put("method_choices_checked", false);
+            result.put("method_choices_error", errorText(error));
+        }
+        result.put("method_choices", choices);
+        result.put("unmapped_methods", unmapped);
+        return result;
+    }
+
+    /** 属性赋值和结构操作共用外层快照、保存及失败处理，但各自声明需要的前后读取。 */
+    public interface PreparedChange {
+        java.util.Map<String, Object> before();
+        java.util.Map<String, Object> apply() throws Exception;
+    }
+
+    /** schema 3 仅表示结构操作请求；旧属性 schema 2 的校验和行为保持独立。 */
+    public static PreparedChange prepareChange(star.common.Simulation sim,
+            java.util.Map<String, Object> plan, java.util.Map<String, Object> request, String token) {
+        Object schema = request.get("schema_version");
+        if ((schema instanceof Integer || schema instanceof Long) && ((Number) schema).longValue() == 3L)
+            return prepareOperation(sim, plan, request, token);
+        return prepareModification(sim, plan, request, token);
+    }
+
+    /** 从目录只读管线取得当前方法对象；不调用可能隐式切换方法的 getMethod(Class)。 */
+    private static java.util.List<star.common.ProfileMethod> availableMethods(star.common.Simulation sim,
+            Resolved resolved, java.util.Map<String, Object> operation) throws Exception {
+        require("profile_method".equals(operation.get("adapter")), "Unsupported operation adapter");
+        require(resolved.object instanceof star.common.TensorProfile, "Method operation requires a TensorProfile");
+        Object raw = pipeline(sim, resolved.object, resolved.parent, object(operation.get("available"), "operation.available"));
+        require(raw instanceof java.util.Collection<?>, "Available methods must be a collection");
+        java.util.List<star.common.ProfileMethod> methods = new java.util.ArrayList<>();
+        for (Object item : (java.util.Collection<?>) raw) {
+            require(item instanceof star.common.ProfileMethod, "Invalid available profile method");
+            methods.add((star.common.ProfileMethod) item);
+        }
+        return methods;
+    }
+
+    /** 只按已审阅目录的方法 ID 选择当前唯一实例，不接受请求提供的 Java 类或构造方法。 */
+    private static star.common.ProfileMethod selectedMethod(star.common.Simulation sim, Resolved resolved,
+            java.util.Map<String, Object> operation, String methodId) throws Exception {
+        java.util.Map<String, Object> mappings = object(operation.get("methods"), "operation.methods");
+        require(mappings.containsKey(methodId), "Unknown mapped profile method: " + methodId);
+        star.common.ProfileMethod selected = null;
+        for (star.common.ProfileMethod method : availableMethods(sim, resolved, operation)) {
+            if (!method.getClass().getName().equals(mappings.get(methodId))) continue;
+            require(selected == null, "Profile method is ambiguous: " + methodId);
+            selected = method;
+        }
+        require(selected != null, "Profile method is unavailable: " + methodId);
+        return selected;
+    }
+
+    /** 跨加载仅规范化两个方向引用；分量、方法、单位和全部其他状态仍参与严格比较。 */
+    private static java.util.Map<String, Object> tensorMethodContent(Object value) {
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(object(value, "tensor method state"));
+        for (String key : java.util.List.of("coordinate_system", "local_orientation"))
+            if (result.containsKey(key)) result.put(key, referenceState(result.get(key)));
+        return result;
+    }
+
+    /**
+     * 先读取完整活动方法状态并核对 expected，再准备一次 setMethod 调用。
+     * 方法切换可能重建分量；不会把逐值回写或切回旧方法宣称为可用的回滚。
+     */
+    private static PreparedOperation prepareOperation(star.common.Simulation sim,
+            java.util.Map<String, Object> plan, java.util.Map<String, Object> request, String token) {
+        require("modify".equals(request.get("action")) && request.keySet().equals(java.util.Set.of(
+                "schema_version", "action", "target", "operation", "expected", "arguments")),
+                "Invalid structural operation request");
+        try {
+            // 1. 版本及各层对象身份先固定；后续读取和最终调用前均沿同一身份重定位。
+            checkVersion(sim, plan, token);
+            java.util.Map<String, Object> types = object(plan.get("types"), "plan.types");
+            java.util.Map<String, Object> target = pinTarget(sim, types,
+                    object(request.get("target"), "request.target"), token, 0);
+            Resolved resolved = locate(sim, types, target, token, 0);
+            String typeId = string(target.get("type"), "target.type");
+            String operationId = string(request.get("operation"), "request.operation");
+            java.util.Map<String, Object> operation = object(object(object(plan.get("operations"),
+                    "plan.operations").get(typeId), "type operations").get(operationId), "operation");
+            require("profile_method".equals(operation.get("adapter")), "Unsupported structural operation adapter");
+            java.util.List<Object> checks = checkGuards(sim, resolved, operation, token);
+            java.util.Map<String, Object> readRequest = fields("schema_version", 1L, "action", "read",
+                    "target", target, "properties", operation.get("read_properties"));
+            java.util.Map<String, Object> before = inspect(sim, plan, readRequest, token);
+            require(Boolean.TRUE.equals(before.get("inspection_complete")), "Operation requires complete source state");
+            String property = string(operation.get("state_property"), "operation.state_property");
+            require(sameValue(tensorMethodContent(request.get("expected")),
+                    tensorMethodContent(propertyValue(before, property))), "Operation expected state does not match");
+            // 2. 选项必须是当前已存在的唯一方法对象；准备期间不调用 setter。
+            java.util.Map<String, Object> arguments = object(request.get("arguments"), "request.arguments");
+            require(arguments.keySet().equals(java.util.Set.of("method")), "Operation requires a method argument");
+            String methodId = string(arguments.get("method"), "arguments.method");
+            star.common.ProfileMethod method = selectedMethod(sim, resolved, operation, methodId);
+            // 未活动方法也可能保留非常量分量；先只读其设置，避免已知不可回读的目标进入 setter。
+            Object destination = tensorMethodState((star.common.TensorProfile) resolved.object, method, token);
+            Invocation setter = prepareWrite(sim, resolved, object(operation.get("write"), "operation.write"),
+                    fields("method", method));
+            before.put("checks", checks);
+            before.put("selected_method_state", destination);
+            return new PreparedOperation(sim, plan, readRequest, operation, before, token,
+                    property, methodId, method, destination, setter);
+        } catch (Exception error) {
+            throw new IllegalArgumentException("Structural operation rejected: " + errorText(error), error);
+        }
+    }
+
+    /** 保存已固定的源状态、方法对象与唯一 setter；进入 apply 后的错误均按结果不确定处理。 */
+    private static final class PreparedOperation implements PreparedChange {
+        private final star.common.Simulation sim;
+        private final java.util.Map<String, Object> plan, readRequest, operation, before;
+        private final String token, stateProperty, methodId, methodKey, methodClass;
+        private final Object destination;
+        private final Invocation setter;
+        private boolean applied;
+        PreparedOperation(star.common.Simulation sim, java.util.Map<String, Object> plan,
+                java.util.Map<String, Object> readRequest, java.util.Map<String, Object> operation,
+                java.util.Map<String, Object> before, String token, String stateProperty, String methodId,
+                star.common.ProfileMethod method, Object destination, Invocation setter) {
+            this.sim = sim; this.plan = plan; this.readRequest = readRequest; this.operation = operation;
+            this.before = before; this.token = token; this.stateProperty = stateProperty; this.methodId = methodId;
+            this.methodKey = method.getObjectKeyAsString(); this.methodClass = method.getClass().getName();
+            this.destination = destination; this.setter = setter;
+        }
+        public java.util.Map<String, Object> before() { return before; }
+
+        public synchronized java.util.Map<String, Object> apply() throws Exception {
+            if (applied) throw new IllegalStateException("Prepared operation has already been attempted");
+            applied = true;
+            checkVersion(sim, plan, token);
+            Resolved resolved = locate(sim, object(plan.get("types"), "plan.types"),
+                    object(readRequest.get("target"), "read target"), token, 0);
+            checkGuards(sim, resolved, operation, token);
+            // 1. setter 前重读源状态和可选方法，拒绝准备后发生的同名重建或设置变化。
+            java.util.Map<String, Object> current = inspect(sim, plan, readRequest, token);
+            require(Boolean.TRUE.equals(current.get("inspection_complete"))
+                    && sameValue(before.get("properties"), current.get("properties")),
+                    "Operation source state changed after preparation");
+            star.common.ProfileMethod selected = selectedMethod(sim, resolved, operation, methodId);
+            require(methodKey.equals(selected.getObjectKeyAsString()), "Selected profile method identity changed");
+            require(sameValue(destination, tensorMethodState((star.common.TensorProfile) resolved.object, selected, token)),
+                    "Selected profile method settings changed after preparation");
+            setter.invoke();
+            // 2. 新活动方法与对象身份必须匹配；全部已声明影响状态须能完整读取。
+            java.util.Map<String, Object> after = inspect(sim, plan, readRequest, token);
+            require(Boolean.TRUE.equals(after.get("inspection_complete")), "Operation readback is incomplete");
+            require(sameValue(before.get("target"), after.get("target")), "Operation target identity changed");
+            java.util.Map<String, Object> oldState = object(propertyValue(before, stateProperty), "old method state");
+            java.util.Map<String, Object> newState = object(propertyValue(after, stateProperty), "new method state");
+            require(methodClass.equals(newState.get("method")), "Operation method readback mismatch");
+            require(methodKey.equals(((star.common.TensorProfile) resolved.object).getMethod().getObjectKeyAsString()),
+                    "Active profile method identity mismatch");
+            for (String key : java.util.List.of("java_class", "dimensions", "is_3d", "shape"))
+                require(sameValue(oldState.get(key), newState.get(key)), "Operation changed tensor identity: " + key);
+            for (Object raw : list(operation.get("preserved_properties"), "operation.preserved_properties")) {
+                String name = string(raw, "preserved property");
+                require(sameValue(propertyValue(before, name), propertyValue(after, name)),
+                        "Operation changed preserved property: " + name);
+            }
+            return after;
+        }
     }
 
     /**
@@ -298,7 +502,7 @@ class CatalogRuntime {
      * 保存已经完成预检查的单项修改；apply 只允许执行一次，失败后不得自动重试。
      * before/after 使用目录读取封套，旧完整快照与保存流程仍由调用方负责。
      */
-    public static final class PreparedModification {
+    public static final class PreparedModification implements PreparedChange {
         public final java.util.Map<String, Object> before;
         private final star.common.Simulation sim;
         private final java.util.Map<String, Object> plan;
@@ -309,6 +513,8 @@ class CatalogRuntime {
         private final java.util.Map<String, Object> writer;
         private final java.util.List<ReferenceBinding> bindings;
         private boolean applied;
+
+        public java.util.Map<String, Object> before() { return before; }
 
         PreparedModification(star.common.Simulation sim, java.util.Map<String, Object> plan,
                 java.util.Map<String, Object> readRequest, String token, String property,
@@ -1124,14 +1330,14 @@ class CatalogRuntime {
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
-                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis")
+                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
         // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
         if (adapter.equals("presence")) return value != null;
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {
-            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis").contains(adapter),
+            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state").contains(adapter),
                     "Metadata adapter requires a non-null value: " + adapter);
             return null;
         }
@@ -1187,11 +1393,12 @@ class CatalogRuntime {
             case "query": return query(value, sessionToken);
             case "tensor_profile": return tensorProfile(value, sessionToken);
             case "tensor_basis": return tensorState(value, sessionToken).basis;
+            case "tensor_method_state": return tensorMethodState(value, sessionToken);
             default: throw new IllegalArgumentException("Unsupported value adapter: " + adapter);
         }
     }
 
-    /** 保存一次无参 getter 取得的方法和方向信息；分量读取复用同一个已验证方法对象。 */
+    /** 保存已选定的方法和方向信息；活动读取与切换前检查均复用同一个已验证方法对象。 */
     private static final class TensorState {
         final star.common.CompositeSymmetricTensorProfileMethod matrix;
         final boolean full;
@@ -1209,7 +1416,12 @@ class CatalogRuntime {
     private static TensorState tensorState(Object value, String token) {
         require(value instanceof star.common.TensorProfile, "Tensor adapter requires a TensorProfile");
         star.common.TensorProfile profile = (star.common.TensorProfile) value;
-        star.common.ProfileMethod method = profile.getMethod();
+        return tensorState(profile, profile.getMethod(), token);
+    }
+
+    /** 读取指定方法的矩阵组织与方向；方法可尚未激活，此函数不会重新获取或切换当前方法。 */
+    private static TensorState tensorState(star.common.TensorProfile profile,
+            star.common.ProfileMethod method, String token) {
         require(profile.is3D(), "Unsupported tensor profile: only 3D profiles are supported");
         // 1. full 方法继承 symmetric 基类，必须先按 full 判型，避免丢掉上三角独立分量。
         boolean full = method instanceof star.common.CompositeTensorProfileMethod;
@@ -1237,7 +1449,11 @@ class CatalogRuntime {
 
     /** 在已核对的 basis 后添加当前独立常量分量；非常量方法明确失败，不自动切换。 */
     private static Object tensorProfile(Object value, String token) {
-        TensorState state = tensorState(value, token);
+        return tensorProfile(tensorState(value, token), token);
+    }
+
+    /** 仅沿指定状态中的方法读取分量；准备阶段可据此识别目标方法的不可回读设置。 */
+    private static Object tensorProfile(TensorState state, String token) {
         // full 按行输出九项；对称存储仅输出下三角六项，不补写镜像或二维缺失分量。
         java.util.List<Object> components = new java.util.ArrayList<>();
         String axes = "XYZ";
@@ -1259,6 +1475,78 @@ class CatalogRuntime {
         java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(state.basis);
         result.put("components", components);
         return result;
+    }
+
+    /**
+     * 读取方法切换需要核对的当前活动设置；不同方法保留自己的独立分量组织。
+     * 各向同性、主方向和轴对称数据不能被补成九项矩阵；方向仅保留关联身份，
+     * 不读取或修改关联方向对象的内部轴设置，也不变换到全局坐标系。
+     */
+    private static Object tensorMethodState(Object value, String token) {
+        require(value instanceof star.common.TensorProfile, "Tensor method state requires a TensorProfile");
+        star.common.TensorProfile profile = (star.common.TensorProfile) value;
+        star.common.ProfileMethod method = profile.getMethod();
+        require(method != null, "Tensor profile has no current method");
+        return tensorMethodState(profile, method, token);
+    }
+
+    /**
+     * 读取指定方法的独立设置，供结构操作在 setter 前验证将要选择的方法能完整回读。
+     * 调用方从目标 Profile 的可选方法中取得 method；此处不重新获取目标 Profile 的当前方法，
+     * 仅用无参 getter 读取其标量子 Profile 的方法。预检查不会提前激活目标方法，
+     * 也不保证激活后设置绝不被 STAR 初始化。
+     */
+    private static Object tensorMethodState(star.common.TensorProfile profile,
+            star.common.ProfileMethod method, String token) {
+        require(profile.is3D(), "Unsupported tensor method state: only 3D profiles are supported");
+        require(method != null, "Tensor profile method is missing");
+
+        // 1. 现有完整矩阵和对称矩阵继续沿原读取契约处理，避免新增状态字段缩小旧写入范围。
+        // 其余方法只接收下方已核对的精确类，不推断未知子类的额外设置。
+        if (method instanceof star.common.CompositeTensorProfileMethod
+                || method instanceof star.common.CompositeSymmetricTensorProfileMethodWithCoordinateSystem)
+            return tensorProfile(tensorState(profile, method, token), token);
+        java.util.List<Object> components = new java.util.ArrayList<>();
+        star.common.LocalOrientationBase orientation = null;
+        String storage;
+        if (method.getClass() == star.common.IsotropicTensorProfileMethod.class) {
+            storage = "isotropic";
+            star.common.IsotropicTensorProfileMethod isotropic = (star.common.IsotropicTensorProfileMethod) method;
+            components.add(tensorMethodComponent("ISOTROPIC", isotropic.getIsotropicProfile(), token));
+        } else if (method.getClass() == star.common.OrthotropicTensorProfileMethod.class) {
+            storage = "principal";
+            star.common.OrthotropicTensorProfileMethod principal = (star.common.OrthotropicTensorProfileMethod) method;
+            require(principal.getProfileNum() == 3, "Unsupported principal tensor profile dimension: expected 3");
+            orientation = principal.getLocalOrientation();
+            components.add(tensorMethodComponent("X", principal.getXProfile(), token));
+            components.add(tensorMethodComponent("Y", principal.getYProfile(), token));
+            components.add(tensorMethodComponent("Z", principal.getZProfile(), token));
+        } else if (method.getClass() == star.common.TransverseIsotropicTensorProfileMethod.class) {
+            storage = "axisymmetric";
+            star.common.TransverseIsotropicTensorProfileMethod axial = (star.common.TransverseIsotropicTensorProfileMethod) method;
+            orientation = axial.getLocalOrientation();
+            components.add(tensorMethodComponent("AXIAL", axial.getAxiProfile(), token));
+            components.add(tensorMethodComponent("CROSS_STREAM", axial.getCrossStreamProfile(), token));
+        } else {
+            throw new IllegalArgumentException("Unsupported tensor method state: " + method.getClass().getName());
+        }
+        // 2. shape 描述三维二阶张量，components 则保存 API 实际独立配置项，二者不强行对应。
+        return fields("java_class", profile.getClass().getName(), "method", method.getClass().getName(),
+                "dimensions", profile.getDimensions().toString(), "is_3d", true, "shape", java.util.List.of(3, 3),
+                "storage", storage, "coordinate_system", null,
+                "local_orientation", encode(orientation, "reference", token), "components", components);
+    }
+
+    /** 只读标量子 Profile 当前常量方法，保留表达式、结果单位和数值，不调用会切换方法的重载。 */
+    private static java.util.Map<String, Object> tensorMethodComponent(String name,
+            star.common.ScalarProfile component, String token) {
+        require(component != null, "Unsupported tensor component: missing " + name);
+        star.common.ProfileMethod method = component.getMethod();
+        require(method instanceof star.common.ConstantScalarProfileMethod,
+                "Unsupported tensor component method for " + name + ": "
+                + (method == null ? "null" : method.getClass().getName()));
+        return fields("name", name, "method", method.getClass().getName(), "quantity", encode(
+                ((star.common.ConstantScalarProfileMethod) method).getQuantity(), "quantity", token));
     }
 
     /** 查询保留规则本身；未知谓词明确失败，不能把动态规则变成一次性的对象列表。 */

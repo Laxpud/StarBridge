@@ -136,7 +136,7 @@ public class BridgeFileMacro extends StarMacro {
      */
     private void modifyCatalog(Simulation sim) throws Exception {
         Map<String, Object> before = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
-        CatalogRuntime.PreparedModification prepared;
+        CatalogRuntime.PreparedChange prepared;
         boolean saving = ACTION.equals("file-catalog-modify");
         try {
             if (CATALOG_PLAN == null || CATALOG_REQUEST == null || MODIFICATION != null || LEGACY_PLAN != null
@@ -145,7 +145,7 @@ public class BridgeFileMacro extends StarMacro {
                 throw new IllegalArgumentException("Catalog modification requires a matching request and save mode");
             }
             // 1. 当前 server gate 与目标属性检查必须早于旧快照 API 和任何设置调用。
-            prepared = CatalogRuntime.prepareModification(sim, CATALOG_PLAN, CATALOG_REQUEST, SESSION_TOKEN);
+            prepared = CatalogRuntime.prepareChange(sim, CATALOG_PLAN, CATALOG_REQUEST, SESSION_TOKEN);
             before = snapshot(sim);
             if (!Boolean.TRUE.equals(before.get("inspection_complete"))) {
                 throw new IllegalArgumentException("Modification requires a complete covered snapshot");
@@ -178,7 +178,7 @@ public class BridgeFileMacro extends StarMacro {
             catalog = saved;
         }
         Map<String, Object> result = fields("status", "ok", "before", before, "after", after,
-                "catalog_before", prepared.before, "catalog", catalog, "catalog_request", CATALOG_REQUEST);
+                "catalog_before", prepared.before(), "catalog", catalog, "catalog_request", CATALOG_REQUEST);
         Files.writeString(Path.of(RESULT), json(result), StandardCharsets.UTF_8);
     }
 

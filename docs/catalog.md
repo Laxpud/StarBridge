@@ -25,7 +25,7 @@ cmp catalogs/2602/generated/catalog.json outputs/catalog-2602/generated/catalog.
 
 生成器从同一安装的 `star/RELEASE_NOTES` 和 `star/version_info.properties` 读取产品版本与 Build，并核对两者的 Build 一致。类型清单来自 `type-search-index.js`；类型页提供类声明、成员签名、注解和继承引用。当前解析器面向安装附带的 HTML5 Javadoc，不读取 JAR 字节码，不执行 Java 反射。
 
-`selection.json` 是完整 Java 类型名数组，当前包含 97 个根类型，为已配读写属性、类型适配器及原有修改语义提供声明材料。生成器自动加入继承列表中引用的本地声明类型。需要扫描全部 `star.*` 索引类型时，用 `--all` 替代 `--selection`；输出会明显增大。索引中的类型包括辅助 API，不应将类型总数当作算例可配置对象总数。未命名包与 `com.siemens.*` 类型尚未纳入生成范围。
+`selection.json` 是完整 Java 类型名数组，当前包含 100 个根类型，为已配读写属性、类型适配器及原有修改语义提供声明材料。生成器自动加入继承列表中引用的本地声明类型。需要扫描全部 `star.*` 索引类型时，用 `--all` 替代 `--selection`；输出会明显增大。索引中的类型包括辅助 API，不应将类型总数当作算例可配置对象总数。未命名包与 `com.siemens.*` 类型尚未纳入生成范围。
 
 所有文件输出都要求目标文件不存在，防止覆盖人工规则或此前结果。重复生成使用另一个输出路径。临时或自行生成的候选文件放在被 Git 忽略的 `outputs/` 中；用于默认运行的 2602 候选文件随仓库版本管理。更新该文件时，从匹配安装重新生成并核对差异，不能手改生成内容代替生成器。
 
@@ -84,7 +84,7 @@ python3 tools/catalog/catalog.py describe \
 
 值类型的 `kind` 可为 `number`、`boolean`、`string`、`enum`、`quantity`、`expression`、`vector`、`tensor`、`reference`、`collection`、`query` 或 `void`。`unit`、`dimensions`、`reference_type` 使用字符串或 `null`；`null` 表示尚未静态确定，不表示无量纲。`enum_values` 是字符串数组。动态查询必须保留查询语义，不能只记录查询当时选中的对象；已实现的读取适配与谓词范围见[运行时值格式](catalog-runtime.md#已配置属性与值格式)。
 
-`overrides.json` 的成员引用及条件说明用于维护者核对修改语义，还不是可执行调用计划：它们不编码完整参数绑定、返回值传递或运行时定位。此离线格式仍强制这些 binding 的 `read_implemented`、`write_implemented`、`verified` 为 `false`，且离线描述结果标记 `runtime_state: not_checked`。已审阅的读写调用管线单独维护在 `execution.json`，其 schema 4 支持按值类型的写适配器、对象引用与选择，以及主目标/关联值的声明式只读条件，兼容 schema 1/2/3；新增张量读取与分量标量写入继续使用 schema 4，不新增整张量 setter。实际执行与验证边界见[运行时说明](catalog-runtime.md)。旧脚本已验证的修改能力不会自动计入目录执行覆盖。
+`overrides.json` 的成员引用及条件说明用于维护者核对修改语义，还不是可执行调用计划：它们不编码完整参数绑定、返回值传递或运行时定位。此离线格式仍强制这些 binding 的 `read_implemented`、`write_implemented`、`verified` 为 `false`，且离线描述结果标记 `runtime_state: not_checked`。已审阅的读写调用管线单独维护在 `execution.json`，其 schema 5 保留按值类型的写适配器、对象引用与选择、主目标/关联值的声明式只读条件，并增加具有独立读取集合的结构操作；加载器兼容 schema 1/2/3/4。张量分量仍复用标量写适配器，方法切换由单独的操作契约处理，不新增整张量 setter。实际执行与验证边界见[运行时说明](catalog-runtime.md)。旧脚本已验证的修改能力不会自动计入目录执行覆盖。
 
 ## 版本比较
 
@@ -115,10 +115,11 @@ python3 tools/catalog/catalog.py coverage \
 
 要统计已有运行证据，在命令中加入 `--result <运行目录>/apply/result.json` 或 `--result <运行目录>/summary.json`；会话请求的 `result.json` 与命令响应也可使用。结果文件必须由维护者确认来源。报告记录其 SHA256 和实际目标定位，摘要用于追溯所读文件，不认证文件内容的真实性。
 
-报告使用两个统计基数：
+报告分别使用以下统计基数：
 
 - `discovery` 按声明位置统计类型、成员和带注解的属性候选，继承引用不重复计数；人工语义的属性与操作另计。`candidates` 保留每个候选及 `not_assessed` 原因，因为候选声明与执行属性没有一对一语义映射。
 - `execution.counts` 按执行映射的 `(type, property)` 计数，分别提供 `read_implemented`、`write_implemented`、`observed_read`、`observed_write` 和 `file_reload`。执行映射必须先通过现有版本、成员指纹、适配器和调用管线校验；存在 getter 不会自动计入实现。重复输入或同一属性的多个成功结果不会增加属性总数。
+- `execution.operation_counts` 按 `(type, operation)` 单独提供 `mapped_operations`、`execute_implemented`、`observed_execute` 和 `file_reload`。`execution.operations` 列出操作的回读范围、方法选项、`observed_methods`／`unobserved_methods`、声明条件、影响对象及保留属性；同一操作的多个成功结果去重计数，不能混入属性写入总数。
 
 成功观察的计数依据如下：
 
@@ -126,7 +127,10 @@ python3 tools/catalog/catalog.py coverage \
 |---|---|
 | `observed_read` | 同一 `catalog_id` 和精确 server 版本的属性读取结果，属性 `status: ok` 且包含 `value`；局部错误单列，不计成功 |
 | `observed_write` | 成功的 schema 2 目录修改结果，带原请求及同一目标的完整前后读取；指定属性必须具备写入实现 |
-| `file_reload` | 上述修改的文件 Runner 汇总同时确认 `reopened_catalog_match`、`reopened_snapshot_match` 和 `input_unchanged`，且输出与输入不同 |
+| `observed_execute` | 成功的 schema 3 结构操作结果，带已映射的操作 ID、合法方法参数、同一目标的前后读取；读取字段必须恰好覆盖该操作的 `read_properties` |
+| `file_reload` | 对应属性修改或结构操作的文件 Runner 汇总同时确认 `reopened_catalog_match`、`reopened_snapshot_match` 和 `input_unchanged`，且输出与输入不同 |
+
+结构操作回读中的成功属性仍计入 `observed_read`，但不会增加普通 `observed_write`。方法切换可能让旧分量不再适用，因此结构操作按自己的 `read_properties` 核对完整性；schema 2 属性修改仍要求该目标类型的全部映射属性。证据记录中的 `file_reload` 保留属性 ID，`operation_file_reload` 单独保留操作 ID，避免同名混算。成功操作证据还保留所请求的方法参数；`observed_methods` 只表示有该方法的成功样例，不表示该方法的全部输入组合已经验证。
 
 `describe` 输出、旧兼容请求、未经绑定的材料和人工 `status` 不作为写入实测依据。执行映射变更后，旧 `catalog_id` 的结果列为 `stale`；不能据同名属性继续沿用。版本不符、属性缺失或矛盾结果列为 `not_accepted` 并给出原因。拒绝或失败结果列为 `rejected/error`，不增加成功数；没有当前目录身份的拒绝结果也不能证明某个运行条件已经验证。损坏 JSON、重复键、缺失文件会使命令失败。
 
@@ -134,6 +138,6 @@ python3 tools/catalog/catalog.py coverage \
 
 ## 当前验证边界
 
-本机 2602 Build 21.02.007 的全部 23,171 个 `star.*` 索引类型已生成并通过目录结构与继承引用校验，包含 154,743 个声明成员和 9,939 个属性候选。当前 97 个根类型及其继承依赖共生成 175 个类型、2,357 个声明成员和 144 个属性候选，新增材料用于 TensorProfile、当前方法、分量数量及方向读取；随附候选文件与本轮两次独立生成结果逐字节一致，全部既有类型记录保持不变。初始选择也已核对重复生成结果，并与 2510 Build 20.06.007 的同范围目录比较；这不代表 2510 算例读写获得支持。安装版本不匹配、人工规则版本不匹配以及成员指纹失效均已确认拒绝。
+本机 2602 Build 21.02.007 的全部 23,171 个 `star.*` 索引类型已生成并通过目录结构与继承引用校验，包含 154,743 个声明成员和 9,939 个属性候选。当前 100 个根类型及其继承依赖共生成 180 个类型、2,396 个声明成员和 146 个属性候选，新增材料用于 TensorProfile、当前与可选方法、分量数量及方向读取；随附候选文件与本轮两次独立生成结果逐字节一致，全部既有类型记录保持不变。初始选择也已核对重复生成结果，并与 2510 Build 20.06.007 的同范围目录比较；这不代表 2510 算例读写获得支持。安装版本不匹配、人工规则版本不匹配以及成员指纹失效均已确认拒绝。
 
-实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。修改兼容层见 [Modifier](modifier.md)，快照目录和验收见 [Inspector](inspector.md)。操作描述、通用模型条件及剩余覆盖仍见 [TODO](../TODO.md)；分项报告的证据输入范围由调用方显式选择，不自动扫描本机历史输出。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。
+实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。修改兼容层见 [Modifier](modifier.md)，快照目录和验收见 [Inspector](inspector.md)。其他结构操作、通用模型条件及剩余覆盖仍见 [TODO](../TODO.md)；分项报告的证据输入范围由调用方显式选择，不自动扫描本机历史输出。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。

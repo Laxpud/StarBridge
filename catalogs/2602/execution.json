@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "target": {
     "release": "2602",
     "build": "21.02.007"
@@ -684,6 +684,24 @@
       "fingerprint": "b38c9a61d2ba39f6c8b59750e88ace5b408f2abc6794bce1bcb5525158af2da7",
       "parameter_types": [],
       "effect": "read"
+    },
+    "profile.methods": {
+      "type": "star.common.Profile",
+      "member": "getMethods()",
+      "signature": "public Vector<ProfileMethod> getMethods()",
+      "fingerprint": "8269b9e8b1e98a191363e5ba630d2a6b827610c174d29acae472876102d6a436",
+      "parameter_types": [],
+      "effect": "read"
+    },
+    "profile.set_method": {
+      "type": "star.common.Profile",
+      "member": "setMethod(star.common.ProfileMethod)",
+      "signature": "public void setMethod(ProfileMethod v)",
+      "fingerprint": "3c8da78aff4d742342faaa5bc67e624c0f7c698a285eb4e548e02c7f0fb45921",
+      "parameter_types": [
+        "star.common.ProfileMethod"
+      ],
+      "effect": "write"
     }
   },
   "types": {
@@ -4789,6 +4807,96 @@
             }
           ]
         }
+      },
+      "method_state": {
+        "adapter": "tensor_method_state",
+        "read": {
+          "root": "object",
+          "steps": []
+        },
+        "writable": false,
+        "reason": "读取当前张量方法的完整活动设置，供结构操作核对旧状态与回读；方法切换通过 set_method 操作执行"
+      }
+    }
+  },
+  "operations": {
+    "scalar_parameter": {},
+    "vector_parameter": {},
+    "user_field_function": {},
+    "region": {},
+    "boundary": {},
+    "user_tag": {},
+    "volume_average_report": {},
+    "global_parameter": {},
+    "field_function": {},
+    "physics_continuum": {},
+    "tensor_profile": {
+      "set_method": {
+        "adapter": "profile_method",
+        "reason": "在当前可用方法中选择目录已适配的张量方法；切换前核对完整活动设置，切换后读取新方法及分量，不保证切回即可恢复旧值",
+        "read_properties": [
+          "name",
+          "method_state"
+        ],
+        "state_property": "method_state",
+        "methods": {
+          "isotropic": "star.common.IsotropicTensorProfileMethod",
+          "orthotropic": "star.common.OrthotropicTensorProfileMethod",
+          "anisotropic": "star.common.AnisotropicTensorProfileMethod",
+          "transverse_isotropic": "star.common.TransverseIsotropicTensorProfileMethod"
+        },
+        "available": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.methods",
+              "arguments": []
+            }
+          ]
+        },
+        "write": {
+          "root": "object",
+          "steps": [
+            {
+              "member": "profile.set_method",
+              "arguments": [
+                {
+                  "context": "method"
+                }
+              ]
+            }
+          ]
+        },
+        "guards": [
+          {
+            "id": "three_dimensional_tensor",
+            "read": {
+              "root": "object",
+              "steps": [
+                {
+                  "member": "tensor.is_3d",
+                  "arguments": []
+                }
+              ]
+            },
+            "adapter": "primitive",
+            "expected": true,
+            "message": "Tensor method switching requires a three-dimensional profile"
+          }
+        ],
+        "impacts": [
+          {
+            "scope": "target",
+            "description": "改变目标 TensorProfile 的当前方法及活动设置，包括分量组织和方向关联；目标身份、名称和量纲仍须核对"
+          },
+          {
+            "scope": "owned_objects",
+            "description": "目标方法拥有的分量 Profile 及数量设置可能随切换启用、隐藏或初始化；以新方法完整回读和已覆盖快照 Diff 记录结果，不自动回滚"
+          }
+        ],
+        "preserved_properties": [
+          "name"
+        ]
       }
     }
   }
