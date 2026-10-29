@@ -331,6 +331,7 @@ def prepare_read(catalog_path, execution_path, request_path, action):
     """校验 describe/read 请求并返回裁剪计划与原请求，不创建运行目录或活动标记。
 
     计划只包含请求目标及其父类型的定位和选定属性，避免把全量 API 放入宏常量。
+    describe 另保留目标条件的只读管线；新关联条件需要输入值，仍只提供摘要。
     未映射属性立即拒绝，不因为候选目录中存在 getter 就猜测运行方式。
     """
     _require(action in ('describe', 'read'), 'Unsupported catalog read action')
@@ -356,10 +357,15 @@ def prepare_read(catalog_path, execution_path, request_path, action):
     while current is not None:
         required[current] = plan['types'][current]
         current = plan['types'][current]['parent_type']
-    return ({**plan, 'types': required,
-             'properties': {identifier: {name: {k: v for k, v in plan['properties'][identifier][name].items()
-                                               if k != 'write'} for name in names}}},
-            request)
+    # 不向读取宏发送任何 setter；条件只使用加载时已验证 effect=read 的管线。
+    properties = {}
+    for name in names:
+        source = plan['properties'][identifier][name]
+        entry = {key: value for key, value in source.items() if key != 'write'}
+        if action == 'describe':
+            entry['condition_reads'] = source.get('write', {}).get('guards', [])
+        properties[name] = entry
+    return ({**plan, 'types': required, 'properties': {identifier: properties}}, request)
 
 
 def _json_value(value):

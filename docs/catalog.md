@@ -2,7 +2,7 @@
 
 [返回项目入口](README.cn.md) · [目录描述与读取](catalog-runtime.md) · [目录修改](catalog-modifier.md) · [设计文档](../StarBridge.md#版本化对象属性与操作目录) · [当前任务](../TODO.md)
 
-目录工具从本机 STAR Javadoc 生成候选 API，校验和合并人工语义，并比较不同版本的声明变化。本页命令只读取安装材料，不需要许可证，不启动 STAR，也不加载或修改算例。候选目录配合人工 `execution.json` 已可执行[当前算例的描述与读取](catalog-runtime.md)及[首批单属性修改](catalog-modifier.md)；兼容修改入口和 [Inspector 快照](inspector.md#快照布局与共享调用)也复用目录，快照集合与字段另由 `snapshot.json` 描述。
+目录工具从本机 STAR Javadoc 生成候选 API，校验和合并人工语义，比较不同版本的声明变化，并分别统计静态发现、执行实现和已有结果中的成功观察。本页命令只读取安装材料，不需要许可证，不启动 STAR，也不加载或修改算例。候选目录配合人工 `execution.json` 已可执行[当前算例的描述与读取](catalog-runtime.md)及[首批单属性修改](catalog-modifier.md)；兼容修改入口和 [Inspector 快照](inspector.md#快照布局与共享调用)也复用目录，快照集合与字段另由 `snapshot.json` 描述。
 
 ## 生成与查看
 
@@ -101,8 +101,39 @@ python3 tools/catalog/catalog.py diff \
 
 `same_roots` 表示两次显式选择范围是否一致。范围不一致时，类型增删可能只是选择范围变化；即使范围一致，继承依赖变化也可能改变所包含的类型集合。文件摘要和发布材料变化保留在各目录来源中，但不单独当作 API 声明变化。`compatibility` 始终为 `not_assessed`，不根据差异数量推断兼容。
 
+## 分项覆盖报告
+
+`coverage` 分别读取候选目录、执行映射和已有 Runner 结果，报告明确版本与范围内的实现数量及证据缺口。命令不会重放修改或连接算例；`--execution` 可省略，此时执行状态为 `not_supplied`。提供 `--result` 时必须同时提供执行映射；该参数可重复使用。
+
+```bash
+python3 tools/catalog/catalog.py coverage \
+  --catalog catalogs/2602/generated/catalog.json \
+  --execution catalogs/2602/execution.json \
+  --overrides catalogs/2602/overrides.json \
+  --output outputs/catalog-coverage.json
+```
+
+要统计已有运行证据，在命令中加入 `--result <运行目录>/apply/result.json` 或 `--result <运行目录>/summary.json`；会话请求的 `result.json` 与命令响应也可使用。结果文件必须由维护者确认来源。报告记录其 SHA256 和实际目标定位，摘要用于追溯所读文件，不认证文件内容的真实性。
+
+报告使用两个统计基数：
+
+- `discovery` 按声明位置统计类型、成员和带注解的属性候选，继承引用不重复计数；人工语义的属性与操作另计。`candidates` 保留每个候选及 `not_assessed` 原因，因为候选声明与执行属性没有一对一语义映射。
+- `execution.counts` 按执行映射的 `(type, property)` 计数，分别提供 `read_implemented`、`write_implemented`、`observed_read`、`observed_write` 和 `file_reload`。执行映射必须先通过现有版本、成员指纹、适配器和调用管线校验；存在 getter 不会自动计入实现。重复输入或同一属性的多个成功结果不会增加属性总数。
+
+成功观察的计数依据如下：
+
+| 字段 | 所需结果 |
+|---|---|
+| `observed_read` | 同一 `catalog_id` 和精确 server 版本的属性读取结果，属性 `status: ok` 且包含 `value`；局部错误单列，不计成功 |
+| `observed_write` | 成功的 schema 2 目录修改结果，带原请求及同一目标的完整前后读取；指定属性必须具备写入实现 |
+| `file_reload` | 上述修改的文件 Runner 汇总同时确认 `reopened_catalog_match`、`reopened_snapshot_match` 和 `input_unchanged`，且输出与输入不同 |
+
+`describe` 输出、旧兼容请求、未经绑定的材料和人工 `status` 不作为写入实测依据。执行映射变更后，旧 `catalog_id` 的结果列为 `stale`；不能据同名属性继续沿用。版本不符、属性缺失或矛盾结果列为 `not_accepted` 并给出原因。拒绝或失败结果列为 `rejected/error`，不增加成功数；没有当前目录身份的拒绝结果也不能证明某个运行条件已经验证。损坏 JSON、重复键、缺失文件会使命令失败。
+
+每个执行属性保留读写适配器、声明条件、证据索引和未实现／证据缺失原因。`runtime_state` 始终为 `not_checked`，当前目标或模型是否满足条件需要实际运行。`full_branch_verification` 始终为 `not_assessed`：成功观察只证明所给目标、方法、单位和值的样例，不能替代所有分支验收或 CFD 物理合理性判断。不同基数间不计算总覆盖百分比。
+
 ## 当前验证边界
 
 本机 2602 Build 21.02.007 的全部 23,171 个 `star.*` 索引类型已生成并通过目录结构与继承引用校验，包含 154,743 个声明成员和 9,939 个属性候选。当前 97 个根类型及其继承依赖共生成 175 个类型、2,357 个声明成员和 144 个属性候选，新增材料用于 TensorProfile、当前方法、分量数量及方向读取；随附候选文件与本轮两次独立生成结果逐字节一致，全部既有类型记录保持不变。初始选择也已核对重复生成结果，并与 2510 Build 20.06.007 的同范围目录比较；这不代表 2510 算例读写获得支持。安装版本不匹配、人工规则版本不匹配以及成员指纹失效均已确认拒绝。
 
-实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。修改兼容层见 [Modifier](modifier.md)，快照目录和验收见 [Inspector](inspector.md)。通用模型条件、操作描述、分项覆盖报告及剩余覆盖仍见 [TODO](../TODO.md)。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。
+实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。修改兼容层见 [Modifier](modifier.md)，快照目录和验收见 [Inspector](inspector.md)。操作描述、通用模型条件及剩余覆盖仍见 [TODO](../TODO.md)；分项报告的证据输入范围由调用方显式选择，不自动扫描本机历史输出。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。

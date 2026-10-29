@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""提供离线目录生成、查询、人工规则合并和版本比较命令。"""
+"""提供离线目录生成、查询、人工规则合并、版本比较及分项覆盖报告。"""
 
 import argparse
 import json
@@ -9,6 +9,7 @@ import sys
 # 入口可从任意工作目录执行；核心模块不依赖本机安装路径。
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from core.catalog import compare, describe, load, read_json, summary, validate
+from core.coverage import coverage
 from javadoc import generate, installation_version
 
 
@@ -46,6 +47,14 @@ def main():
     diff.add_argument('before', type=Path)
     diff.add_argument('after', type=Path)
     diff.add_argument('--output', type=Path)
+    report = commands.add_parser('coverage', help='Separate discovery, implementation and observed runtime evidence.')
+    report.add_argument('--catalog', type=Path, required=True)
+    report.add_argument('--execution', type=Path)
+    report.add_argument('--overrides', type=Path)
+    report.add_argument('--install', type=Path, help='Require an exact installation version match.')
+    report.add_argument('--result', type=Path, action='append', default=[],
+                        help='Existing Runner JSON result; repeat to add evidence.')
+    report.add_argument('--output', type=Path)
     args = parser.parse_args()
     try:
         if args.command == 'generate':
@@ -58,6 +67,10 @@ def main():
             output_json(summary(data))
         elif args.command == 'diff':
             output_json(compare(load(args.before), load(args.after)), args.output)
+        elif args.command == 'coverage':
+            target = installation_version(args.install)[0] if args.install else {}
+            output_json(coverage(args.catalog, execution_path=args.execution, overrides=args.overrides,
+                                 results=args.result, **target), args.output)
         else:
             target = installation_version(args.install)[0] if args.install else {}
             data = load(args.catalog, overrides=args.overrides, **target)

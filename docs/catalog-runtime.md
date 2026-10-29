@@ -102,7 +102,19 @@ python3 bridge/runner/session_bridge.py describe \
 
 `read` 的每项成功结果为 `{"status":"ok","value":...}`，失败结果为 `{"status":"error","error":"..."}`。单项读取失败保留其他属性结果，`inspection_complete` 为 `false`，CLI 输出警告但仍可返回零退出码。使用者必须检查每项状态，不能把失败当成空集合或 `null`。
 
-`describe` 的每项包含 `adapter`、`writable`、`reason`、`conditions_checked`、`guards`、`value_types` 和 `value_guards`。`guards` 列出映射中写入条件的 `id`、`expected`、`message`，没有条件时为空数组；它不执行条件管线。`value_types` 是新关联允许的目录类型，`value_guards` 是在被关联对象上检查的条件摘要；没有相应配置时返回空数组。`writable` 表示该目录属性是否已有写入实现，当前 `conditions_checked` 为 `false`；它不是模型状态或当前可写条件的运行时结论。写入范围与实际预检查见[目录修改](catalog-modifier.md#请求与支持范围)。
+`describe` 的每项保留 `adapter`、`writable`、`reason`、`guards`、`value_types` 和 `value_guards`。`writable` 只表示该目录属性已有写入实现。`guards` 列出目标条件的 `id`、`expected`、`message`；`value_types` 与 `value_guards` 分别描述新关联允许的目录类型和关联对象条件。
+
+描述命令执行已声明的目标条件只读管线，新增 `guard_checks` 与 `target_condition_status`：
+
+| 条件状态 | 含义 |
+|---|---|
+| `not_implemented` | 没有该属性的写入实现 |
+| `not_declared` | 已有写入实现，但映射没有声明目标条件 |
+| `satisfied` | 全部已声明目标条件均已读取，实际值符合预期 |
+| `unsatisfied` | 条件均已读取，至少一项实际值不符合预期 |
+| `error` | 至少一项条件无法读取或适配；保留其他条件结果 |
+
+`guard_checks` 每项含 `id`、`expected`、`message` 和 `status`；正常读取还含 `actual`，失败则含 `error`。条件不满足不使描述失败；条件读取异常会令 `inspection_complete` 为 `false`。`conditions_checked` 仅在至少有一个目标条件且全部成功读取时为 `true`，不表示条件都满足。没有新值的描述请求不会检查新关联、单位、预期旧状态或全部写入约束，`value_conditions_checked` 始终为 `false`。即使目标条件满足，也不能据此保证后续修改成功；Modifier 仍在准备与执行前重新检查。写入范围见[目录修改](catalog-modifier.md#请求与支持范围)。
 
 目录与人工映射不匹配、请求格式错误或未知属性在本地拒绝。当前 server 版本、定位或会话引用不匹配时，宏返回 `status: rejected`，CLI 非零退出；后台会话保持 `ready`，可以重新读取。客户端异常或其他无法确认的失败仍沿用会话 `uncertain` 处理，不自动重试。底层 `result.json` 保存拒绝原因；文件失败时不生成成功 `summary.json`。
 
@@ -166,7 +178,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 类型的 `locate` 和属性的 `read` 都是调用管线：`root` 可为 `simulation`、当前 `object` 或 `parent`，后续每一步以上一步返回值作为接收对象。参数来源只能是已核对的类字面量、JSON 标量 `literal` 或当前 `object`/`parent` 上下文，数量和类型必须与指定方法相符。只读管线允许 `steps: []`，直接将所选 root 传给适配器；张量 `tensor`/`basis` 使用此形式读取当前对象。写入管线仍要求非空并以受控 setter 结束。对象定位管线最终必须返回集合，父类型关系须明确且不能成环。
 
-schema 3 新增通用 `primitive`、`enum`、`vector_expression` 和 `vector_value` 写适配器，并将场函数定义命名为 `field_definition`；schema 2 的旧 `primitive` 加载时规范化为 `field_definition`。`write.guards` 使用同样受 `effect: read` 限制的管线，在修改准备和 setter 前检查；读计划移除写入执行管线，只保留可供 `describe` 展示的条件摘要。schema 4 新增 `reference` 与 `object_selection`：`value_types` 限定允许的关联类型，引用写入的 `value_guards` 在新关联上检查；对象选择以 `pipelines.static` 和 `pipelines.query` 分别声明最终 setter，每次请求只选一条。请求版本仍为读取 schema 1、修改 schema 2，详细值格式与条件行为见[目录修改](catalog-modifier.md#写入条件)。
+schema 3 新增通用 `primitive`、`enum`、`vector_expression` 和 `vector_value` 写适配器，并将场函数定义命名为 `field_definition`；schema 2 的旧 `primitive` 加载时规范化为 `field_definition`。`write.guards` 使用同样受 `effect: read` 限制的管线，在修改准备和 setter 前检查；读计划移除写入执行管线；`describe` 额外保留目标条件的只读管线，以返回实际检查结果，新关联条件仍只提供摘要。schema 4 新增 `reference` 与 `object_selection`：`value_types` 限定允许的关联类型，引用写入的 `value_guards` 在新关联上检查；对象选择以 `pipelines.static` 和 `pipelines.query` 分别声明最终 setter，每次请求只选一条。请求版本仍为读取 schema 1、修改 schema 2，详细值格式与条件行为见[目录修改](catalog-modifier.md#写入条件)。
 
 运行时先用 `getCurrentVersion()` 和 `getReleaseNumber()` 读取当前 server 版本，与目录精确匹配，不使用文件保存版本，也不截断版本后缀。离线 `check --install` 只核对安装材料，不能代替这项会话检查。
 
@@ -180,4 +192,6 @@ Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作�
 
 工作副本另存后独立加载，向量全部已配属性与会话读取一致，新的文件加载 token 与此前会话不同。原始 `Base.sim~` 的摘要保持不变，验证服务已关闭。运行产物位于本地 `outputs/catalog-runtime-20261028/`，不进入源码版本管理。
 
-张量 Profile 已在单相多孔区域完成三维各向异性九分量读取、代表性分量写入与方法条件拒绝，并核对会话保存、文件修改和独立重载一致；具体实测与未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。操作描述、覆盖报告、其他类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。
+`describe` 已在 2602 工作副本验证张量目标条件全部满足、缺失重力模型不满足、受控条件适配错误的逐项隔离，以及无条件属性与未实现写入的区分；错误后会话仍为 `ready`，张量读取值和原输入 SHA256 未变。文件模式的标量描述及原输入保护也已核对。产物位于本地 `outputs/catalog-conditions-20261029/`。
+
+张量 Profile 已在单相多孔区域完成三维各向异性九分量读取、代表性分量写入与方法条件拒绝，并核对会话保存、文件修改和独立重载一致；具体实测与未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。分项覆盖报告见[离线目录工具](catalog.md#分项覆盖报告)；操作描述、其他类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。

@@ -217,7 +217,7 @@ class CatalogRuntime {
         java.util.Map<String, Object> available = object(propertiesByType.get(typeId), "type properties");
         java.util.List<String> selected = selectedProperties(request, available);
 
-        // 2. 描述只交出目录适配状态；它不为了判断“可写”而尝试调用 setter。
+        // 2. 描述读取目录已声明的目标条件；没有新值时不判断单位、关联或最终可写性。
         java.util.Map<String, Object> result = fields(
                 "target", fields("type", typeId, "name", resolved.object.getPresentationName(),
                     "java_class", resolved.object.getClass().getName(),
@@ -231,12 +231,14 @@ class CatalogRuntime {
             String adapter = string(property.get("adapter"), "property.adapter");
             if (action.equals("describe")) {
                 require(property.get("writable") instanceof Boolean, "Invalid writable implementation flag");
-                values.put(name, fields("adapter", adapter, "writable", property.get("writable"),
+                java.util.Map<String, Object> description = fields("adapter", adapter, "writable", property.get("writable"),
                                         "reason", string(property.get("reason"), "property.reason"),
-                                        "conditions_checked", false,
                                         "guards", property.getOrDefault("guards", java.util.List.of()),
                                         "value_types", property.getOrDefault("value_types", java.util.List.of()),
-                                        "value_guards", property.getOrDefault("value_guards", java.util.List.of())));
+                                        "value_guards", property.getOrDefault("value_guards", java.util.List.of()));
+                description.putAll(describeConditions(sim, resolved, property, sessionToken));
+                if (description.get("target_condition_status").equals("error")) complete = false;
+                values.put(name, description);
                 continue;
             }
             // 3. 读取错误属于对应属性；未知适配器和未支持查询也不能伪装成空值。
@@ -252,6 +254,44 @@ class CatalogRuntime {
         result.put("properties", values);
         result.put("inspection_complete", complete);
         return result;
+    }
+
+    /**
+     * 逐项读取目标条件并保留实际值；条件不满足是正常描述结果，读取异常才表示信息不完整。
+     * 此处没有调用者的新值，因此新关联条件、单位、预期旧状态等仍由 Modifier 在写入前检查。
+     */
+    private static java.util.Map<String, Object> describeConditions(star.common.Simulation sim,
+            Resolved resolved, java.util.Map<String, Object> property, String token) {
+        java.util.List<?> guards = list(property.getOrDefault("condition_reads", java.util.List.of()),
+                                       "property.condition_reads");
+        java.util.List<Object> checks = new java.util.ArrayList<>();
+        boolean failed = false, unavailable = false;
+        for (Object raw : guards) {
+            java.util.Map<String, Object> guard = object(raw, "condition");
+            java.util.Map<String, Object> check = fields("id", guard.get("id"),
+                    "expected", guard.get("expected"), "message", guard.get("message"));
+            try {
+                Object actual = encode(pipeline(sim, resolved.object, resolved.parent,
+                        object(guard.get("read"), "condition.read")),
+                        string(guard.get("adapter"), "condition.adapter"), token);
+                boolean matched = sameValue(guard.get("expected"), actual);
+                check.put("actual", actual);
+                check.put("status", matched ? "satisfied" : "unsatisfied");
+                failed |= !matched;
+            } catch (Exception error) {
+                unavailable = true;
+                check.put("status", "error");
+                check.put("error", errorText(error));
+            }
+            checks.add(check);
+        }
+        // 没有条件并不证明任意值可写，也不把尚未实现写入的属性显示成满足条件。
+        String status = !Boolean.TRUE.equals(property.get("writable")) ? "not_implemented"
+                : guards.isEmpty() ? "not_declared"
+                : unavailable ? "error" : failed ? "unsatisfied" : "satisfied";
+        return fields("conditions_checked", !guards.isEmpty() && !unavailable,
+                "value_conditions_checked", false,
+                "target_condition_status", status, "guard_checks", checks);
     }
 
     /**

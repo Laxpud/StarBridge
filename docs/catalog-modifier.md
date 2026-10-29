@@ -216,7 +216,7 @@ python3 bridge/runner/session_bridge.py save \
 
 ## 写入条件
 
-人工映射可在 `write.guards` 中声明只读条件，包含唯一 `id`、读取管线 `read`、值适配器 `adapter`、预期值 `expected` 和拒绝说明 `message`。它们由维护者配置，用户请求不能更改条件或提供额外 Java 调用。`describe` 返回每项的 `guards` 摘要（`id`、`expected`、`message`），但 `conditions_checked` 仍为 `false`，描述命令不会执行这些检查。
+人工映射可在 `write.guards` 中声明只读条件，包含唯一 `id`、读取管线 `read`、值适配器 `adapter`、预期值 `expected` 和拒绝说明 `message`。它们由维护者配置，用户请求不能更改条件或提供额外 Java 调用。`describe` 返回每项的 `guards` 摘要，并执行这些目标条件的只读管线，分别返回实际值、不满足或读取失败；状态字段及其含义见[目录描述结果](catalog-runtime.md#结果与错误)。这不替代修改准备与 setter 前的再次检查。
 
 对象引用写入另有 `value_types` 和 `value_guards`：前者限定新关联的目录类型，后者在被关联对象上读取并检查条件，和主目标的 `guards` 分开。`describe` 同样返回它们的类型列表和条件摘要；报告的标量场函数条件不表示所有报告或其他引用属性都已适配。
 
@@ -262,7 +262,7 @@ python3 bridge/runner/session_bridge.py save \
 
 本机 STAR-CCM+ 2602 Build 21.02.007 已完成新增写入的内存回读：`ignore_boundary_values` 从 `false` 改为 `true`、`value_type` 从 `SCALAR` 改为 `VECTOR`、向量分量写入 `[2.25, -3.5, 4.75]`、向量表达式写入 `[5, -6, 7]`，以及重力分量写入 `[0, -9.8, 0] m/s^2`。重力修改的 `catalog_before.checks` 记录 `gravity_model_enabled` 的预期值和实际值均为 `true`。
 
-没有重力模型的 `_NoGravity` 连续体被明确条件消息拒绝；过时布尔旧值及不兼容的 `m` 单位也被拒绝，三者会话均保持 `ready` 且最后请求状态为 `rejected`。本地请求校验拒绝用数值 `1` 写入布尔属性、非法枚举值、长度为 2 的向量和包含布尔分量的向量，并确认 schema 2 的 `primitive` 仍规范化为 `field_definition`。`describe` 正确返回重力条件摘要，且 `conditions_checked` 仍为 `false`。
+没有重力模型的 `_NoGravity` 连续体被明确条件消息拒绝；过时布尔旧值及不兼容的 `m` 单位也被拒绝，三者会话均保持 `ready` 且最后请求状态为 `rejected`。本地请求校验拒绝用数值 `1` 写入布尔属性、非法枚举值、长度为 2 的向量和包含布尔分量的向量，并确认 schema 2 的 `primitive` 仍规范化为 `field_definition`。当时 `describe` 仅核对重力条件摘要；当前目标条件的实际检查范围见[目录描述验证](catalog-runtime.md#验证范围与剩余工作)。
 
 会话另存后，文件 `modify` 将向量改为 `[8, -9, 10]` 并另存，`reopened_snapshot_match`、`reopened_catalog_match` 和 `input_unchanged` 均通过。再次独立加载该输出，用户场函数、向量和重力的全部已配目录属性与对应修改结果一致，完整快照也与文件摘要一致；原 `Base.sim~` 和输入 `fixture-saved.sim` 的摘要未变。未执行求解；本轮向量表达式只验证常量形式，重力只验证分量写入，动态向量表达式、其他枚举选项及其他单位尚未验证。本地运行产物位于 `outputs/catalog-typed-write-20261028/`。
 
@@ -272,7 +272,7 @@ python3 bridge/runner/session_bridge.py save \
 
 正常会话修改显式另存后，已独立加载 `session-saved.sim`：完整旧快照与保存结果一致，标量、场函数、边界三个目标的全部已配目录属性也与对应修改结果一致，跨加载引用按上述规则规范化。原始 `Base.sim~` 的 SHA256 保持不变。
 
-以上没有执行网格或求解，也不代表其他 STAR 版本、其他量纲、所有标签目标、系统标签、模型状态或中断恢复均已验证。其余值类型写入、结构操作和完整分项覆盖报告仍见 [TODO](../TODO.md)；Inspector 快照目录迁移与验收见[快照说明](inspector.md)。
+以上没有执行网格或求解，也不代表其他 STAR 版本、其他量纲、所有标签目标、系统标签、模型状态或中断恢复均已验证。其余值类型写入与结构操作仍见 [TODO](../TODO.md)；已有结果可通过[分项覆盖报告](catalog.md#分项覆盖报告)统计具体读写与重载证据；Inspector 快照目录迁移与验收见[快照说明](inspector.md)。
 
 不带 `--catalog/--execution` 的 `modify` 保留[兼容 schema 1 契约](modifier.md)，`set-scalar` 保留原 CLI 参数；内部自动加载随仓库分发的 2602 目录并桥接到同一修改器，用户无需生成目录或转换旧请求。旧 `modify` 提供的全部 `expected` 字段仍先按旧快照检查；`set-scalar` 没有调用者提供的预期旧值，因此仍不保护陈旧请求。两者也精确检查 server 为 2602 Build 21.02.007。
 
