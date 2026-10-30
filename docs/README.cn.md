@@ -21,6 +21,8 @@ Inspector 快照也已通过独立布局使用共享目录，保留 schema 1 字
 
 拟议系统结合结构化算例访问、工作流 Skills、持久化工作记忆，以及后台或 GUI 常驻算例会话。具体定位与边界见[设计文档](../StarBridge.md)。
 
+后续架构以运行时对象树与属性发现为入口，通过通用规则生成读取计划，不要求维护完整的逐属性配置清单或完全复刻 GUI。见 [ADR](adr/0001-runtime-discovery.md)、[Plan](plans/plan-2026-10-30-12-24.md) 和 [Spec](specs/spec-2026-10-30-12-24.md)。只读可行性实验已完成，产品化实施及新增自动写入尚未开始。
+
 ## 快速开始
 
 先阅读[文件 Bridge 使用说明](bridge-file.md)。原型需要 Python 3.11 或更新版本、可用的 STAR-CCM+ 安装及许可证；已在 Linux 上运行 2602，并完成 2510 的代表性验证，范围见[版本说明](catalog-versions.md)。在仓库根目录执行：

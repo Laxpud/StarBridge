@@ -21,6 +21,8 @@ The existing Inspector snapshot now also uses the shared catalog through a separ
 
 The proposed system combines structured simulation access, workflow Skills, persistent working memory, and long-lived background or GUI simulation sessions. See the [design document](StarBridge.md) for scope and boundaries.
 
+The next planned architecture uses runtime object-tree and property discovery to generate read plans from shared rules, without requiring a complete manual settings list or reproducing the GUI exactly. See the [ADR](docs/adr/0001-runtime-discovery.md), [plan](docs/plans/plan-2026-10-30-12-24.md), and [specification](docs/specs/spec-2026-10-30-12-24.md) (Chinese). The read-only feasibility experiment is complete; product implementation and new automatic writes have not started.
+
 ## Getting started
 
 Start with the [file Bridge guide](docs/bridge-file.md) (Chinese). The prototype requires Python 3.11+ and a usable STAR-CCM+ installation and license; it has been exercised on Linux with STAR-CCM+ 2602 and with representative 2510 cases; see [version-specific validation](docs/catalog-versions.md). From the repository root:

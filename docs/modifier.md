@@ -2,7 +2,9 @@
 
 [返回项目入口](README.cn.md) · [Inspector 快照](inspector.md) · [目录修改](catalog-modifier.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
-`modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。当前优先建立[版本目录与通用读写基础](../TODO.md)；Mesh Controls、Boundary Parameters、Selected Physics Settings 和 Simulation Operations 的修改纳入[后续目录覆盖扩展](roadmap.md#目录覆盖扩展与版本演进)。本页描述不带目录参数的兼容 schema 1 契约。它与 `set-scalar` 自动加载所选版本的随附目录并复用同一修改器，原 CLI、请求和旧结果字段继续保留。带 `--catalog` 和 `--execution` 的 `modify` 使用[目录 schema 2 契约](catalog-modifier.md)，无需把旧请求改成新格式。
+`modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。本页描述不带目录参数的兼容 schema 1 契约。它与 `set-scalar` 自动加载所选版本的随附目录并复用同一修改器，原 CLI、请求和旧结果字段继续保留。带 `--catalog` 和 `--execution` 的 `modify` 使用[目录 schema 2 契约](catalog-modifier.md)，无需把旧请求改成新格式。
+
+版本目录与通用读写基础已交付，网格、边界、物性及操作流程的现有适配范围见[目录修改](catalog-modifier.md)。更多配置的覆盖缺口见[路线图](roadmap.md#覆盖范围与版本验证)；后续按[受控写入迁移](roadmap.md#通用规则驱动的受控写入迁移)扩展，尚未启动实施。
 
 ## 使用方式
 
