@@ -204,7 +204,20 @@ public class BridgeFileMacro extends StarMacro {
                 ? CatalogRuntime.snapshotWithBindings(sim, SNAPSHOT_PLAN, SESSION_TOKEN) : null;
         Map<String, Object> after = discoveryWrite ? capturedAfter.snapshot : snapshot(sim);
         // setter 已尝试后才核对快照影响范围；任何额外变化沿 uncertain 路径传播，绝不重试。
-        if (discoveryWrite) snapshotScope = CatalogRuntime.verifyDiscoverySnapshot(capturedBefore, capturedAfter, writeTarget);
+        if (discoveryWrite) {
+            try {
+                snapshotScope = CatalogRuntime.verifyDiscoverySnapshot(capturedBefore, capturedAfter, writeTarget);
+            } catch (IllegalArgumentException error) {
+                // setter 已成功执行一次；保存当时证据供审阅，不能把影响校验失败改报写前拒绝或重试。
+                Map<String, Object> uncertain = fields("status", "uncertain", "before", before, "after", after,
+                        "catalog_before", prepared.before(), "catalog", catalog, "catalog_request", CATALOG_REQUEST,
+                        "error", error.getMessage(), "setter_attempts", 1,
+                        "snapshot_scope", fields("target", writeTarget, "before_bindings", capturedBefore.bindings,
+                                "after_bindings", capturedAfter.bindings, "verification", "failed"));
+                Files.writeString(Path.of(RESULT), json(uncertain), StandardCharsets.UTF_8);
+                return;
+            }
+        }
         if (!Boolean.TRUE.equals(after.get("inspection_complete"))
                 || !Boolean.TRUE.equals(catalog.get("inspection_complete"))) {
             throw new IllegalStateException("Modification readback is incomplete");
@@ -224,6 +237,7 @@ public class BridgeFileMacro extends StarMacro {
         Map<String, Object> result = fields("status", "ok", "before", before, "after", after,
                 "catalog_before", prepared.before(), "catalog", catalog, "catalog_request", CATALOG_REQUEST);
         if (snapshotScope != null) result.put("snapshot_scope", snapshotScope);
+        if (discoveryWrite) result.put("setter_attempts", 1);
         Files.writeString(Path.of(RESULT), json(result), StandardCharsets.UTF_8);
     }
 

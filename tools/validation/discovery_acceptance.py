@@ -60,7 +60,11 @@ def main():
           values['properties'][ids[0]]['relation']['status'] == 'ok')
     enumeration = values['properties'][ids[1]]['value']
     check('R5_enum_options', bool(enumeration['allowed']) and enumeration['selected'] in enumeration['allowed'])
-    check('R9_generated_writes_disabled', all(not item['write_enabled'] for item in description['properties']))
+    # P4 开放独立修改入口后，描述可显示可写能力；本次读取计划仍必须完全只读。
+    request_dir = Path(values['result']['request_result']).parent
+    read_plan = json.loads((request_dir / 'catalog-plan.json').read_text())
+    entries = [item for properties in read_plan['properties'].values() for item in properties.values()]
+    check('R9_read_plan_has_no_writer', all(not item.get('writable') and 'write' not in item for item in entries))
 
     interfaces = next(item for item in root['children'] if item['label'] == 'Interfaces')
     desc = call('interfaces-description', 'describe_node', node_id=interfaces['node_id'])

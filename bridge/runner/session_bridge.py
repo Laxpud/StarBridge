@@ -151,7 +151,8 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
     state['last_request'] = identifier
     state['last_request_status'] = data['status']
     state['active_request'] = None
-    state['state'] = 'ready'
+    # 收到完整失败结果只说明请求已结束，不能将已经发生的未知写入恢复为 ready。
+    state['state'] = 'uncertain' if data['status'] == 'uncertain' else 'ready'
     write_json(directory / 'session.json', state)
     return data, run
 
@@ -284,6 +285,8 @@ def operate(args, directory):
                                 discovery_request=getattr(args, 'discovery_request', None))
             if data['status'] == 'rejected':
                 raise ModificationRejected(f'{data["error"]}; see {run / "result.json"}')
+            if data['status'] == 'uncertain':
+                raise OperationUncertain(f'{data.get("error", "Write verification failed")}; see {run / "result.json"}')
             if args.action == 'modify' and not catalog_call:
                 verify_modification(args.modification, data['before'], data['after'])
             if args.action == 'modify' and catalog_call:
@@ -322,6 +325,7 @@ def operate(args, directory):
                 if 'snapshot_scope' in data:
                     # 运行时已按对象 key 约束允许变化的快照字段；Diff 仅展示通过验证后的差异。
                     result['snapshot_scope'] = data['snapshot_scope']
+                    result['setter_attempts'] = data['setter_attempts']
                 if catalog_call:
                     result.update(catalog_before=data['catalog_before'],
                                   catalog_diff=catalog_diff(data['catalog_before'], data['catalog'],

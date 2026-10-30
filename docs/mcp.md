@@ -44,7 +44,7 @@ MCP 客户端的请求超时应大于工具的 `timeout`，并为服务启动、
 | `read_node_properties` | `session_dir`、`node_id`、非空 `property_ids` | 刷新身份和描述符后读取显式选择的属性；局部错误独立返回 |
 | `search_settings` | `session_dir`、`query`，可选 `expand`、`max_nodes`、`max_depth`、`scope`、`limit`、`cursor` | 默认搜索已发现元数据；扩展必须显式给出，返回覆盖与截断 |
 | `relocate_node` | `session_dir`、`locator` | 按完整名称/类型路径重建新会话引用；不继承旧对象身份 |
-| `modify_node_property` | `session_dir`、`node_id`、`property_id`、`expected`、`value` | 已接入契约，当前发现写入开关关闭，调用明确拒绝 |
+| `modify_node_property` | `session_dir`、`node_id`、`property_id`、`expected`、`value` | 按完整规则赋值一次，返回回读、Diff、`snapshot_scope` 和 `setter_attempts`；不自动保存 |
 | `inspect_session` | `session_dir` | 既有 Inspector 快照范围；不是全部算例设置导出 |
 | `open_session` | `input`、`session_dir`，可选 `star`、`release`、`port`、`timeout` | 从输入复制工作文件后启动独立后台服务；目录必须不存在，默认端口 `49001` |
 | `session_status` | `session_dir` | 会话记录及进程身份检查；不启动 Java 客户端，不重新核对 server Build |
@@ -73,7 +73,7 @@ MCP 客户端的请求超时应大于工具的 `timeout`，并为服务启动、
 
 把上述参数交给 `starbridge.browse_tree` 即可读取根层。浏览默认一页 100 项、最多观察 2000 个子项；搜索默认 `expand=false`，显式扩展默认最多访问 100 个节点、深度 4，结果一页 100 项。两者 `limit` 上限 500，`max_nodes` 上限 10000；搜索深度上限 32。所有默认 `timeout` 为 180 秒。`scope` 默认为 `simulation`，`all` 可纳入材料数据库资源。
 
-描述能力与读取当前值是分开的；`read_node_properties` 不接受省略属性列表来读取全部属性。搜索命中是带观察时间的缓存候选，必须重新描述或读取以核对当前身份。未知代理不返回可用 `node_id`。`modify_node_property` 当前总开关 `WRITING_ENABLED=False`，新写入须启用并完成真实验收后才开放；既有目录 `modify` 继续遵循下面的原契约。
+描述能力与读取当前值是分开的；`read_node_properties` 不接受省略属性列表来读取全部属性。搜索命中是带观察时间的缓存候选，必须重新描述或读取以核对当前身份。未知代理不返回可用 `node_id`。`modify_node_property` 已开放限定规则族，需传入当前读取的完整 `expected`。描述中的 `write_enabled=true` 表示存在接受的写入实现，实例和新值条件仍在写前校验。写后影响验证失败返回 `uncertain`，会话阻止后续操作，不自动重试；规则范围、值格式和证据见[受控写入](runtime-discovery.md#受控写入)。既有目录 `modify` 继续遵循下面的原契约。
 
 ## 查找、读取与修改
 

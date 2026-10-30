@@ -863,6 +863,8 @@ class CatalogRuntime {
         private final java.util.Map<String, Object> writer;
         private final java.util.List<ReferenceBinding> bindings;
         private final ScalarBoundsCheck boundsCheck;
+        private final java.util.Map<String, Object> quantityRead;
+        private final String quantityKey;
         private boolean applied;
 
         public java.util.Map<String, Object> before() { return before; }
@@ -880,12 +882,14 @@ class CatalogRuntime {
                 java.util.Map<String, Object> readRequest, String token, String property,
                 String adapter, Object value, Invocation invocation,
                 java.util.Map<String, Object> writer, java.util.Map<String, Object> before,
-                java.util.List<ReferenceBinding> bindings, ScalarBoundsCheck boundsCheck) {
+                java.util.List<ReferenceBinding> bindings, ScalarBoundsCheck boundsCheck,
+                java.util.Map<String, Object> quantityRead, String quantityKey) {
             this.sim = sim; this.plan = plan; this.readRequest = readRequest; this.token = token;
             this.property = property; this.adapter = adapter; this.value = value;
             this.invocation = invocation; this.writer = writer; this.before = before;
             this.bindings = java.util.List.copyOf(bindings);
             this.boundsCheck = boundsCheck;
+            this.quantityRead = quantityRead; this.quantityKey = quantityKey;
         }
 
         /**
@@ -914,6 +918,12 @@ class CatalogRuntime {
                     "Modification state changed before setter");
             // 范围和表达式依赖可能在准备后变化；紧贴唯一 setter 再读取并预览一次。
             // 此处失败仍属于 apply 的结果不确定路径，调用方不能自动重试 setter。
+            if (quantityRead != null) {
+                Object quantity = pipeline(sim, current.object, current.parent, quantityRead);
+                require(quantity instanceof star.base.neo.ClientServerObject
+                        && quantityKey.equals(((star.base.neo.ClientServerObject) quantity).getObjectKeyAsString()),
+                        "Write quantity identity changed before setter");
+            }
             if (boundsCheck != null) boundsCheck.check(sim, current);
             invocation.invoke();
             java.util.Map<String, Object> after = inspect(sim, plan, readRequest, token);
@@ -992,6 +1002,8 @@ class CatalogRuntime {
         java.util.Map<String, Object> writePipeline = null;
         ScalarBoundsCheck boundsCheck = null;
         Object wantedReadback = value;
+        String quantityKey = null;
+        java.util.Map<String, Object> quantityRead = null;
         // 3. 校验目标数量或枚举状态并绑定参数；解析最终 setter 仍不触发写入。
         try {
             if (adapter.equals("field_definition")) {
@@ -1012,6 +1024,8 @@ class CatalogRuntime {
                 Object raw = pipeline(sim, resolved.object, resolved.parent, object(entry.get("read"), "property.read"));
                 require(raw instanceof star.common.ScalarPhysicalQuantity, "Scalar writes require a scalar quantity");
                 star.common.ScalarPhysicalQuantity quantity = (star.common.ScalarPhysicalQuantity) raw;
+                quantityKey = quantity.getObjectKeyAsString();
+                quantityRead = object(entry.get("read"), "property.read");
                 if (Boolean.TRUE.equals(writer.get("constant_only")))
                     require(star.common.PhysicalQuantityParser.parseAsConstant(quantity.getDefinition()) != null,
                             "Generic scalar assignment requires an existing constant definition");
@@ -1048,6 +1062,8 @@ class CatalogRuntime {
                 Object raw = pipeline(sim, resolved.object, resolved.parent, object(entry.get("read"), "property.read"));
                 require(raw instanceof star.common.VectorPhysicalQuantity, "Vector writes require a vector quantity");
                 star.common.VectorPhysicalQuantity quantity = (star.common.VectorPhysicalQuantity) raw;
+                quantityKey = quantity.getObjectKeyAsString();
+                quantityRead = object(entry.get("read"), "property.read");
                 if (Boolean.TRUE.equals(writer.get("constant_only")))
                     require(vectorConstant(quantity.getDefinition()) != null,
                             "Generic vector assignment requires an existing constant definition");
@@ -1152,12 +1168,17 @@ class CatalogRuntime {
             if (writePipeline == null) writePipeline = object(writer.get("pipeline"), "write.pipeline");
             // 只解析一次最终调用；静态模式由 STAR setObjects 自行清除 query，不能提前额外清除。
             Invocation setter = prepareWrite(sim, resolved, writePipeline, values);
+            // 读取别名与写入管线必须指向同一个底层数量，不能让同值对象掩盖错误映射。
+            if (quantityKey != null)
+                require(setter.receiver instanceof star.base.neo.ClientServerObject
+                        && quantityKey.equals(((star.base.neo.ClientServerObject) setter.receiver).getObjectKeyAsString()),
+                        "Write setter receiver does not match the read quantity");
             // 回读固定到本次准备得到的 key，不能让同名重建的对象冒充写入对象。
             java.util.Map<String, Object> fixedTarget = new java.util.LinkedHashMap<>(target);
             fixedTarget.put("reference", identity(resolved.object, token));
             java.util.Map<String, Object> fixedRead = fields("schema_version", 1L, "action", "read", "target", fixedTarget);
             return new PreparedModification(sim, plan, fixedRead, token, property, adapter, wantedReadback,
-                    setter, writer, before, bindings, boundsCheck);
+                    setter, writer, before, bindings, boundsCheck, quantityRead, quantityKey);
         } catch (Exception error) {
             throw new IllegalArgumentException("Modification preparation failed: " + errorText(error), error);
         }

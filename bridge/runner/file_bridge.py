@@ -259,6 +259,9 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
     if process.returncode != 0 or not result.is_file():
         raise RuntimeError(f"STAR did not complete the macro; see {directory / 'star.log'}")
     data = json.loads(result.read_text())
+    # 发现写入的影响校验可能在 setter 后失败；保留宏证据，由会话层冻结后续操作。
+    if data.get('status') == 'uncertain' and actual_action == 'catalog-modify':
+        return data
     if data.get("status") != "ok" and not (
             (modification is not None or catalog_call or legacy_call or snapshot_call or discovery_call)
             and data.get("status") == "rejected"):

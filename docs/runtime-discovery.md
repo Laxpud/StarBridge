@@ -1,6 +1,6 @@
 # 运行时对象树与属性发现
 
-[返回项目入口](README.cn.md) · [MCP 与共享 JSON CLI](mcp.md) · [行为规格](specs/spec-2026-10-30-12-24.md)
+[返回项目入口](README.cn.md) · [MCP 与共享 JSON CLI](mcp.md) · [行为规格](archive/spec-2026-10-30-12-24.md)
 
 发现入口从当前后台算例枚举实际对象和 Bean 属性，再用通用规则、官方 Javadoc 声明及成员指纹生成读取计划。Agent 无需先知道人工目录的 `type_id`；新增同类属性也不必逐项添加手工定位映射。它不复刻 GUI，不执行网格或求解。
 
@@ -17,7 +17,7 @@ MCP 工具使用 `starbridge.` 前缀，JSON CLI 使用下表原名。所有调�
 | `read_node_properties` | 必填 `node_id`、非空且不重复的 `property_ids` | 重新定位和描述后，只读取显式选择的属性 |
 | `search_settings` | 必填 `query`；`expand=false`、`max_nodes=100`、`max_depth=4`、`scope="simulation"`、`limit=100`、`cursor=null` | 搜索已有索引；显式扩展时按预算发现更多节点 |
 | `relocate_node` | 必填 `locator` | 保存重载或新会话中按结构化路径重建引用 |
-| `modify_node_property` | 必填 `node_id`、`property_id`、`expected`、`value` | 已接入公开契约，但发现写入当前由总开关关闭，调用会被拒绝 |
+| `modify_node_property` | 必填 `node_id`、`property_id`、`expected`、`value` | 按已接受规则执行一次赋值，回读并验证快照影响范围；保存单独执行 |
 
 `limit` 范围为 1–500，`max_nodes` 为 1–10000；搜索 `max_depth` 为 1–32，根深度为 0。浏览 `max_nodes` 限制单层运行时观察规模，搜索 `max_nodes` 限制扩展访问的节点数；返回页大小由 `limit` 单独限制。每次 Java 发现请求的内部时间预算最多 30 秒；Python 还用剩余时间限制多页描述和搜索扩展。STAR 客户端启动、编译和进程清理可能占用额外时间，不能把预算解释为硬实时截止。
 
@@ -139,7 +139,37 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 非 CSO 代理没有已核验的通用提供器时，返回 `kind="proxy"`、不支持原因和 `node_id=null`，不会把父节点引用冒充代理身份。GUI 分组、插件节点、未知复杂值和未登记版本可能因此仅有部分覆盖。
 
-`modify_node_property` 的规则准备和公共入口已经接入，但当前 `WRITING_ENABLED=False`，属于只读阶段。后续须启用并完成实际赋值、条件拒绝、旧状态、回读与持久化验收后才开放；不能依据 setter、规则编译成功或 `write_support="supported"` 推定写入已启用。既有目录 `modify` 的已接受能力不受此发现开关替代，仍按其[原契约](catalog-modifier.md)使用。
+## 受控写入
+
+`modify_node_property` 当前开放已接受的普通赋值规则。禁止规则、资源范围限制和特殊语义优先；特殊规则缺少上下文或存在歧义时不退回通用规则。既有目录 `modify` 继续按其[原契约](catalog-modifier.md)使用。
+
+当前规则族及限制：
+
+- 特殊规则按完整读取声明匹配原目录 writer，保留其 guards、范围和保持项；只迁移已接受的普通赋值，不移植依赖旧父级定位的条件。全局标量／向量参数的 quantity input 可映射到已有数量 writer，写前确认读取数量与 setter 接收对象的 key 相同；名称和维度等保持项继续读取验证。
+- 通用标量仅接受已支持的 `BoundedScalarInput` 常量，使用实际 input 范围及单位检查；通用向量仅接受 `VectorPhysicalQuantityInput` 常量，完整描述中存在未处理的坐标、方向或模型／方法上下文时拒绝。向量保留原始分量，不转换或归一化。
+- 隐藏、只读、未知注解、未知编辑器、跨属性通知关联、库资源以及规则不完整的属性不开放自动写入。创建删除、模型启停、方法切换及复杂查询不作为通用属性赋值。
+
+先描述并读取目标，再把返回的完整 `value` 原样作为 `expected`。以下示例假设本次实际读取恰为 `0 m`，不能将示例值替代真实读取：
+
+```json
+{
+  "session_dir": "/absolute/session",
+  "node_id": "<returned node_id>",
+  "property_id": "<returned property_id>",
+  "expected": {"definition": "0.0", "unit": "m", "si_unit": "m", "raw_value": 0.0, "si_value": 0.0},
+  "value": {"value": 0.001, "unit": "m"}
+}
+```
+
+向量新值格式为 `{"components":[0,0,0.125],"unit":"m"}`；其他已接受类型按其 writer 的契约提供新值。通过 JSON CLI 执行 `python3 starbridge.py modify_node_property --arguments /absolute/write-node.json`，或使用相同参数调用 `starbridge.modify_node_property`。`write_enabled=true` 只证明发布范围和规则支持；`target_conditions`、`value_conditions` 在描述时仍为 `not_checked`。
+
+修改刷新完整节点描述并编译全部已支持读取项，在会话锁内核对版本、引用、`expected`、单位、范围及声明条件，临近 setter 再核对必要状态。成功结果保留 `catalog_before`、`catalog`、`catalog_diff`、`snapshot`、`snapshot_diff` 和 `setter_attempts: 1`。读取计划始终没有 writer，描述支持状态不会暗中执行赋值。
+
+`snapshot_scope` 用实际对象和数量 key 将原快照字段绑定到目标：目标在快照内时，仅允许对应数量的声明值字段变化，模式为 `bound_quantity_fields`；目标不在原快照时，模式为 `unchanged_snapshot`，要求原快照内容和全部绑定保持不变。`modified` 元数据单独忽略，名称、维度及其他内容不能随之放行。通用规则还保持同节点其他已支持读取结果。该范围仍不等于全部算例设置或完整物理依赖。
+
+写前明确拒绝返回 `rejected`，不会执行 setter。写后回读失败、超时或影响超出声明范围返回 `uncertain`，会话阻止继续操作，不重试、不回滚、不保存。快照影响验证失败的原始请求记录保留前后快照、目录结果、绑定证据、错误和 `setter_attempts: 1`；其他异常以日志和已有结果为准，不猜测尝试次数。先查看 `session_status` 及错误中给出的请求路径，当前恢复方式是明确关闭并弃置该会话，再从已知文件新建会话。
+
+成功修改仍须显式调用 `save_session` 另存到新文件。重载后使用 `relocate_node`、重新描述和读取，核对目标值及已有快照覆盖内容；旧 `node_id` 不能跨加载使用。锁和回读不提供跨客户端原子事务或 CFD 合理性保证。
 
 
 ## 验证范围
@@ -151,4 +181,15 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 - 真实验证了名称含 `/`、同名删除重建后旧引用拒绝、旧分页游标失效、跨会话引用拒绝、显式重定位、缓存缺失重建、属性选择及分页、搜索别名和预算截断。材料库范围按真实类型过滤。2510 新发现入口明确拒绝。
 - 该算例未出现对象循环，STAR 参数管理器也会给重复名称自动加后缀。同名歧义、循环、重复引用、局部描述与编译失败、私钥并发初始化等使用契约模拟验证，不能计为真实 STAR 分支覆盖。
 
-可复现入口为 `tools/validation/discovery_acceptance.py`（已有 Base 隔离会话上的只读验收）、`discovery_contract_checks.py`（Core 契约模拟）和 `discovery_java_contracts.py`（生产 Java 提供器配最小接口替身）。本机逐项 JSON、命令和日志位于 `outputs/runtime-20261030/`，不进入源码仓库。新发现写入在此只读验收阶段保持关闭，写规则编译成功不计为写入验收。
+可复现入口为 `tools/validation/discovery_acceptance.py`（已有 Base 隔离会话上的只读验收）、`discovery_contract_checks.py`（Core 契约模拟）和 `discovery_java_contracts.py`（生产 Java 提供器配最小接口替身）。本机逐项 JSON、命令和日志位于 `outputs/runtime-20261030/`，不进入源码仓库。P1—P3 的只读验收当时保持发现写入关闭；P4 已独立启用并完成下列真实验收，不能把前一阶段的门控状态解释为当前能力。
+
+
+### 受控写入验收
+
+同一精确版本的独立工作副本完成四项正常赋值：Surface Proximity 的 `Floor` 从 `0` 到 `0.001 m`、Reference Altitude 从零向量到 `[0,0,0.125] m`、全局标量参数从 `1` 到 `2`、全局向量参数从 `[4,5,6]` 到 `[2,4,6]`。最后两项使用迁移规则，标量经真实 stdio MCP 调用；每项均只尝试一次 setter，回读、保持项和快照范围验证通过。前两项要求原快照不变，后两项只允许目标数量绑定字段变化。
+
+七项写前拒绝覆盖负范围、不匹配的旧值、不相容标量单位、错误节点引用、不支持属性、成功后再次使用旧 `expected` 和不相容向量单位。四个成功值显式另存后，在新会话重新定位、描述和读取均一致，原快照覆盖内容一致，旧引用被拒绝。
+
+另在重载副本添加依赖参数：源值 `2→3` 导致依赖值 `4→6`。目标赋值只执行一次，但依赖变化超出允许字段，真实结果为 `uncertain`，保存前后证据并阻止下一次调用创建任何新请求；未重试或保存该失败场景。原始 `Base.sim~` 和此前验证的保存文件摘要保持不变，三个验收会话已关闭。以上均未执行网格或求解。
+
+`tools/validation/discovery_write_contracts.py` 另有 15 项快照比较器检查，使用本机 STAR 库编译生产 Java，但不连接算例、不执行 setter，不能计为真实写入覆盖。本机 `write-rules-report.json`、`write-reload-report.json`、`write-uncertain-report.json`、`write-final-report.json` 及逐请求日志位于 `outputs/runtime-20261030/`。这些证据仅涵盖本节规则与实例；其他版本、值类型、模型状态和物理依赖仍需单独核验。

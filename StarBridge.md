@@ -8,7 +8,7 @@
 
 项目已实现文件 Bridge、后台会话原型、[Inspector 对象快照](docs/inspector.md)、[Modifier 单项修改](docs/modifier.md)、[离线候选目录工具](docs/catalog.md)、[目录驱动的描述与读取](docs/catalog-runtime.md)和[首批目录修改](docs/catalog-modifier.md)。兼容修改命令和 Inspector 快照均已使用共享目录，快照由独立布局描述；已提供[分项覆盖报告](docs/catalog.md#分项覆盖报告)，张量 Profile 与材料物性方法结构操作已接入描述、前提与影响范围，接下来补齐其他写适配器、模型条件及更多结构操作。本文描述目标架构，当前可用入口及限制仍以这些使用说明为准。
 
-配置发现与适配的目标设计已由 [ADR 0001](docs/adr/0001-runtime-discovery.md)调整为运行时对象树与属性发现，具体行为见 [Spec](docs/specs/spec-2026-10-30-12-24.md)，实施顺序见 [Plan](docs/plans/plan-2026-10-30-12-24.md)。运行时发现已接入共享 CLI 与 MCP，当前对 2602 精确 Build 提供导航、描述、按需读取、搜索及重定位；使用方式与限制见[运行时发现](docs/runtime-discovery.md)。旧人工目录入口继续保留，发现写入当前由关闭的总开关控制，不将实现状态等同于完成全部验收。
+配置发现与适配的目标设计已由 [ADR 0001](docs/adr/0001-runtime-discovery.md)调整为运行时对象树与属性发现，具体行为见 [Spec](docs/archive/spec-2026-10-30-12-24.md)，实施顺序见 [Plan](docs/archive/plan-2026-10-30-12-24.md)。运行时发现已接入共享 CLI 与 MCP，当前对 2602 精确 Build 提供导航、描述、按需读取、搜索及重定位；使用方式与限制见[运行时发现](docs/runtime-discovery.md)。旧人工目录入口继续保留；发现写入已按完整特殊规则及受限的通用数量规则开放。写入计划仍须校验当前身份、旧值、单位／范围、保持项及既有快照，执行一次后回读，显式另存及重载验证。目标数量在快照内时只允许其实际绑定字段变化，快照之外的目标要求原快照不变；写后超出范围进入 `uncertain` 并阻止继续操作。完成范围不代表全部设置、版本或物理依赖均已覆盖。
 
 StarBridge 不将自身限定为单纯的 CLI 或 Java Macro 工具，而是作为 AI Agent 与 STAR-CCM+ 之间的统一桥接层。
 
@@ -284,7 +284,7 @@ MCP 是 Agent 操作 STAR-CCM+ 的主要结构化接口，调用共享 Core API�
 | 读取发现属性 | `starbridge.read_node_properties` | 校验当前身份、描述符和成员指纹后读取显式属性集合 |
 | 搜索设置 | `starbridge.search_settings` | 搜索已有索引或按显式预算扩展，返回上下文和覆盖限制 |
 | 重建引用 | `starbridge.relocate_node` | 在新会话中按结构化路径唯一定位，返回新引用 |
-| 发现属性赋值 | `starbridge.modify_node_property` | 已接入公开契约；当前开关关闭，须真实验收后才开放 |
+| 发现属性赋值 | `starbridge.modify_node_property` | 按已接受规则执行一次赋值；核对旧值、保持项及快照范围，显式保存 |
 | 查询目录能力 | `starbridge.get_capabilities` | 返回明确版本的离线目录能力和适配状态；当前 server 匹配由实际算例调用检查 |
 | 查找对象 | `starbridge.find_objects` | 按类型、名称或关系定位当前会话中的对象 |
 | 描述对象 | `starbridge.describe_object` | 返回属性、操作、值类型和当前可用条件 |

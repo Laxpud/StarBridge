@@ -9,8 +9,8 @@ from copy import deepcopy
 from .catalog import CatalogError
 
 
-# 只读阶段先交付规则描述；通过写入验收后再开放公开执行入口。
-WRITING_ENABLED = False
+# 只允许下列完整规则进入单次赋值事务；实例条件仍需每次准备及 setter 前检查。
+WRITING_ENABLED = True
 
 # 安装库资源可在 all 范围描述，但不属于算例普通赋值的影响范围。
 RESOURCE_OWNERS = {'star.material.MaterialDataBaseManager'}
@@ -113,10 +113,26 @@ class AcceptedWriteRules:
                       self.source['members'][step['member']]['member'])
                      for step in pipeline['steps'])
 
+    @staticmethod
+    def _canonical_signature(signature):
+        """仅归一化已确认的全局参数数量访问，不推断其他 input 的所有权。
+
+        Scalar/VectorGlobalParameter 的 quantity input 是其自身 quantity 的
+        编辑表示；Java 写前仍核对最终 setter 接收数量与读取数量的 CSO key。
+        """
+        for owner in ('star.common.ScalarGlobalParameter', 'star.common.VectorGlobalParameter'):
+            if signature == ((owner, 'getQuantityInput()'),
+                             ('star.common.CompiledValueFunctionInput', 'getQuantity()')):
+                return ((owner, 'getQuantity()'),)
+        return signature
+
     def _matching_entries(self, selected):
         """按首个真实 getter 缩小特殊规则候选，完整管线仍在 attach 核对。"""
         getters = {(p['getter']['owner'].replace('$', '.'), p['getter']['name'] + '()')
                    for p in selected.values()}
+        for owner in ('star.common.ScalarGlobalParameter', 'star.common.VectorGlobalParameter'):
+            if (owner, 'getQuantityInput()') in getters:
+                getters.add((owner, 'getQuantity()'))
         for entries in self.source['properties'].values():
             for original in entries.values():
                 steps = original.get('read', {}).get('steps', [])
@@ -145,6 +161,9 @@ class AcceptedWriteRules:
             collect(original)
             for name in original['write'].get('preserved_properties', []):
                 collect(entries[name]['read'])
+            for entry in entries.values():
+                if entry['adapter'] not in ('quantity', 'vector'):
+                    collect(entry['read'])
         return classes
 
     def attach(self, catalog, rules, selected, type_id, member):
@@ -180,7 +199,7 @@ class AcceptedWriteRules:
                         continue
                     if original['read']['root'] != 'object' or not original['read']['steps']:
                         continue
-                    if self._signature(original['read']) == signature(entry['read']):
+                    if self._canonical_signature(self._signature(original['read'])) == self._canonical_signature(signature(entry['read'])):
                         matches.append((legacy_type, legacy_name, original))
             # 多个上下文规则不能靠任意选第一个消除歧义。
             if len(matches) != 1:
@@ -205,6 +224,21 @@ class AcceptedWriteRules:
                 entries[prefix + name] = copied
             copied_writer = translate(writer)
             copied_writer['preserved_properties'] = [prefix + name for name in preserved]
+            if self._signature(original['read']) != signature(entry['read']):
+                # alias 保留旧目标的完整只读状态，排除数量的两个等价表示。
+                for name, original_property in old_entries.items():
+                    if original_property['adapter'] in ('quantity', 'vector') or name in ('definition', 'unit'):
+                        # 定义和单位是本次赋值的结果，不能同时声明为保持项。
+                        continue
+                    if original_property['read']['root'] != 'object':
+                        continue
+                    copied = translate(original_property)
+                    copied.pop('write', None)
+                    copied['writable'] = False
+                    entries[prefix + name] = copied
+                    if prefix + name not in copied_writer['preserved_properties']:
+                        copied_writer['preserved_properties'].append(prefix + name)
+
             entry.update(writable=True, write=copied_writer,
                          reason='按完整读取声明复用已接受赋值规则及其条件：' + legacy_type + '.' + legacy_name)
 
@@ -230,6 +264,10 @@ class GenericWriteRules(AcceptedWriteRules):
         # 已有特殊规则即使因为上下文或歧义不能迁移，也必须阻止通用回退。
         special_getters = {self._signature(original['read'])[0]
                            for original, _ in self._matching_entries(selected)}
+        # 特殊语义的 input alias 同样保留优先级；迁移失败不能退回通用族。
+        for owner in ('star.common.ScalarGlobalParameter', 'star.common.VectorGlobalParameter'):
+            if (owner, 'getQuantity()') in special_getters:
+                special_getters.add((owner, 'getQuantityInput()'))
         super().attach(catalog, rules, selected, type_id, member)
         entries = rules['properties'][type_id]
         for identifier, descriptor in selected.items():
