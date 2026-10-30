@@ -22,6 +22,8 @@ from .snapshot import prepare_snapshot
 METHODS = (
     'get_capabilities', 'find_objects', 'describe_object', 'read_properties', 'modify',
     'inspect_session', 'open_session', 'session_status', 'save_session', 'close_session',
+    'browse_tree', 'describe_node', 'read_node_properties', 'search_settings',
+    'relocate_node', 'modify_node_property',
 )
 
 
@@ -68,7 +70,9 @@ class Service:
                     state = read_json(Path(directory) / 'session.json')
                 except (OSError, ValueError):
                     pass
-            if isinstance(state, dict) and (state.get('state') == 'uncertain' or state.get('active_request')):
+            if isinstance(error, session_bridge.OperationUncertain) or (
+                    status != 'rejected' and isinstance(state, dict)
+                    and state.get('state') == 'uncertain'):
                 status = 'uncertain'
             result = {'status': status, 'error': {'type': type(error).__name__, 'message': str(error)}}
             if isinstance(state, dict):
@@ -81,6 +85,8 @@ class Service:
         root = bundle_root(bundle_target(release))
         report = coverage(root / 'generated' / 'catalog.json', execution_path=root / 'execution.json')
         rules = read_json(root / 'execution.json')
+        from .discovery_policy import TARGET, PROVIDERS, READ_RULES
+        from .discovery_write import WRITING_ENABLED
         return {
             'target': report['target'], 'catalog_id': report['catalog_id'],
             'supported_versions': [bundle_target(item) for item in BUNDLES],
@@ -88,6 +94,12 @@ class Service:
             'types': {name: {key: entry.get(key) for key in ('java_class', 'parent_type')}
                       for name, entry in rules['types'].items()},
             'execution': report['execution'], 'limitations': report['limitations'],
+            'runtime_discovery': {
+                'supported': report['target'] == TARGET, 'target': TARGET,
+                'providers': PROVIDERS, 'read_rules': READ_RULES,
+                'write_enabled': WRITING_ENABLED and report['target'] == TARGET,
+                'write_scope': 'Accepted special assignments and constant bounded-scalar/vector rules',
+                'instance_conditions': 'not_checked'},
             'unavailable': ['mesh_generation', 'solver_execution', 'persistent_memory', 'gui_attachment'],
         }
 
@@ -141,6 +153,52 @@ class Service:
         """提交一个 schema 2 属性修改或 schema 3 结构操作，保留 expected 核对与回读。"""
         return self._catalog(session_dir, 'modify', request, timeout)
 
+    def browse_tree(self, session_dir, node_id=None, cursor=None, offset=0, limit=100,
+                    scope='simulation', max_nodes=2000, timeout=180):
+        """从根或已发现节点读取一层对象；游标绑定本次关系集合，不递归扫描。"""
+        from .discovery import browse_tree
+        return browse_tree(session_dir, node_id=node_id, cursor=cursor, offset=offset,
+                           limit=limit, scope=scope, max_nodes=max_nodes,
+                           timeout=_timeout(timeout), operate=self._operate)
+
+    def describe_node(self, session_dir, node_id=None, scope='simulation', timeout=180,
+                      property_ids=None, cursor=None, limit=100):
+        """描述当前节点的属性及规则支持状态；不会隐式读取全部属性值。"""
+        from .discovery import describe_node, page_description, _state
+        from .discovery_write import describe_write_support
+        description = describe_node(session_dir, node_id=node_id, scope=scope,
+                                    timeout=_timeout(timeout), operate=self._operate)
+        state = _state(session_dir)
+        description = describe_write_support(session_dir, description, state)
+        return page_description(description, state, property_ids=property_ids, cursor=cursor, limit=limit)
+
+    def read_node_properties(self, session_dir, node_id, property_ids, timeout=180):
+        """重新核对引用和实际描述符，再执行明确选择的属性读取计划。"""
+        from .discovery import read_node_properties
+        return read_node_properties(session_dir, node_id=node_id, property_ids=property_ids,
+                                    timeout=_timeout(timeout), operate=self._operate)
+
+    def relocate_node(self, session_dir, locator, timeout=180):
+        """在新加载中按结构化路径唯一定位对象，返回当前会话的新引用。"""
+        from .discovery import relocate_node
+        return relocate_node(session_dir, locator=locator, timeout=_timeout(timeout),
+                             operate=self._operate)
+
+    def modify_node_property(self, session_dir, node_id, property_id, expected, value, timeout=180):
+        """按受控规则修改单个发现属性；保留旧状态、完整快照和回读，不自动保存。"""
+        from .discovery_write import modify_node_property
+        return modify_node_property(session_dir, node_id=node_id, property_id=property_id,
+                                    expected=expected, value=value, timeout=_timeout(timeout),
+                                    operate=self._operate)
+
+    def search_settings(self, session_dir, query, expand=False, max_nodes=100, max_depth=4,
+                        scope='simulation', timeout=180, limit=100, cursor=None):
+        """搜索已有发现范围；只有显式 expand 才按节点、深度和耗时预算继续发现。"""
+        from .discovery import search_settings
+        return search_settings(session_dir, query=query, expand=expand, max_nodes=max_nodes,
+                               max_depth=max_depth, scope=scope, timeout=_timeout(timeout),
+                               operate=self._operate, limit=limit, cursor=cursor)
+
     def inspect_session(self, session_dir, timeout=180):
         """读取既有 Inspector 快照范围；与按需属性读取共用目录，不表示全配置导出。"""
         return self._operate(session_dir, 'inspect', timeout)
@@ -185,5 +243,12 @@ def contract():
         'session_lifetime': 'Explicit open/save/close; client exit does not close a session.',
         'identity': 'Object references belong to one session token; use full locators after reload.',
         'paths': 'All simulation, session and output paths must be absolute.',
-        'request_schemas': {'read': 1, 'property_modification': 2, 'structural_operation': 3},
+        'request_schemas': {'read': 1, 'property_modification': 2, 'structural_operation': 3,
+                            'discovery': 1},
+        'runtime_discovery': {
+            'versions': [{'release': '2602', 'build': '21.02.007'}],
+            'navigation': 'Browse one level, describe, then read explicit property_ids.',
+            'search': 'Cached scope by default; expand uses explicit node, depth and time budgets.',
+            'references': 'Opaque node_id and property_id; re-describe after identity or rule changes.',
+        },
     }

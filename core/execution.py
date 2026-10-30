@@ -20,7 +20,7 @@ ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum'
             'tensor_components', 'tensor_method_basis', 'tensor_layout_valid',
             'tensor_axes', 'tensor_axis_basis',
             'material_coefficient_basis', 'material_coefficient_state', 'material_method_state',
-            'scalar_bounds'}
+            'scalar_bounds', 'scalar_range'}
 WRITE_ADAPTERS = {
     'primitive': {'value'},
     'field_definition': {'value'},
@@ -139,7 +139,8 @@ def _pipeline(catalog, methods, pipeline, where, *, write_adapter=None):
              f'Pipeline steps must be a list; write pipelines cannot be empty: {where}')
     compiled = []
     for index, step in enumerate(pipeline['steps']):
-        _keys(step, 'member arguments', where)
+        _require(isinstance(step, dict), f'Pipeline step must be an object: {where}')
+        _keys(step, 'member arguments' + (' receiver_types' if 'receiver_types' in step else ''), where)
         _text(step['member'], 'step.member')
         _require(step['member'] in methods, f'Unknown execution member: {step["member"]}')
         member = methods[step['member']]
@@ -166,7 +167,16 @@ def _pipeline(catalog, methods, pipeline, where, *, write_adapter=None):
             else:
                 raise CatalogError('Unknown argument source')
             compiled_arguments.append(arg)
-        compiled.append({**member, 'arguments': compiled_arguments})
+        compiled_step = {**member, 'arguments': compiled_arguments}
+        if 'receiver_types' in step:
+            # 声明类允许继承调用，但 input 解包规则必须限制实际类型；未知子类不能继承执行许可。
+            receivers = step['receiver_types']
+            _require(isinstance(receivers, list) and bool(receivers)
+                     and all(isinstance(name, str) and name in catalog['types'] for name in receivers)
+                     and len(receivers) == len(set(receivers)),
+                     f'Receiver types must be unique non-empty catalog classes: {where}')
+            compiled_step['receiver_types'] = [_binary_class(catalog, name) for name in receivers]
+        compiled.append(compiled_step)
     return {'root': pipeline['root'], 'steps': compiled}
 
 
@@ -361,6 +371,10 @@ def load_execution(catalog_path, execution_path):
                 fields += ' value_types' if related else ''
                 fields += ' value_guards' if write.get('adapter') == 'reference' else ''
                 fields += ' guards' if 'guards' in write else ''
+                if 'constant_only' in write:
+                    _require(write['constant_only'] is True and write.get('adapter') in ('scalar_value', 'vector_value'),
+                             'Constant-only rules require numeric quantity writers')
+                    fields += ' constant_only'
                 _require(rules['schema_version'] >= 6 or 'preserved_properties' not in write,
                          'Writer preserved_properties require execution schema 6')
                 fields += ' preserved_properties' if 'preserved_properties' in write else ''

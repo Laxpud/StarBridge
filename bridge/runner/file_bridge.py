@@ -151,13 +151,20 @@ def reload_legacy(star, output, directory, data, plan, snapshot_plan):
 def execute(star, source, directory, output=None, name="", value=0.0, unit="", *,
             action=None, host=None, port=None, expected_session="", timeout=None,
             client_userdir=None, modification=None, catalog_plan=None,
-            catalog_request=None, session_token=None, legacy_plan=None, snapshot_plan=None):
+            catalog_request=None, session_token=None, legacy_plan=None, snapshot_plan=None,
+            discovery_request=None):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
     catalog_actions = {'catalog-find': 'find', 'catalog-read': 'read', 'catalog-describe': 'describe',
                        'catalog-verify': 'read', 'catalog-modify': 'modify',
                        'file-catalog-modify': 'modify'}
     catalog_call = catalog_plan is not None or catalog_request is not None or action in catalog_actions
     actual_action = action or ('file-set' if output else 'inspect')
+    # 发现请求只携带服务端生成的导航参数；不能混入目录计划或保存请求。
+    discovery_call = actual_action == 'discovery'
+    if discovery_call != (discovery_request is not None):
+        raise ValueError('Discovery requires its matching request and action')
+    if discovery_call and (catalog_call or modification is not None or output is not None):
+        raise ValueError('Discovery cannot be combined with mutation or catalog requests')
     snapshot_call = actual_action in {'inspect', 'save', 'modify', 'file-modify', 'set-scalar',
                                      'file-set', 'catalog-verify', 'catalog-modify', 'file-catalog-modify'}
     if snapshot_call != (snapshot_plan is not None):
@@ -208,18 +215,22 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
     if snapshot_plan is not None:
         (directory / 'snapshot-plan.json').write_text(
             json.dumps(snapshot_plan, ensure_ascii=False, indent=2) + '\n')
+    if discovery_call:
+        (directory / 'discovery-request.json').write_text(
+            json.dumps(discovery_request, ensure_ascii=False, indent=2) + '\n')
     containers = {"__MODIFICATION__": modification, "__CATALOG_PLAN__": catalog_plan,
                   "__CATALOG_REQUEST__": catalog_request, "__LEGACY_PLAN__": legacy_plan,
-                  "__SNAPSHOT_PLAN__": snapshot_plan}
+                  "__SNAPSHOT_PLAN__": snapshot_plan, "__DISCOVERY_REQUEST__": discovery_request}
     text = template.read_text()
     # 一次替换原模板中的占位符，避免用户文本被后续占位符替换再次解释。
-    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|OUTPUT|NAME|UNIT|VALUE|MODIFICATION|CATALOG_PLAN|CATALOG_REQUEST|SESSION_TOKEN|LEGACY_PLAN|SNAPSHOT_PLAN)__",
+    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|OUTPUT|NAME|UNIT|VALUE|MODIFICATION|CATALOG_PLAN|CATALOG_REQUEST|SESSION_TOKEN|LEGACY_PLAN|SNAPSHOT_PLAN|DISCOVERY_REQUEST)__",
                   lambda match: java_literal(containers[match.group()]) if match.group() in containers
                   else json.dumps(replacements[match.group()], ensure_ascii=True),
                   text)
     # STAR 当前只接收一个宏源文件；辅助类与宏一起编译，不依赖同目录自动找类。
     runtime = template.with_name("CatalogRuntime.java").read_text()
-    macro.write_text(text + "\n" + runtime)
+    discovery = template.with_name('DiscoveryRuntime.java').read_text()
+    macro.write_text(text + "\n" + runtime + "\n" + discovery)
     command = [star, "-noretry", "-nbuserdir",
                str(client_userdir or directory / "star-user")]
     if host is not None:
@@ -249,7 +260,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
         raise RuntimeError(f"STAR did not complete the macro; see {directory / 'star.log'}")
     data = json.loads(result.read_text())
     if data.get("status") != "ok" and not (
-            (modification is not None or catalog_call or legacy_call or snapshot_call)
+            (modification is not None or catalog_call or legacy_call or snapshot_call or discovery_call)
             and data.get("status") == "rejected"):
         raise RuntimeError(f"Invalid macro result: {result}")
     return data

@@ -21,7 +21,7 @@ Inspector 快照也已通过独立布局使用共享目录，保留 schema 1 字
 
 拟议系统结合结构化算例访问、工作流 Skills、持久化工作记忆，以及后台或 GUI 常驻算例会话。具体定位与边界见[设计文档](../StarBridge.md)。
 
-后续架构以运行时对象树与属性发现为入口，通过通用规则生成读取计划，不要求维护完整的逐属性配置清单或完全复刻 GUI。见 [ADR](adr/0001-runtime-discovery.md)、[Plan](plans/plan-2026-10-30-12-24.md) 和 [Spec](specs/spec-2026-10-30-12-24.md)。只读可行性实验已完成，产品化实施及新增自动写入尚未开始。
+[运行时发现](runtime-discovery.md)已接入共享 CLI 与 MCP，提供真实对象树导航、属性描述、显式属性读取、有预算的文本搜索及跨加载重定位。当前针对 2602 Build `21.02.007`，按通用规则和本机 Javadoc 声明生成读取计划；未知值和代理保留元数据与限制。会话引用和缓存不能替代实时身份检查。新增 `modify_node_property` 已有公开入口，但只读阶段的发现写入总开关关闭，须另行启用并完成真实写入验收后才开放。实现不代表全算例覆盖，设计及验收要求见 [ADR](adr/0001-runtime-discovery.md)、[Plan](plans/plan-2026-10-30-12-24.md) 和 [Spec](specs/spec-2026-10-30-12-24.md)。
 
 ## 快速开始
 
@@ -37,6 +37,7 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' --work-dir outputs/read
 
 | 文档 | 职责 |
 |---|---|
+| [运行时对象树与属性发现](runtime-discovery.md) | 按真实层级导航、描述和读取属性，有预算搜索及跨加载重定位 |
 | [MCP 与共享 Core API](mcp.md) | 本机 stdio 工具、版本资源、JSON CLI 与失败恢复 |
 | [目录描述与读取](catalog-runtime.md) | 核对 server 版本、按需读取属性，并返回会话引用和逐属性错误 |
 | [目录单属性修改](catalog-modifier.md) | schema 2 写入、旧状态检查、回读、Diff 与文件重载核对 |

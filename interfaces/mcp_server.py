@@ -54,7 +54,8 @@ server = MCPServer(
     'StarBridge', version='0.1.0',
     middleware=[validate_arguments],
     instructions=(
-        'Use exact bundled release capabilities, then find/describe/read before modifying. '
+        'Use exact release capabilities, then browse_tree/describe_node/read_node_properties '
+        'or search_settings to discover settings before modifying. '
         'A write implementation flag does not prove current writability. '
         'Every modification requires the observed expected state. '
         'Save and close are explicit. Client exit does not close STAR. '
@@ -111,6 +112,56 @@ def modify(session_dir: StrictStr, request: dict, timeout: StrictFloat = 180) ->
 def inspect_session(session_dir: StrictStr, timeout: StrictFloat = 180) -> types.CallToolResult:
     """读取既有 Inspector 快照范围，包含参数、场函数、区域、边界、网格和工作流等清单。"""
     return call('inspect_session', locals())
+
+
+@server.tool(name='starbridge.browse_tree', annotations=READ)
+def browse_tree(session_dir: StrictStr, node_id: StrictStr | None = None,
+                cursor: StrictStr | None = None, offset: StrictInt = 0, limit: StrictInt = 100,
+                scope: StrictStr = 'simulation', max_nodes: StrictInt = 2000,
+                timeout: StrictFloat = 180) -> types.CallToolResult:
+    """浏览根或 node_id 的一层对象；保留分页、未知代理和未展开状态，不隐式扫描全树。"""
+    return call('browse_tree', locals())
+
+
+@server.tool(name='starbridge.describe_node', annotations=READ)
+def describe_node(session_dir: StrictStr, node_id: StrictStr | None = None,
+                  scope: StrictStr = 'simulation', timeout: StrictFloat = 180,
+                  property_ids: list[StrictStr] | None = None, cursor: StrictStr | None = None,
+                  limit: StrictInt = 100) -> types.CallToolResult:
+    """描述实际 Bean 属性、来源和规则支持状态；返回 property_id，不执行未知 getter。"""
+    return call('describe_node', locals())
+
+
+@server.tool(name='starbridge.read_node_properties', annotations=READ)
+def read_node_properties(session_dir: StrictStr, node_id: StrictStr, property_ids: list[StrictStr],
+                         timeout: StrictFloat = 180) -> types.CallToolResult:
+    """读取明确选择的发现属性；核对完整性及单项错误，引用会在执行前重新验证。"""
+    return call('read_node_properties', locals())
+
+
+@server.tool(name='starbridge.search_settings', annotations=READ)
+def search_settings(session_dir: StrictStr, query: StrictStr, expand: StrictBool = False,
+                    max_nodes: StrictInt = 100, max_depth: StrictInt = 4,
+                    scope: StrictStr = 'simulation', timeout: StrictFloat = 180,
+                    limit: StrictInt = 100, cursor: StrictStr | None = None) -> types.CallToolResult:
+    """按名称、说明与中英文术语搜索；显式 expand 才扩展发现，空命中不表示全算例不存在。"""
+    return call('search_settings', locals())
+
+
+@server.tool(name='starbridge.relocate_node', annotations=READ)
+def relocate_node(session_dir: StrictStr, locator: list[dict],
+                  timeout: StrictFloat = 180) -> types.CallToolResult:
+    """根据返回的结构化 locator 在当前加载中重新定位；同名歧义拒绝，不复用旧会话引用。"""
+    return call('relocate_node', locals())
+
+
+@server.tool(name='starbridge.modify_node_property', annotations=WRITE)
+def modify_node_property(session_dir: StrictStr, node_id: StrictStr, property_id: StrictStr,
+                         expected: dict | StrictStr | StrictBool | StrictInt | StrictFloat,
+                         value: dict | StrictStr | StrictBool | StrictInt | StrictFloat,
+                         timeout: StrictFloat = 180) -> types.CallToolResult:
+    """提交观察到的 expected 与新值；只执行已接受规则的一次赋值，回读及 Diff 后显式保存。"""
+    return call('modify_node_property', locals())
 
 
 @server.tool(name='starbridge.open_session', annotations=WRITE)

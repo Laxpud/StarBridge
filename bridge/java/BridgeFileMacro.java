@@ -26,6 +26,7 @@ public class BridgeFileMacro extends StarMacro {
     private static final String SESSION_TOKEN = __SESSION_TOKEN__;
     private static final Map<String, Object> LEGACY_PLAN = __LEGACY_PLAN__;
     private static final Map<String, Object> SNAPSHOT_PLAN = __SNAPSHOT_PLAN__;
+    private static final Map<String, Object> DISCOVERY_REQUEST = __DISCOVERY_REQUEST__;
 
     @Override
     public void execute() {
@@ -54,6 +55,13 @@ public class BridgeFileMacro extends StarMacro {
                     writeResult("rejected", unchanged, unchanged, error.getMessage());
                     return;
                 }
+            }
+            if (ACTION.equals("discovery")) {
+                discover(sim);
+                return;
+            }
+            if (DISCOVERY_REQUEST != null) {
+                throw new IllegalArgumentException("Discovery payload requires discovery action");
             }
             if (ACTION.equals("catalog-find") || ACTION.equals("catalog-read") || ACTION.equals("catalog-describe") || ACTION.equals("catalog-verify")) {
                 readCatalog(sim);
@@ -89,6 +97,25 @@ public class BridgeFileMacro extends StarMacro {
         } catch (Exception error) {
             throw new RuntimeException("StarBridge macro failed: " + error, error);
         }
+    }
+
+    /** 仅调用发现提供器；每项错误由提供器保留，身份和版本拒绝单独返回。 */
+    private void discover(Simulation sim) throws java.io.IOException {
+        Map<String, Object> before = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
+        Map<String, Object> discovery;
+        try {
+            if (DISCOVERY_REQUEST == null || CATALOG_PLAN != null || CATALOG_REQUEST != null
+                    || MODIFICATION != null || LEGACY_PLAN != null || SNAPSHOT_PLAN != null || !OUTPUT.isEmpty()) {
+                throw new IllegalArgumentException("Discovery requires an isolated read-only request");
+            }
+            discovery = DiscoveryRuntime.run(sim, DISCOVERY_REQUEST, SESSION_TOKEN);
+        } catch (IllegalArgumentException error) {
+            writeResult("rejected", before, before, error.getMessage());
+            return;
+        }
+        Map<String, Object> after = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
+        Files.writeString(Path.of(RESULT), json(fields("status", "ok", "before", before,
+                "after", after, "discovery", discovery)), StandardCharsets.UTF_8);
     }
 
     /**
@@ -139,6 +166,9 @@ public class BridgeFileMacro extends StarMacro {
     private void modifyCatalog(Simulation sim) throws Exception {
         Map<String, Object> before = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
         CatalogRuntime.PreparedChange prepared;
+        CatalogRuntime.SnapshotCapture capturedBefore = null;
+        Map<String, Object> writeTarget = null, snapshotScope = null;
+        boolean discoveryWrite = CATALOG_PLAN != null && CATALOG_PLAN.containsKey("discovery_binding");
         boolean saving = ACTION.equals("file-catalog-modify");
         try {
             if (CATALOG_PLAN == null || CATALOG_REQUEST == null || MODIFICATION != null || LEGACY_PLAN != null
@@ -147,8 +177,16 @@ public class BridgeFileMacro extends StarMacro {
                 throw new IllegalArgumentException("Catalog modification requires a matching request and save mode");
             }
             // 1. 当前 server gate 与目标属性检查必须早于旧快照 API 和任何设置调用。
+            if (discoveryWrite && saving)
+                throw new IllegalArgumentException("Discovery modifications require a separate explicit save");
             prepared = CatalogRuntime.prepareChange(sim, CATALOG_PLAN, CATALOG_REQUEST, SESSION_TOKEN);
-            before = snapshot(sim);
+            if (discoveryWrite) {
+                if (!(prepared instanceof CatalogRuntime.PreparedModification))
+                    throw new IllegalArgumentException("Discovery snapshot scope requires a property assignment");
+                writeTarget = ((CatalogRuntime.PreparedModification) prepared).snapshotWriteTarget();
+                capturedBefore = CatalogRuntime.snapshotWithBindings(sim, SNAPSHOT_PLAN, SESSION_TOKEN);
+                before = capturedBefore.snapshot;
+            } else before = snapshot(sim);
             if (!Boolean.TRUE.equals(before.get("inspection_complete"))) {
                 throw new IllegalArgumentException("Modification requires a complete covered snapshot");
             }
@@ -162,7 +200,11 @@ public class BridgeFileMacro extends StarMacro {
 
         // 2. 这里只执行后端已经准备好的设置动作；失败继续抛出，让会话进入 uncertain。
         Map<String, Object> catalog = prepared.apply();
-        Map<String, Object> after = snapshot(sim);
+        CatalogRuntime.SnapshotCapture capturedAfter = discoveryWrite
+                ? CatalogRuntime.snapshotWithBindings(sim, SNAPSHOT_PLAN, SESSION_TOKEN) : null;
+        Map<String, Object> after = discoveryWrite ? capturedAfter.snapshot : snapshot(sim);
+        // setter 已尝试后才核对快照影响范围；任何额外变化沿 uncertain 路径传播，绝不重试。
+        if (discoveryWrite) snapshotScope = CatalogRuntime.verifyDiscoverySnapshot(capturedBefore, capturedAfter, writeTarget);
         if (!Boolean.TRUE.equals(after.get("inspection_complete"))
                 || !Boolean.TRUE.equals(catalog.get("inspection_complete"))) {
             throw new IllegalStateException("Modification readback is incomplete");
@@ -181,6 +223,7 @@ public class BridgeFileMacro extends StarMacro {
         }
         Map<String, Object> result = fields("status", "ok", "before", before, "after", after,
                 "catalog_before", prepared.before(), "catalog", catalog, "catalog_request", CATALOG_REQUEST);
+        if (snapshotScope != null) result.put("snapshot_scope", snapshotScope);
         Files.writeString(Path.of(RESULT), json(result), StandardCharsets.UTF_8);
     }
 

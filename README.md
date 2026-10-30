@@ -21,7 +21,7 @@ The existing Inspector snapshot now also uses the shared catalog through a separ
 
 The proposed system combines structured simulation access, workflow Skills, persistent working memory, and long-lived background or GUI simulation sessions. See the [design document](StarBridge.md) for scope and boundaries.
 
-The next planned architecture uses runtime object-tree and property discovery to generate read plans from shared rules, without requiring a complete manual settings list or reproducing the GUI exactly. See the [ADR](docs/adr/0001-runtime-discovery.md), [plan](docs/plans/plan-2026-10-30-12-24.md), and [specification](docs/specs/spec-2026-10-30-12-24.md) (Chinese). The read-only feasibility experiment is complete; product implementation and new automatic writes have not started.
+[Runtime discovery](docs/runtime-discovery.md) now provides object-tree browsing, property descriptions, explicit property reads, bounded text search, and relocation after reload through the shared CLI and MCP. It generates read plans from versioned rules and local Javadoc declarations for STAR 2602 Build `21.02.007`; unknown values and proxies retain metadata and limitations. Session references and metadata caches do not replace live identity checks. The new `modify_node_property` entry point is present but disabled during this read-only stage; enabling it requires separate real-simulation write validation. This implementation does not establish complete simulation coverage. Design and acceptance requirements remain in the [ADR](docs/adr/0001-runtime-discovery.md), [plan](docs/plans/plan-2026-10-30-12-24.md), and [specification](docs/specs/spec-2026-10-30-12-24.md) (Chinese).
 
 ## Getting started
 
@@ -37,6 +37,7 @@ Supply your own compatible simulation file and a new work directory. For repeate
 
 | Document | Purpose |
 |---|---|
+| [Runtime discovery](docs/runtime-discovery.md) | Browse actual nodes, describe and read discovered properties, search within a budget, and relocate references |
 | [MCP and shared Core API](docs/mcp.md) | Local stdio tools, version resources, JSON CLI, and recovery behavior |
 | [Catalog describe/read](docs/catalog-runtime.md) | Read selected properties with server-version checks, session references, and per-property errors |
 | [Catalog modification](docs/catalog-modifier.md) | Schema 2 property writes, expected state, readback, diffs, and file reload verification |

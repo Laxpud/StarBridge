@@ -25,6 +25,9 @@ class CatalogRuntime {
         require(runtime.get("release").equals(version.get("release"))
                 && runtime.get("build").equals(version.get("build")),
                 "Catalog version mismatch: expected " + version + ", got " + runtime);
+        // 发现计划携带 Core 内部附加的绑定；在执行前重查真实父关系，旧目录计划保持原契约。
+        if (plan.containsKey("discovery_binding"))
+            DiscoveryRuntime.checkBinding(sim, object(plan.get("discovery_binding"), "plan.discovery_binding"), sessionToken);
         return runtime;
     }
 
@@ -54,6 +57,117 @@ class CatalogRuntime {
         result.put("inspection_complete", errors.isEmpty());
         result.put("read_errors", errors);
         return result;
+    }
+
+    /**
+     * 将本次快照实际读取的对象身份保存在旁路，不改变旧 schema 的任何字段。
+     * ThreadLocal 仅覆盖一次同步 snapshot 调用；finally 清除，后续普通快照不会继承绑定。
+     */
+    private static final ThreadLocal<SnapshotCapture> SNAPSHOT_CAPTURE = new ThreadLocal<>();
+
+    public static final class SnapshotCapture {
+        public java.util.Map<String, Object> snapshot;
+        public final java.util.Map<String, Object> bindings = fields("objects", new java.util.TreeMap<String, Object>(),
+                "fields", new java.util.TreeMap<String, Object>());
+        private final java.util.IdentityHashMap<Object, Object> objectBindings = new java.util.IdentityHashMap<>();
+        private final java.util.IdentityHashMap<Object, java.util.Map<String, Object>> fieldBindings = new java.util.IdentityHashMap<>();
+
+        /** 在输出排序完成后定位真实容器；列表用索引，字段按 JSON Pointer 转义。 */
+        private void collect(Object value, String pointer) {
+            if (value instanceof java.util.Map<?, ?>) {
+                if (objectBindings.containsKey(value)) object(bindings.get("objects"), "bindings.objects").put(pointer, objectBindings.get(value));
+                java.util.Map<String, Object> recorded = fieldBindings.get(value);
+                java.util.Map<String, Object> values = object(value, "snapshot value");
+                if (recorded != null) for (java.util.Map.Entry<String, Object> entry : recorded.entrySet()) {
+                    require(values.containsKey(entry.getKey()), "Captured snapshot field disappeared");
+                    object(bindings.get("fields"), "bindings.fields").put(pointer + "/" + pointerToken(entry.getKey()), entry.getValue());
+                }
+                for (java.util.Map.Entry<String, Object> entry : values.entrySet()) collect(entry.getValue(), pointer + "/" + pointerToken(entry.getKey()));
+            } else if (value instanceof java.util.List<?>) {
+                java.util.List<?> values = (java.util.List<?>) value;
+                for (int index = 0; index < values.size(); index++) collect(values.get(index), pointer + "/" + index);
+            }
+        }
+    }
+
+    /** 捕获现有快照读取的身份，不新增算例 getter 或改变排序与错误语义。 */
+    public static SnapshotCapture snapshotWithBindings(star.common.Simulation sim,
+            java.util.Map<String, Object> plan, String token) {
+        require(SNAPSHOT_CAPTURE.get() == null, "Nested snapshot binding capture is unsupported");
+        SnapshotCapture capture = new SnapshotCapture();
+        SNAPSHOT_CAPTURE.set(capture);
+        try { capture.snapshot = snapshot(sim, plan, token); }
+        finally { SNAPSHOT_CAPTURE.remove(); }
+        capture.collect(capture.snapshot, "");
+        return capture;
+    }
+
+    /** CSO 绑定与显示名独立，重建为同名对象仍会改变 key。 */
+    private static java.util.Map<String, Object> snapshotIdentity(star.base.neo.ClientServerObject value) {
+        return fields("key", value.getObjectKeyAsString(), "java_class", value.getClass().getName());
+    }
+
+    /** 记录字段原始对象与已选编码路径；只有确切数量字段才具有放行候选。 */
+    private static void captureSnapshotField(java.util.Map<String, Object> container, String output,
+            Object raw, String adapter, java.util.List<?> selected, Object encoded) {
+        SnapshotCapture capture = SNAPSHOT_CAPTURE.get();
+        if (capture == null || !(raw instanceof star.base.neo.ClientServerObject)) return;
+        java.util.Map<String, Object> binding = snapshotIdentity((star.base.neo.ClientServerObject) raw);
+        java.util.List<String> allowedSuffixes = new java.util.ArrayList<>();
+        java.util.Set<String> allowedFields = adapter.equals("quantity")
+                ? java.util.Set.of("definition", "unit", "raw_value", "si_value")
+                : adapter.equals("vector") ? java.util.Set.of("definition", "unit", "components") : java.util.Set.of();
+        if (selected.isEmpty() && encoded instanceof java.util.Map<?, ?>) {
+            for (String field : allowedFields) if (((java.util.Map<?, ?>) encoded).containsKey(field)) allowedSuffixes.add("/" + pointerToken(field));
+        } else if (selected.size() == 1 && allowedFields.contains(selected.get(0))) allowedSuffixes.add("");
+        java.util.Collections.sort(allowedSuffixes);
+        binding.putAll(fields("adapter", adapter, "selected", new java.util.ArrayList<>(selected), "allowed_suffixes", allowedSuffixes));
+        capture.fieldBindings.computeIfAbsent(container, ignored -> new java.util.LinkedHashMap<>()).put(output, binding);
+    }
+
+    private static String pointerToken(String value) { return value.replace("~", "~0").replace("/", "~1"); }
+
+    /**
+     * 写后只放行同一个 setter 数量对象在快照中的直接表示；所有其余内容和全部绑定必须保持。
+     * modified 是会话脏标志而非配置内容；除此以外不忽略名称、路径、集合排序或运行时范围。
+     * primitive/enum 暂无精确字段绑定规则，允许集合为空，因此也不能放行任何旧快照变化。
+     */
+    public static java.util.Map<String, Object> verifyDiscoverySnapshot(SnapshotCapture before,
+            SnapshotCapture after, java.util.Map<String, Object> target) {
+        require(before != null && after != null && target != null, "Discovery snapshot scope is required");
+        require(Boolean.TRUE.equals(before.snapshot.get("inspection_complete"))
+                && Boolean.TRUE.equals(after.snapshot.get("inspection_complete")), "Discovery snapshot scope is incomplete");
+        require(sameValue(before.bindings, after.bindings), "Discovery snapshot object or field binding changed");
+        java.util.Set<String> allowed = new java.util.TreeSet<>();
+        String adapter = string(target.get("adapter"), "write target adapter");
+        String encodedAdapter = java.util.Set.of("scalar_value", "scalar_expression").contains(adapter) ? "quantity"
+                : java.util.Set.of("vector_value", "vector_expression").contains(adapter) ? "vector" : null;
+        for (java.util.Map.Entry<String, Object> entry : object(before.bindings.get("fields"), "snapshot field bindings").entrySet()) {
+            java.util.Map<String, Object> binding = object(entry.getValue(), "snapshot field binding");
+            if (encodedAdapter == null || !encodedAdapter.equals(binding.get("adapter"))
+                    || !target.get("key").equals(binding.get("key"))
+                    || !target.get("java_class").equals(binding.get("java_class"))) continue;
+            for (Object suffix : list(binding.get("allowed_suffixes"), "allowed suffixes")) allowed.add(entry.getKey() + (String) suffix);
+        }
+        compareSnapshotScope(before.snapshot, after.snapshot, "", allowed);
+        return fields("target", target, "allowed_snapshot_pointers", new java.util.ArrayList<>(allowed),
+                "ignored_metadata_pointers", java.util.List.of("/modified"), "before_bindings", before.bindings,
+                "after_bindings", after.bindings, "verification", "passed",
+                "mode", allowed.isEmpty() ? "unchanged_snapshot" : "bound_quantity_fields");
+    }
+
+    /** 递归核对所有未声明变化的内容；错误保留精确 Pointer，写后调用方会返回 uncertain。 */
+    private static void compareSnapshotScope(Object before, Object after, String pointer, java.util.Set<String> allowed) {
+        if (pointer.equals("/modified") || allowed.contains(pointer)) return;
+        if (before instanceof java.util.Map<?, ?> && after instanceof java.util.Map<?, ?>) {
+            java.util.Map<String, Object> a = object(before, "before snapshot"), b = object(after, "after snapshot");
+            require(a.keySet().equals(b.keySet()), "Unexpected snapshot fields changed at " + pointer);
+            for (String key : a.keySet()) compareSnapshotScope(a.get(key), b.get(key), pointer + "/" + pointerToken(key), allowed);
+        } else if (before instanceof java.util.List<?> && after instanceof java.util.List<?>) {
+            java.util.List<?> a = (java.util.List<?>) before, b = (java.util.List<?>) after;
+            require(a.size() == b.size(), "Unexpected snapshot collection changed at " + pointer);
+            for (int index = 0; index < a.size(); index++) compareSnapshotScope(a.get(index), b.get(index), pointer + "/" + index, allowed);
+        } else require(sameValue(before, after), "Unexpected snapshot content changed at " + pointer);
     }
 
     /** 集合管线失败返回空数组并记录路径；节点错误由各节点自身保留，互不覆盖。 */
@@ -99,6 +213,8 @@ class CatalogRuntime {
         boolean entered = false;
         try {
             String name = value.getPresentationName();
+            SnapshotCapture capture = SNAPSHOT_CAPTURE.get();
+            if (capture != null) capture.objectBindings.put(result, snapshotIdentity(value));
             result.put("name", name);
             result.put("object_type", value.getClass().getSimpleName());
             path += "/" + name;
@@ -173,6 +289,7 @@ class CatalogRuntime {
                     require(field.keySet().equals(java.util.Set.of("output", "read", "adapter", "select")),
                             "Invalid snapshot adapted fields");
                     String adapter = string(field.get("adapter"), "field.adapter");
+                    Object rawValue = value;
                     value = encode(value, adapter, token);
                     for (Object key : list(field.get("select"), "field.select")) {
                         String name = string(key, "select key");
@@ -182,9 +299,15 @@ class CatalogRuntime {
                     }
                     if (output == null) {
                         require(adapter.equals("quantity"), "Only quantity fields may expand into a node");
-                        result.putAll(object(value, "expanded quantity"));
+                        java.util.Map<String, Object> expanded = object(value, "expanded quantity");
+                        result.putAll(expanded);
+                        for (java.util.Map.Entry<String, Object> item : expanded.entrySet())
+                            captureSnapshotField(result, item.getKey(), rawValue, adapter,
+                                    java.util.List.of(item.getKey()), item.getValue());
                         continue;
                     }
+                    captureSnapshotField(result, (String) output, rawValue, adapter,
+                            list(field.get("select"), "field.select"), value);
                 }
             }
             result.put((String) output, value);
@@ -682,8 +805,8 @@ class CatalogRuntime {
             star.common.ScalarPhysicalQuantity quantity = (star.common.ScalarPhysicalQuantity) rawQuantity;
             require(quantityKey.equals(quantity.getObjectKeyAsString()), "Scalar bounds quantity identity changed");
             Object rawInput = pipeline(sim, resolved.object, resolved.parent, boundsRead);
-            require(rawInput instanceof star.common.BoundedScalarInput,
-                    "Scalar bounds require a BoundedScalarInput");
+            require(rawInput != null && rawInput.getClass() == star.common.BoundedScalarInput.class,
+                    "Scalar bounds require an exact BoundedScalarInput");
             star.common.BoundedScalarInput original = (star.common.BoundedScalarInput) rawInput;
             require(original.getQuantity() != null
                     && quantityKey.equals(original.getQuantity().getObjectKeyAsString()),
@@ -744,6 +867,15 @@ class CatalogRuntime {
 
         public java.util.Map<String, Object> before() { return before; }
 
+        /** 最终 setter 已准备的 receiver 是声明写目标；不能用展示节点冒充其底层数量身份。 */
+        public java.util.Map<String, Object> snapshotWriteTarget() {
+            require(invocation.receiver instanceof star.base.neo.ClientServerObject,
+                    "Discovery setter requires a STAR object receiver");
+            java.util.Map<String, Object> target = snapshotIdentity((star.base.neo.ClientServerObject) invocation.receiver);
+            target.put("adapter", adapter);
+            return target;
+        }
+
         PreparedModification(star.common.Simulation sim, java.util.Map<String, Object> plan,
                 java.util.Map<String, Object> readRequest, String token, String property,
                 String adapter, Object value, Invocation invocation,
@@ -772,6 +904,14 @@ class CatalogRuntime {
                 Resolved referenced = locate(sim, object(plan.get("types"), "plan.types"), binding.target, token, 0);
                 checkGuards(sim, referenced, fields("guards", binding.guards), token);
             }
+            // 准备与执行之间可能有其他客户端修改；重新核对完整目标状态，
+            // 防止过时 expected 进入 setter。失败沿不确定路径返回，不自动重试。
+            java.util.Map<String, Object> immediatelyBefore = inspect(sim, plan, readRequest, token);
+            require(Boolean.TRUE.equals(immediatelyBefore.get("inspection_complete")),
+                    "Pre-write inspection is incomplete");
+            require(sameValue(before.get("target"), immediatelyBefore.get("target"))
+                    && sameValue(before.get("properties"), immediatelyBefore.get("properties")),
+                    "Modification state changed before setter");
             // 范围和表达式依赖可能在准备后变化；紧贴唯一 setter 再读取并预览一次。
             // 此处失败仍属于 apply 的结果不确定路径，调用方不能自动重试 setter。
             if (boundsCheck != null) boundsCheck.check(sim, current);
@@ -872,6 +1012,9 @@ class CatalogRuntime {
                 Object raw = pipeline(sim, resolved.object, resolved.parent, object(entry.get("read"), "property.read"));
                 require(raw instanceof star.common.ScalarPhysicalQuantity, "Scalar writes require a scalar quantity");
                 star.common.ScalarPhysicalQuantity quantity = (star.common.ScalarPhysicalQuantity) raw;
+                if (Boolean.TRUE.equals(writer.get("constant_only")))
+                    require(star.common.PhysicalQuantityParser.parseAsConstant(quantity.getDefinition()) != null,
+                            "Generic scalar assignment requires an existing constant definition");
                 java.util.Map<String, Object> input = object(value, "scalar value");
                 String field = adapter.equals("scalar_expression") ? "definition" : "value";
                 require(input.keySet().equals(java.util.Set.of(field, "unit")), "Invalid scalar value fields");
@@ -905,6 +1048,9 @@ class CatalogRuntime {
                 Object raw = pipeline(sim, resolved.object, resolved.parent, object(entry.get("read"), "property.read"));
                 require(raw instanceof star.common.VectorPhysicalQuantity, "Vector writes require a vector quantity");
                 star.common.VectorPhysicalQuantity quantity = (star.common.VectorPhysicalQuantity) raw;
+                if (Boolean.TRUE.equals(writer.get("constant_only")))
+                    require(vectorConstant(quantity.getDefinition()) != null,
+                            "Generic vector assignment requires an existing constant definition");
                 finiteVector(quantity.getRawVector().toDoubleArray(), "Current vector");
                 java.util.Map<String, Object> input = object(value, "vector value");
                 String field = adapter.equals("vector_expression") ? "definition" : "components";
@@ -1483,6 +1629,12 @@ class CatalogRuntime {
                                          java.util.Map<String, Object> context) throws Exception {
         Class<?> owner = javaType(string(call.get("owner"), "step.owner"));
         require(receiver != null && owner.isInstance(receiver), "Pipeline receiver type mismatch");
+        // 可选精确接收类型由 Core 从版本目录编译；在反射解析和执行之前拒绝未知 input 子类。
+        if (call.containsKey("receiver_types")) {
+            java.util.List<?> receiverTypes = list(call.get("receiver_types"), "step.receiver_types");
+            require(!receiverTypes.isEmpty() && receiverTypes.contains(receiver.getClass().getName()),
+                    "Pipeline receiver runtime type is not accepted: " + receiver.getClass().getName());
+        }
         java.util.List<?> names = list(call.get("parameter_types"), "step.parameter_types");
         java.util.List<?> specs = list(call.get("arguments"), "step.arguments");
         require(names.size() == specs.size(), "Pipeline argument count mismatch");
@@ -1625,6 +1777,10 @@ class CatalogRuntime {
      * 端点成员资格不试图恢复退化空区间内部保存的开闭标志；无有限界返回 null。
      */
     private static java.util.Map<String, Object> scalarBounds(star.common.BoundedScalarInput input) {
+        // 范围适配器会直接调用 input 方法；不能绕过解包步骤的精确接收类型限制。
+        // 当前规则仅接受已核验的 BoundedScalarInput 本类，未知子类须另行建立证据。
+        require(input != null && input.getClass() == star.common.BoundedScalarInput.class,
+                "Scalar bounds require an exact BoundedScalarInput");
         star.base.neo.ScalarRange range = input.getRange();
         star.common.Units units = input.getUnits();
         require(range != null && units != null, "Scalar bounds require a range and input unit");
@@ -1638,17 +1794,33 @@ class CatalogRuntime {
                 "integral", range.isIntegral());
     }
 
+    /**
+     * 编码已接受动态范围方法返回的本地范围；无单位保持 null，不猜测输入或 SI 单位。
+     * 精确 ScalarRange 类型防止未核验子类覆盖访问器；端点成员资格与 scalar_bounds 保持一致。
+     */
+    private static java.util.Map<String, Object> scalarRange(star.base.neo.ScalarRange range) {
+        double minimum = range.getMin(), maximum = range.getMax();
+        require(!Double.isNaN(minimum) && !Double.isNaN(maximum), "Scalar range endpoints must not be NaN");
+        star.common.Units units = range.getUnits();
+        return fields("input_unit", units == null ? null : units.getPresentationName(),
+                "minimum", Double.isFinite(minimum) ? minimum : null,
+                "maximum", Double.isFinite(maximum) ? maximum : null,
+                "minimum_included", Double.isFinite(minimum) ? range.contains(minimum) : null,
+                "maximum_included", Double.isFinite(maximum) ? range.contains(maximum) : null,
+                "integral", range.isIntegral());
+    }
+
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
-                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state", "scalar_bounds")
+                "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state", "scalar_bounds", "scalar_range")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
         // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
         if (adapter.equals("presence")) return value != null;
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {
-            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state", "scalar_bounds").contains(adapter),
+            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state", "scalar_bounds", "scalar_range").contains(adapter),
                     "Metadata adapter requires a non-null value: " + adapter);
             return null;
         }
@@ -1689,6 +1861,10 @@ class CatalogRuntime {
                 require(value instanceof star.common.BoundedScalarInput,
                         "Scalar bounds adapter requires a BoundedScalarInput");
                 return scalarBounds((star.common.BoundedScalarInput) value);
+            case "scalar_range":
+                require(value.getClass() == star.base.neo.ScalarRange.class,
+                        "Scalar range adapter requires an exact ScalarRange");
+                return scalarRange((star.base.neo.ScalarRange) value);
             case "vector":
                 require(value instanceof star.common.VectorPhysicalQuantity, "Vector adapter requires a vector quantity");
                 star.common.VectorPhysicalQuantity vector = (star.common.VectorPhysicalQuantity) value;

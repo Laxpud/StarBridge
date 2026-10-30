@@ -28,6 +28,10 @@ from bridge.runner.modifier import ModificationRejected, load_request, snapshot_
 from core.catalog_bundle import bundle_target, check_plan_targets, session_target
 
 
+class OperationUncertain(RuntimeError):
+    """标记本次客户端启动后的不确定结果，区别于并发请求的活动标记。"""
+
+
 def write_json(path, data):
     """原子更新会话记录，避免中断后读到只写了一半的 JSON。"""
     temporary = path.with_suffix('.tmp')
@@ -84,7 +88,7 @@ def locked(directory):
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise RuntimeError('Session is busy with another Bridge request')
+            raise ModificationRejected('Session is busy with another Bridge request')
         yield
 
 
@@ -119,7 +123,7 @@ def terminate_owned(state):
 
 def request(directory, state, action, timeout, *, output=None, name='', value=0.0, unit='',
             modification=None, catalog_plan=None, catalog_request=None, legacy_plan=None,
-            snapshot_plan=None):
+            snapshot_plan=None, discovery_request=None):
     """连接已登记的服务并校验目标文件身份；修改失败不自动重试。"""
     if not alive(state):
         raise RuntimeError('Managed server is not running; refusing to connect to its old port')
@@ -136,7 +140,8 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
                    expected_session=state['current_file'], timeout=timeout,
                    client_userdir=directory / 'client-settings', modification=modification,
                    catalog_plan=catalog_plan, catalog_request=catalog_request,
-                   session_token=state['session_token'], legacy_plan=legacy_plan, snapshot_plan=snapshot_plan)
+                   session_token=state['session_token'], legacy_plan=legacy_plan, snapshot_plan=snapshot_plan,
+                   discovery_request=discovery_request)
     if not alive(state):
         raise RuntimeError('Server exited or changed identity during request')
     if digest(Path(state['input'])) != state['input_sha256']:
@@ -231,7 +236,7 @@ def operate(args, directory):
             raise RuntimeError('Managed server is not running')
         uncertain = state['state'] != 'ready' or state.get('active_request') is not None
         if uncertain and not (args.action == 'stop' and args.discard):
-            raise RuntimeError('Previous operation outcome is unknown; inspect logs or stop --discard')
+            raise OperationUncertain('Previous operation outcome is unknown; inspect logs or stop --discard')
         # 持锁后从会话绑定选择版本。所有本地计划校验都在请求活动标记与 uncertain
         # 捕获块之前完成，版本错配只拒绝本次输入，不污染可继续使用的会话。
         if not (args.action == 'stop' and args.discard):
@@ -275,7 +280,8 @@ def operate(args, directory):
                                 catalog_plan=getattr(args, 'catalog_plan', None),
                                 catalog_request=getattr(args, 'catalog_request', None),
                                 legacy_plan=getattr(args, 'legacy_plan', None),
-                                snapshot_plan=getattr(args, 'snapshot_plan', None))
+                                snapshot_plan=getattr(args, 'snapshot_plan', None),
+                                discovery_request=getattr(args, 'discovery_request', None))
             if data['status'] == 'rejected':
                 raise ModificationRejected(f'{data["error"]}; see {run / "result.json"}')
             if args.action == 'modify' and not catalog_call:
@@ -299,7 +305,9 @@ def operate(args, directory):
                     raise RuntimeError('Saved file/path was not confirmed')
             result = {'session': str(directory), 'process': state['process'],
                       'request_result': str(run / 'result.json')}
-            if catalog_call:
+            if args.action == 'discovery':
+                result['discovery'] = data['discovery']
+            elif catalog_call:
                 # 目录结果独立封装；最小会话元数据不能冒充旧 Inspector 的完整快照。
                 result['catalog'] = data['catalog']
             else:
@@ -311,6 +319,9 @@ def operate(args, directory):
             if args.action == 'modify':
                 result.update(modification=args.catalog_request if catalog_call else args.modification,
                               snapshot=data['after'], snapshot_diff=snapshot_diff(data['before'], data['after']))
+                if 'snapshot_scope' in data:
+                    # 运行时已按对象 key 约束允许变化的快照字段；Diff 仅展示通过验证后的差异。
+                    result['snapshot_scope'] = data['snapshot_scope']
                 if catalog_call:
                     result.update(catalog_before=data['catalog_before'],
                                   catalog_diff=catalog_diff(data['catalog_before'], data['catalog'],
@@ -319,10 +330,12 @@ def operate(args, directory):
         except ModificationRejected:
             # 宏已确认写入前拒绝，request 已清除活动标记；不把拒绝变成未知写入结果。
             raise
-        except BaseException:
+        except BaseException as error:
             # 超时或客户端失败可能发生在写入之后；保留不确定状态并禁止静默重试。
             state['state'] = 'uncertain'
             write_json(directory / 'session.json', state)
+            if isinstance(error, Exception):
+                raise OperationUncertain(str(error)) from error
             raise
 
 
