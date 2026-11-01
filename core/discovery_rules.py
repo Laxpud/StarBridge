@@ -61,12 +61,21 @@ def _write(path, value):
 
 
 def installation(state):
-    """从会话绑定的真实可执行文件向上寻找同一安装的官方文档。"""
+    """从会话可执行路径向上寻找官方文档；解析符号链接，但不解析包装脚本内容。
+
+    包装脚本可能启动成功却没有安装目录父路径。错误明确给出查找依据和重新打开方式，
+    避免调用者把环境缺失误认为属性或类型规则不支持。
+    """
     executable = Path(state['star']).resolve()
     for parent in executable.parents:
         if (parent / 'doc/client/html/type-search-index.js').is_file():
             return parent
-    raise ValueError('STAR installation Javadoc is unavailable')
+    raise ValueError(
+        f'STAR installation Javadoc is unavailable for executable {executable}; '
+        'expected doc/client/html/type-search-index.js under an ancestor directory. '
+        'Use open_session with star pointing to the actual executable inside the matching STAR installation '
+        'and a new session_dir; wrapper scripts outside the installation are not resolved. '
+        'If the executable is already inside the installation, install its matching local Javadoc.')
 
 
 def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):

@@ -20,7 +20,7 @@ from .snapshot import prepare_snapshot
 
 
 METHODS = (
-    'get_capabilities', 'find_objects', 'describe_object', 'read_properties', 'modify',
+    'get_contract', 'discover_installations', 'get_capabilities', 'find_objects', 'describe_object', 'read_properties', 'modify',
     'inspect_session', 'open_session', 'session_status', 'save_session', 'close_session',
     'browse_tree', 'describe_node', 'read_node_properties', 'search_settings',
     'relocate_node', 'modify_node_property',
@@ -78,19 +78,59 @@ class Service:
             if isinstance(state, dict):
                 result['session_state'] = {key: state.get(key) for key in
                                            ('state', 'active_request', 'last_request', 'last_request_status')}
+            # 失败恢复信息与错误一起返回，客户端不必先翻项目文档；不根据错误猜测是否已执行 setter。
+            from .interface_contract import recovery_guidance
+            result['recovery'] = recovery_guidance(status, directory, state)
             return result
 
-    def get_capabilities(self, release):
-        """读取精确版本的离线能力；不把具备实现解释为当前算例可写。"""
+    def get_contract(self):
+        """不连接 STAR，返回与 MCP Resource 相同的自说明调用契约。"""
+        return contract()
+
+    def discover_installations(self, star=None, search_roots=None, timeout=30):
+        """探测用户指定程序或有界环境候选的实际版本；不加载算例、不自动选择安装。"""
+        from .environment import discover_installations
+        return discover_installations(star, search_roots, _timeout(timeout))
+
+    def get_capabilities(self, release=None, build=None):
+        """查询注册能力，版本由调用者或安装探测提供；未知版本作为查询结果返回。
+
+        省略版本时只列支持范围，不选择默认版本。给出 release 但未给 Build 时，
+        返回该 release 的已登记目录，不代表本机安装或用户算例已匹配。
+        """
+        from .discovery_policy import TARGET, PROVIDERS, READ_RULES
+        from .discovery_write import WRITING_ENABLED
+        versions = [bundle_target(item) for item in BUNDLES]
+        if release is None:
+            if build is not None:
+                raise ValueError('build requires release')
+            return {'query_scope': 'registry', 'supported_versions': versions,
+                    'runtime_discovery_versions': [dict(TARGET)], 'runtime_state': 'not_checked',
+                    'selection_required': True,
+                    'next_step': '需要选择安装时使用用户指定程序，或 discover_installations 获取实际 version；不能把支持列表当成本机安装列表。已有可用会话可沿用。'}
+        if not isinstance(release, str) or not release or (build is not None and
+                (not isinstance(build, str) or not build)):
+            raise ValueError('release and optional build must be non-empty strings')
+        if release not in BUNDLES or (build is not None and BUNDLES[release] != build):
+            return {'query_scope': 'target', 'target': {'release': release, 'build': build},
+                    'supported': False,
+                    'support_status': 'unsupported_release' if release not in BUNDLES else 'unsupported_build',
+                    'supported_versions': versions, 'runtime_state': 'not_checked',
+                    'types': {}, 'execution': {},
+                    'runtime_discovery': {'supported': False, 'write_enabled': False},
+                    'limitations': ['当前未登记此版本的可执行适配；检测到安装不代表能够读取或修改其算例。'],
+                    'next_step': '报告实际版本与缺少的适配；不要冒用邻近版本、自动切换安装或转换算例。'}
         root = bundle_root(bundle_target(release))
         report = coverage(root / 'generated' / 'catalog.json', execution_path=root / 'execution.json')
         rules = read_json(root / 'execution.json')
-        from .discovery_policy import TARGET, PROVIDERS, READ_RULES
-        from .discovery_write import WRITING_ENABLED
         return {
+            'query_scope': 'target', 'supported': True, 'support_status': 'registered',
+            'version_selection': 'exact_query' if build is not None else 'registered_build_for_release',
             'target': report['target'], 'catalog_id': report['catalog_id'],
-            'supported_versions': [bundle_target(item) for item in BUNDLES],
+            'supported_versions': versions,
             'runtime_state': 'not_checked', 'discovery': report['discovery'],
+            'usage': {'contract_tool': 'starbridge.get_contract', 'contract_resource': 'starbridge://contract',
+                      'next_step': '需要新会话时 open_session，已有可用会话直接沿用；按当前版本和目标选择发现或目录接口，types 不是当前算例实例。'},
             'types': {name: {key: entry.get(key) for key in ('java_class', 'parent_type')}
                       for name, entry in rules['types'].items()},
             'execution': report['execution'], 'limitations': report['limitations'],
@@ -99,6 +139,11 @@ class Service:
                 'providers': PROVIDERS, 'read_rules': READ_RULES,
                 'write_enabled': WRITING_ENABLED and report['target'] == TARGET,
                 'write_scope': 'Accepted special assignments and constant bounded-scalar/vector rules',
+                'requirements': [
+                    'Linux 管理会话，精确匹配已支持 Build。',
+                    'open_session.star 解析后须位于对应安装目录内；不解析外部包装脚本。',
+                    '可执行文件的某个父目录下须有本机 doc/client/html/type-search-index.js。',
+                ],
                 'instance_conditions': 'not_checked'},
             'unavailable': ['mesh_generation', 'solver_execution', 'persistent_memory', 'gui_attachment'],
         }
@@ -123,7 +168,13 @@ class Service:
             plan, prepared = prepare_find(*paths, request)
         else:
             plan, prepared = prepare_read_value(*paths, request, action)
-        return self._operate(session_dir, action, timeout, catalog_plan=plan, catalog_request=prepared)
+        result = self._operate(session_dir, action, timeout, catalog_plan=plan, catalog_request=prepared)
+        if action == 'describe':
+            # 将准备阶段生成的新值格式放回同一属性描述；不改动 Java 的条件检查及现有字段。
+            entries = plan['properties'][prepared['target']['type']]
+            for identifier, description in result.get('catalog', {}).get('properties', {}).items():
+                description['write_contract'] = entries[identifier].get('write_contract')
+        return result
 
     def find_objects(self, session_dir, type_id, name=None, parent=None, offset=0, limit=100, timeout=180):
         """枚举目录类型，可按精确名称过滤；子类型要求 parent，单页最多 500 项。"""
@@ -203,17 +254,37 @@ class Service:
         """读取既有 Inspector 快照范围；与按需属性读取共用目录，不表示全配置导出。"""
         return self._operate(session_dir, 'inspect', timeout)
 
-    def open_session(self, input, session_dir, star='starccm+', release='2602', port=49001, timeout=180):
-        """复制输入并启动独立后台会话，完成首个快照；不会连接现有 GUI。"""
+    def open_session(self, input, session_dir, star='starccm+', release=None, port=49001, timeout=180, build=None):
+        """先检测所选程序版本，再复制输入并启动工作会话；不按固定 release 默认值选目录。
+
+        用户给出的 release/Build 作为预期值核对。未知版本、Build 或预期不符时，
+        在创建会话目录和加载算例前拒绝；实际 server 的版本仍由初始快照再核验。
+        """
+        from .environment import inspect_installation
         if not sys.platform.startswith('linux'):
             raise ValueError('Managed sessions currently support Linux only')
         if type(port) is not int or not 1024 <= port <= 65535:
             raise ValueError('port must be between 1024 and 65535')
         if not isinstance(star, str) or not star:
             raise ValueError('star must be an executable name or path')
-        args = SimpleNamespace(input=_path(input, 'input'), star=star, port=port,
-                               timeout=_timeout(timeout), snapshot_plan=prepare_snapshot(bundle_target(release)))
-        return session_bridge.start(args, _path(session_dir, 'session_dir'))
+        source, directory = _path(input, 'input'), _path(session_dir, 'session_dir')
+        timeout = _timeout(timeout)
+        for name, value in (('release', release), ('build', build)):
+            if value is not None and (not isinstance(value, str) or not value):
+                raise ValueError(f'{name} must be a non-empty string when provided')
+        detected = inspect_installation(star, min(timeout, 30))
+        if detected['status'] != 'ok':
+            raise ValueError(f'Cannot determine STAR version: {detected.get("reason")}; use discover_installations')
+        target = detected['version']
+        if (release is not None and release != target['release']) or (build is not None and build != target['build']):
+            raise ValueError(f'STAR version does not match the requested release/build: requested '
+                             f'{release}/{build}, detected {target}; no installation was substituted')
+        if not detected['catalog_supported']:
+            raise ValueError(f'No registered catalog for detected STAR version {target}; '
+                             'query get_capabilities for support; no session was created')
+        args = SimpleNamespace(input=source, star=detected['executable'], port=port,
+                               timeout=timeout, snapshot_plan=prepare_snapshot(target))
+        return session_bridge.start(args, directory)
 
     def session_status(self, session_dir):
         """读取会话记录并检查进程身份，不启动 Java 客户端，也不重新核验 server Build。"""
@@ -232,11 +303,13 @@ class Service:
 
 def contract():
     """给客户端提供稳定的状态与恢复约定，供 CLI 和 MCP Resource 同源读取。"""
+    from .interface_contract import usage_contract
+    from .discovery_policy import TARGET
     return {
         'schema_version': 1, 'methods': list(METHODS), 'transport': 'local',
         'statuses': {
             'ok': 'Call completed; inspect property errors and inspection_complete for partial reads.',
-            'rejected': 'Invalid input or confirmed rejection before mutation.',
+            'rejected': 'Invalid input or confirmed rejection before assignment; lifecycle setup may have created files.',
             'uncertain': 'A request may have mutated the session. Check status and logs; do not retry.',
             'error': 'Call failed; inspect the error and session state before further actions.',
         },
@@ -246,9 +319,10 @@ def contract():
         'request_schemas': {'read': 1, 'property_modification': 2, 'structural_operation': 3,
                             'discovery': 1},
         'runtime_discovery': {
-            'versions': [{'release': '2602', 'build': '21.02.007'}],
+            'versions': [dict(TARGET)],
             'navigation': 'Browse one level, describe, then read explicit property_ids.',
             'search': 'Cached scope by default; expand uses explicit node, depth and time budgets.',
             'references': 'Opaque node_id and property_id; re-describe after identity or rule changes.',
         },
+        'usage': usage_contract(),
     }

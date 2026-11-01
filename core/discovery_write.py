@@ -327,6 +327,7 @@ def describe_write_support(session_dir, description, state):
     """用实际编译结果标记支持；条件仍在写前检查，不宣称实例已满足。"""
     from .discovery_rules import build_read_plan
     from .catalog_bundle import session_target
+    from .interface_contract import write_contract
     result = deepcopy(description)
     properties = result.get('properties', [])
     if _resource_node(result.get('node', {})):
@@ -357,6 +358,8 @@ def describe_write_support(session_dir, description, state):
         supported = bool(entry.get('writable') and entry.get('write'))
         prop.update(capability(entry.get('reason', 'No accepted assignment rule'), supported=supported))
         prop['writable'] = supported
+        # 读取 adapter 不足以区分常量、表达式和特殊赋值，直接发布本次已接受规则的新值格式。
+        prop['write_contract'] = write_contract(entry.get('write')) if supported else None
     return result
 
 

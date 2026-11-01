@@ -28,7 +28,7 @@ python3 bridge/runner/session_bridge.py start example-2510.sim \
 
 本地计划错配在输出目录或会话活动标记写入前拒绝，现有会话保持原状态。Java 还会在实际调用前核对正在运行的 server，选择正确目录不能代替 server 检查。`status` 与 `stop --discard` 不依赖目录加载，使目录不可用时仍能查询和清理本工具创建的服务。目录选择不会转换 `.sim` 文件格式，也不保证较旧 STAR 能打开较新版本保存的文件。
 
-[MCP 与共享 JSON CLI](mcp.md) 使用相同绑定：`open_session` 接收 `release` 和匹配的 `star`，后续工具自动加载该会话的随附目录；`get_capabilities` 则要求明确指定离线 `release`。两版的代表性 MCP 调用与持久化验证见 [MCP 验证范围](mcp.md#验证范围)。
+[MCP 与共享 JSON CLI](mcp.md) 使用相同精确版本绑定，但不沿用上述旧脚本的固定 release 默认值。先从用户要求或 `discover_installations` 的实际探测选择程序；`open_session` 从所选程序的 `-version` 取得版本，显式 `release/build` 仅作为预期核对。未适配或预期不符在创建会话前拒绝，后续工具使用保存的绑定。`get_capabilities()` 省略版本只列注册支持范围，指定实际版本时返回 `supported`；未知版本也可查询，并返回缺少适配的原因，不自动回退。具体范围和代表性验证见 [MCP 验证范围](mcp.md#验证范围)。
 
 ## 版本材料与覆盖
 

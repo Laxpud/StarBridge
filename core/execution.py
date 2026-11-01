@@ -521,6 +521,9 @@ def prepare_read_value(catalog_path, execution_path, request, action):
         source = plan['properties'][identifier][name]
         entry = {key: value for key, value in source.items() if key != 'write'}
         if action == 'describe':
+            from .interface_contract import write_contract
+            # 新值格式来自已经校验的 writer；只发布参数契约，不向只读宏泄露 setter。
+            entry['write_contract'] = write_contract(source.get('write'))
             entry['condition_reads'] = source.get('write', {}).get('guards', [])
         properties[name] = entry
     operations = {identifier: {name: {key: value for key, value in entry.items() if key != 'write'}
