@@ -147,7 +147,7 @@ def main():
         harness = temporary / 'DiscoveryWriteContractHarness.java'
         harness.write_text(HARNESS, encoding='utf-8')
         compiled = subprocess.run([str(javac), '-proc:none', '-cp', classpath, '-d', directory,
-            str(ROOT / 'bridge/java/CatalogRuntime.java'), str(ROOT / 'bridge/java/DiscoveryRuntime.java'),
+            str(ROOT / 'src/starbridge/bridge/java/CatalogRuntime.java'), str(ROOT / 'src/starbridge/bridge/java/DiscoveryRuntime.java'),
             str(harness)], capture_output=True, text=True, timeout=90, check=True)
         executed = subprocess.run([str(java), '-cp', directory + ':' + classpath,
             'DiscoveryWriteContractHarness'], capture_output=True, text=True, timeout=30, check=True)

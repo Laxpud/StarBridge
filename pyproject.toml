@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools==84.2.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "starbridge-cfd"
+dynamic = ["version"]
+description = "Structured STAR-CCM+ inspection and controlled modification through CLI and MCP"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Laxpud"}]
+keywords = ["STAR-CCM+", "CFD", "MCP", "simulation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp==2.3.0", "jsonschema>=4.20,<5"]
+
+[project.scripts]
+starbridge = "starbridge.cli:main"
+starbridge-mcp = "starbridge.mcp:main"
+# Registry 消费者通常以发行包名寻找可执行文件；别名复用同一 MCP 入口。
+starbridge-cfd = "starbridge.mcp:main"
+starbridge-file = "starbridge.bridge.runner.file_bridge:cli"
+starbridge-session = "starbridge.bridge.runner.session_bridge:cli"
+starbridge-catalog = "starbridge.tools.catalog.catalog:main"
+
+[project.urls]
+Homepage = "https://github.com/Laxpud/StarBridge"
+Repository = "https://github.com/Laxpud/StarBridge"
+Issues = "https://github.com/Laxpud/StarBridge/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["starbridge", "starbridge.*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+starbridge = ["catalogs/*/*.json", "catalogs/*/generated/*.json", "bridge/java/*.java"]
+
+[tool.setuptools.dynamic]
+version = {attr = "starbridge.__version__"}

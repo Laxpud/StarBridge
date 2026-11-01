@@ -25,18 +25,15 @@ Inspector 快照也已通过独立布局使用共享目录，保留 schema 1 字
 
 ## 快速开始
 
-先阅读[文件 Bridge 使用说明](bridge-file.md)。原型需要 Python 3.11 或更新版本、可用的 STAR-CCM+ 安装及许可证；已在 Linux 上运行 2602，并完成 2510 的代表性验证，范围见[版本说明](catalog-versions.md)。在仓库根目录执行：
+先按[分发与 Harness 接入](distribution.md)构建并安装 `starbridge-cfd`，再通过 `add-mcp` 接入 `starbridge-mcp`，并单独安装需要的 Skill。程序已可在源码目录外运行；当前 `0.1.0` 尚未发布到 PyPI，三个 Harness 的验收状态与缺口分别记录在安装说明中。
 
-```bash
-python3 bridge/runner/file_bridge.py inspect 'Base.sim~' --work-dir outputs/read-parameters
-```
-
-请提供自己的兼容算例文件，并使用新的工作目录。需要连续操作同一个已加载算例时，使用[后台会话入口](bridge-session.md)。修改、显式保存、关闭、结果查看及当前限制见相应说明。MCP 客户端与共享 JSON CLI 的使用见 [MCP 说明](mcp.md)，其可选 SDK 依赖与原有 CLI 分开安装。
+需要 Python 3.11+。算例操作还需要 Linux、兼容的 STAR-CCM+ 安装及许可证；运行时发现另需对应安装的本机 Javadoc。源码脚本入口仍保留。具体操作见[文件 Bridge](bridge-file.md)、[后台会话](bridge-session.md)和 [MCP 工具契约](mcp.md)。
 
 ## 更多文档
 
 | 文档 | 职责 |
 |---|---|
+| [分发与 Harness 接入](distribution.md) | 安装程序、接入 MCP 与 Skill、版本关系及实际验收状态 |
 | [运行时对象树与属性发现](runtime-discovery.md) | 按真实层级导航、描述和读取属性，有预算搜索及跨加载重定位 |
 | [MCP 与共享 Core API](mcp.md) | 本机 stdio 工具、版本资源、JSON CLI 与失败恢复 |
 | [目录描述与读取](catalog-runtime.md) | 核对 server 版本、按需读取属性，并返回会话引用和逐属性错误 |

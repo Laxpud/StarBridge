@@ -1,0 +1,12 @@
+# 源码发行包保留安装说明与工作流；不收集用户算例、运行结果或本机配置。
+include README.md LICENSE pyproject.toml StarBridge.md TODO.md
+include starbridge.py interfaces/mcp_server.py interfaces/requirements.txt
+include bridge/runner/file_bridge.py bridge/runner/session_bridge.py
+include tools/catalog/catalog.py
+recursive-include docs *.md
+recursive-include skills SKILL.md *.md *.yaml
+recursive-include integrations *.yml *.yaml *.json
+include server.json
+global-exclude __pycache__ *.py[cod] *.sim *.sim~
+prune outputs
+prune dist

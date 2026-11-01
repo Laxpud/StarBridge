@@ -6,7 +6,7 @@
 
 ## 使用方式
 
-需要 Python 3.11+、匹配所选目录的 STAR 安装及许可证；默认 2602，其他随附版本见[版本选择](catalog-versions.md)。可直接使用随仓库分发的 `catalogs/2602/generated/catalog.json` 和独立维护的 `catalogs/2602/execution.json`，不需要先生成目录。自行重建和核对来源的方法见[离线目录工具](catalog.md#生成与查看)。schema 2 属性修改与 schema 3 结构操作均要求显式传入两个路径。
+需要 Python 3.11+、匹配所选目录的 STAR 安装及许可证；默认 2602，其他随附版本见[版本选择](catalog-versions.md)。可直接使用随仓库分发的 `src/starbridge/catalogs/2602/generated/catalog.json` 和独立维护的 `src/starbridge/catalogs/2602/execution.json`，不需要先生成目录。自行重建和核对来源的方法见[离线目录工具](catalog.md#生成与查看)。schema 2 属性修改与 schema 3 结构操作均要求显式传入两个路径。
 
 先通过 `read` 读取目标属性，将 `catalog.properties.<属性 ID>.value` 原样放入 `expected`，不要复制包含 `status` 的外层对象。保存 `catalog-change.json`，例如：
 
@@ -31,8 +31,8 @@
 
 ```bash
 python3 bridge/runner/file_bridge.py modify 'Base.sim~' \
-  --catalog catalogs/2602/generated/catalog.json \
-  --execution catalogs/2602/execution.json \
+  --catalog src/starbridge/catalogs/2602/generated/catalog.json \
+  --execution src/starbridge/catalogs/2602/execution.json \
   --request catalog-change.json \
   --output outputs/Base_catalog_modified.sim \
   --work-dir outputs/catalog-modify-file
@@ -45,8 +45,8 @@ python3 bridge/runner/file_bridge.py modify 'Base.sim~' \
 ```bash
 python3 bridge/runner/session_bridge.py modify \
   --session-dir outputs/my-session \
-  --catalog catalogs/2602/generated/catalog.json \
-  --execution catalogs/2602/execution.json \
+  --catalog src/starbridge/catalogs/2602/generated/catalog.json \
+  --execution src/starbridge/catalogs/2602/execution.json \
   --request catalog-change.json
 
 python3 bridge/runner/session_bridge.py save \
@@ -241,8 +241,8 @@ python3 bridge/runner/session_bridge.py save \
 ```bash
 python3 bridge/runner/session_bridge.py read \
   --session-dir outputs/my-session \
-  --catalog catalogs/2602/generated/catalog.json \
-  --execution catalogs/2602/execution.json \
+  --catalog src/starbridge/catalogs/2602/generated/catalog.json \
+  --execution src/starbridge/catalogs/2602/execution.json \
   --request tensor-read.json > tensor-state.json
 
 python3 - <<'PY_REQUEST'
@@ -269,8 +269,8 @@ PY_REQUEST
 
 python3 bridge/runner/session_bridge.py modify \
   --session-dir outputs/my-session \
-  --catalog catalogs/2602/generated/catalog.json \
-  --execution catalogs/2602/execution.json \
+  --catalog src/starbridge/catalogs/2602/generated/catalog.json \
+  --execution src/starbridge/catalogs/2602/execution.json \
   --request tensor-switch.json
 ```
 

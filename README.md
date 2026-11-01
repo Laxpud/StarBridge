@@ -1,5 +1,7 @@
 <a id="readme-top"></a>
 
+<!-- mcp-name: io.github.Laxpud/starbridge -->
+
 <div align="right">
   <strong>English</strong> | <a href="docs/README.cn.md">简体中文</a>
 </div>
@@ -25,18 +27,15 @@ The proposed system combines structured simulation access, workflow Skills, pers
 
 ## Getting started
 
-Start with the [file Bridge guide](docs/bridge-file.md) (Chinese). The prototype requires Python 3.11+ and a usable STAR-CCM+ installation and license; it has been exercised on Linux with STAR-CCM+ 2602 and with representative 2510 cases; see [version-specific validation](docs/catalog-versions.md). From the repository root:
+Build and install the local `starbridge-cfd` wheel with the optional `mcp` extra, then connect the `starbridge-mcp` executable using `add-mcp`. The package includes runtime catalogs and Java templates; it runs outside the source checkout. Version `0.1.0` is not yet published to PyPI. Follow the [distribution and Harness guide](docs/distribution.md) (Chinese) for exact installation commands, the representative case-audit Skill, and the separate validation status of each of the three target clients.
 
-```bash
-python3 bridge/runner/file_bridge.py inspect 'Base.sim~' --work-dir outputs/read-parameters
-```
-
-Supply your own compatible simulation file and a new work directory. For repeated operations on one loaded simulation, use the [background-session guide](docs/bridge-session.md). See the guides for modification, explicit save, shutdown, results, and current limits. For an MCP client or the shared JSON CLI, follow the [MCP guide](docs/mcp.md); its optional SDK dependencies are separate from the original CLI.
+Python 3.11+ is required. Simulation operations additionally require Linux, a compatible STAR-CCM+ installation, and a license; runtime discovery also uses that installation's local Javadoc. Existing repository scripts remain available. See the [file Bridge guide](docs/bridge-file.md), [background sessions](docs/bridge-session.md), and [MCP contract](docs/mcp.md) for operations and limits.
 
 ## More documentation
 
 | Document | Purpose |
 |---|---|
+| [Distribution and Harness integration](docs/distribution.md) | Local package installation, MCP and Skill setup, versions, and validation gaps |
 | [Runtime discovery](docs/runtime-discovery.md) | Browse actual nodes, describe and read discovered properties, search within a budget, and relocate references |
 | [MCP and shared Core API](docs/mcp.md) | Local stdio tools, version resources, JSON CLI, and recovery behavior |
 | [Catalog describe/read](docs/catalog-runtime.md) | Read selected properties with server-version checks, session references, and per-property errors |

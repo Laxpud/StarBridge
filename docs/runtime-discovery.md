@@ -135,7 +135,7 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 ## 已实现规则与边界
 
-规则集中在 `core/discovery_policy.py`，编译器在 `core/discovery_rules.py`。当前提供 CSO 子对象与 Bean 描述符机制，以及基础值、标量 input、向量 input、枚举 input 的固定解包规则。官方声明证明调用签名，实际规则和限定类型决定是否允许执行；不扫描后调用全部 `get*` 方法，也不因单独存在 Bean 注解就开放任意类型。
+规则集中在 `src/starbridge/core/discovery_policy.py`，编译器在 `src/starbridge/core/discovery_rules.py`。当前提供 CSO 子对象与 Bean 描述符机制，以及基础值、标量 input、向量 input、枚举 input 的固定解包规则。官方声明证明调用签名，实际规则和限定类型决定是否允许执行；不扫描后调用全部 `get*` 方法，也不因单独存在 Bean 注解就开放任意类型。
 
 普通有界标量 input 使用已核验的范围适配器。动态范围仅登记 `star.resurfacer.PartsResurfacerAnisotropicSizing.ratioRange()`；其他 `rangeMethod` 注解保留为元数据，不能据方法名自行执行。单位和范围仅按提供器实际结果返回，不推断缺失单位。
 

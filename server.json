@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Laxpud/starbridge",
+  "title": "StarBridge",
+  "description": "Inspect STAR-CCM+ cases and perform controlled, verified configuration writes on Linux.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/Laxpud/StarBridge",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "starbridge-cfd",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--with",
+          "value": "starbridge-cfd[mcp]==0.1.0"
+        }
+      ],
+      "transport": {"type": "stdio"}
+    }
+  ]
+}

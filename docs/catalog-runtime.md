@@ -6,7 +6,7 @@
 
 ## 使用方式
 
-需要 Python 3.11+、匹配所选目录的 STAR 安装和许可证；默认 2602，其他随附版本见[版本选择](catalog-versions.md)。以下命令直接使用随仓库分发的 `catalogs/2602/generated/catalog.json`；可按[离线目录工具](catalog.md#生成与查看)从该安装及当前 `catalogs/2602/selection.json` 重新生成到新路径进行核对。`describe/read` 仍显式指定候选目录和人工执行映射。
+需要 Python 3.11+、匹配所选目录的 STAR 安装和许可证；默认 2602，其他随附版本见[版本选择](catalog-versions.md)。以下命令直接使用随仓库分发的 `src/starbridge/catalogs/2602/generated/catalog.json`；可按[离线目录工具](catalog.md#生成与查看)从该安装及当前 `src/starbridge/catalogs/2602/selection.json` 重新生成到新路径进行核对。`describe/read` 仍显式指定候选目录和人工执行映射。
 
 保存 `read-request.json`，将对象名称换成目标算例中的实际名称：
 
@@ -26,8 +26,8 @@
 
 ```bash
 python3 bridge/runner/file_bridge.py read 'Base.sim~' \
-  --catalog catalogs/2602/generated/catalog.json \
-  --execution catalogs/2602/execution.json \
+  --catalog src/starbridge/catalogs/2602/generated/catalog.json \
+  --execution src/starbridge/catalogs/2602/execution.json \
   --request read-request.json \
   --work-dir outputs/catalog-read-file
 ```
@@ -39,8 +39,8 @@ python3 bridge/runner/file_bridge.py read 'Base.sim~' \
 ```bash
 python3 bridge/runner/session_bridge.py read \
   --session-dir outputs/my-session \
-  --catalog catalogs/2602/generated/catalog.json \
-  --execution catalogs/2602/execution.json \
+  --catalog src/starbridge/catalogs/2602/generated/catalog.json \
+  --execution src/starbridge/catalogs/2602/execution.json \
   --request read-request.json
 ```
 
@@ -48,15 +48,15 @@ python3 bridge/runner/session_bridge.py read \
 
 ```bash
 python3 bridge/runner/file_bridge.py describe 'Base.sim~' \
-  --catalog catalogs/2602/generated/catalog.json \
-  --execution catalogs/2602/execution.json \
+  --catalog src/starbridge/catalogs/2602/generated/catalog.json \
+  --execution src/starbridge/catalogs/2602/execution.json \
   --request describe-request.json \
   --work-dir outputs/catalog-describe-file
 
 python3 bridge/runner/session_bridge.py describe \
   --session-dir outputs/my-session \
-  --catalog catalogs/2602/generated/catalog.json \
-  --execution catalogs/2602/execution.json \
+  --catalog src/starbridge/catalogs/2602/generated/catalog.json \
+  --execution src/starbridge/catalogs/2602/execution.json \
   --request describe-request.json
 ```
 
@@ -337,7 +337,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 ## 人工执行映射
 
-[`catalogs/2602/execution.json`](../catalogs/2602/execution.json) 是维护者审阅的调用映射，由 [`core/execution.py`](../core/execution.py) 与候选目录共同校验；它与仅供离线核对的 `overrides.json` 修改语义分开维护。请求只能选择目标、属性或操作及其参数，不能覆盖映射、方法的 `effect`、Java 类或参数来源。
+[`src/starbridge/catalogs/2602/execution.json`](../src/starbridge/catalogs/2602/execution.json) 是维护者审阅的调用映射，由 [`src/starbridge/core/execution.py`](../src/starbridge/core/execution.py) 与候选目录共同校验；它与仅供离线核对的 `overrides.json` 修改语义分开维护。请求只能选择目标、属性或操作及其参数，不能覆盖映射、方法的 `effect`、Java 类或参数来源。
 
 映射格式版本当前为 `8`，加载器兼容仅含读取管线的 schema 1 和原有写入 schema 2/3/4/5/6/7；顶层包含 `target`、`members`、`types`、`properties`、`operations`。旧格式没有结构操作，加载时使用空操作集合。每个 member 锁定候选声明的签名和指纹，并声明反射参数类型及 `effect: read` 或 `effect: write`。定位和读取管线只允许 `read`；写入管线仅最后一步允许 `write`，读取计划会移除写入管线。当前只接收已核对的 public 实例方法，不开放字段、构造器、静态调用或通过 `setAccessible()` 访问非 public 方法。参数类型必须能由候选材料证明，裸泛型变量 `T` 不能冒充可加载类；枚举 setter `EnumeratedOption.setSelected(T)` 仅在候选类声明和官方类型链接证明其首个上界为 `Enum` 时，使用已核对的泛型擦除规则。其他未解析泛型仍拒绝猜测；嵌套类按已核对类型页转换为 JVM 名称。
 

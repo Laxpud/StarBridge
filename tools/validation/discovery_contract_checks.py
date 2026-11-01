@@ -19,10 +19,10 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / 'src'))
 
-from core import discovery
-from core.discovery_rules import property_id
+from starbridge.core import discovery
+from starbridge.core.discovery_rules import property_id
 
 
 def descriptor(name='setting', **changes):
@@ -121,9 +121,9 @@ class DiscoveryContracts(unittest.TestCase):
         transport = FakeTransport({'root': ['a', 'b', 'fresh']}, partial=True, proxy=True)
         root = discovery.browse_tree(self.session, operate=transport)
         children = {node['key']: node for node in root['children'] if node.get('node_id')}
-        with patch('core.discovery.time.time', return_value=10):
+        with patch('starbridge.core.discovery.time.time', return_value=10):
             discovery.describe_node(self.session, children['b']['node_id'], operate=transport)
-        with patch('core.discovery.time.time', return_value=20):
+        with patch('starbridge.core.discovery.time.time', return_value=20):
             discovery.browse_tree(self.session, children['a']['node_id'], operate=transport)
         calls = len(transport.calls)
         result = discovery.search_settings(self.session, 'setting', operate=transport)
@@ -224,9 +224,9 @@ class DiscoveryContracts(unittest.TestCase):
     def test_browse_does_not_refresh_property_observation_time(self):
         """节点观察刷新后，旧属性候选仍报告原观察时刻与需要重新核验。"""
         transport = FakeTransport()
-        with patch('core.discovery.time.time', return_value=10):
+        with patch('starbridge.core.discovery.time.time', return_value=10):
             discovery.describe_node(self.session, operate=transport)
-        with patch('core.discovery.time.time', return_value=20):
+        with patch('starbridge.core.discovery.time.time', return_value=20):
             discovery.browse_tree(self.session, operate=transport)
         result = discovery.search_settings(self.session, 'setting')
         node = next(item for item in result['matches'] if item['property'] is None)
@@ -244,7 +244,7 @@ class DiscoveryContracts(unittest.TestCase):
             if any(p['name'] == 'bad' for p in properties):
                 raise ValueError('Fixture missing declaration')
             return {'property_map': {p['property_id']: p for p in properties}}
-        with patch('core.discovery.build_read_plan', side_effect=compile_plan):
+        with patch('starbridge.core.discovery.build_read_plan', side_effect=compile_plan):
             result = discovery.prepare_node_read(self.session, None,
                 [property_id(good), property_id(bad)], operate=transport)
         self.assertEqual(len(result['prepared_plans']), 1)

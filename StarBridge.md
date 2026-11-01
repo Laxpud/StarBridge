@@ -89,7 +89,7 @@ AI Agent / Skills
 
 ## 版本化对象、属性与操作目录
 
-既有目录入口包含 STAR-CCM+ 2602 Build 21.02.007 和 2510 Build 20.06.007，运行选择及差异见[版本说明](docs/catalog-versions.md)。新增发现入口目前仅登记 2602 Build 21.02.007，其提供器、类型规则、禁止项和动态范围例外集中维护在 `core/discovery_policy.py`。目标设计将版本材料、通用规则、特殊条件与自动生成计划分开维护；目录不再承担完整的逐属性人工支持清单。STAR 产品版本、Build、规则和格式版本分别记录，不能默认相邻版本兼容。
+既有目录入口包含 STAR-CCM+ 2602 Build 21.02.007 和 2510 Build 20.06.007，运行选择及差异见[版本说明](docs/catalog-versions.md)。新增发现入口目前仅登记 2602 Build 21.02.007，其提供器、类型规则、禁止项和动态范围例外集中维护在 `src/starbridge/core/discovery_policy.py`。目标设计将版本材料、通用规则、特殊条件与自动生成计划分开维护；目录不再承担完整的逐属性人工支持清单。STAR 产品版本、Build、规则和格式版本分别记录，不能默认相邻版本兼容。
 
 ### 目录描述什么
 
@@ -203,38 +203,32 @@ Skills 提供领域工作流，工作记忆补充具体用户、项目和算例�
 
 ## 项目结构
 
-以下是目标职责划分，目录格式与实际模块组织在实现时确定；不是当前已存在文件的清单。
+运行代码与随附资源统一位于 `src/starbridge/`，安装后使用 `starbridge` 命名空间。根目录及原脚本路径保留 CLI 转发入口；工作记忆等尚未实现的能力不预建空模块。
 
 ```text
 StarBridge/
-├── catalogs/                 # 按 STAR 版本保存目录
-│   └── <star-version>/
-│       ├── generated/        # 可重复生成的 API 描述
-│       └── overrides/        # 人工语义与例外映射
-├── tools/
-│   └── catalog/              # 目录生成、合并与版本比较
-├── core/
-│   ├── catalog/              # 目录加载、版本匹配和能力查询
-│   ├── objects/              # 实例定位与运行状态
-│   ├── inspector/
-│   ├── modifier/
-│   ├── adapters/             # 按值类型和特殊操作复用
-│   ├── sessions/
-│   └── memory/
-├── bridge/
-│   ├── java/
-│   ├── runner/
-│   └── serializer/
-├── mcp/
-├── cli/
-├── skills/
-├── schemas/                  # 目录、请求、快照及结果契约
+├── pyproject.toml            # Python 发行包与命令入口
+├── src/starbridge/
+│   ├── core/                 # 目录、发现、规则、共享调用契约与服务
+│   ├── catalogs/             # 按 STAR 版本保存候选、执行映射与快照布局
+│   ├── bridge/
+│   │   ├── java/             # 随包分发的宏与执行器源码
+│   │   └── runner/           # 文件与后台会话执行
+│   ├── interfaces/           # MCP 协议适配
+│   ├── tools/catalog/        # 运行时与维护命令共用的 Javadoc 解析
+│   ├── cli.py                # JSON CLI
+│   └── mcp.py                # MCP 启动入口
+├── skills/                   # 通用领域工作流，独立安装
+├── integrations/             # 必要的宿主接入模板
+├── tools/validation/         # 按计划范围执行的验证工具
 └── docs/
 ```
 
 ---
 
 ## Skills
+
+程序与通用 Skills 在同一仓库维护，通过 Python 发行包和 Skill 目录分别分发。当前安装入口、版本关系和各 Harness 的实际验收状态见[分发与接入说明](docs/distribution.md)；剩余任务与完成条件见[分发计划](docs/plans/plan-2026-11-01-14-42.md)。
 
 Skills 负责描述：
 

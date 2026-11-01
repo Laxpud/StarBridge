@@ -8,7 +8,7 @@
 
 ## 使用方式
 
-这些兼容写入口默认选择 STAR-CCM+ 2602 Build 21.02.007，也可按[版本说明](catalog-versions.md)选择 2510；运行版本不匹配在写入前返回 `rejected`。默认目录位于 `catalogs/2602/generated/catalog.json`，人工调用映射为 `catalogs/2602/execution.json`，用户不必额外生成目录或增加命令参数。
+这些兼容写入口默认选择 STAR-CCM+ 2602 Build 21.02.007，也可按[版本说明](catalog-versions.md)选择 2510；运行版本不匹配在写入前返回 `rejected`。默认目录位于 `src/starbridge/catalogs/2602/generated/catalog.json`，人工调用映射为 `src/starbridge/catalogs/2602/execution.json`，用户不必额外生成目录或增加命令参数。
 
 先运行 `inspect`，从目标对象快照提取名称、类型和预期旧属性，再保存请求，例如 `change.json`：
 

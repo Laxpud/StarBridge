@@ -81,7 +81,7 @@ Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常�
 | 文件 | 职责 |
 |---|---|
 | [file_bridge.py](../bridge/runner/file_bridge.py) | 校验路径、生成宏、启动 STAR、记录日志、重新加载并核对旧快照、目录内容与输入摘要 |
-| [BridgeFileMacro.java](../bridge/java/BridgeFileMacro.java) | 调用 STAR Java API 读取对象快照、设置标量、另存文件并序列化结果 |
+| [BridgeFileMacro.java](../src/starbridge/bridge/java/BridgeFileMacro.java) | 调用 STAR Java API 读取对象快照、设置标量、另存文件并序列化结果 |
 
 宏模板中的占位符由 Runner 填入，不能直接作为完整宏执行。输入由 STAR 自身加载，没有解析或修改 `.sim` 二进制格式。
 

@@ -42,9 +42,9 @@ python3 bridge/runner/session_bridge.py inspect \
 
 ## 快照布局与共享调用
 
-[`catalogs/2602/snapshot.json`](../catalogs/2602/snapshot.json) 单独维护集合与字段布局，目前包含 16 种节点、11 个根集合和 57 条读取管线。它不复制 Java 成员声明：成员签名、指纹和调用参数继续由 [`execution.json`](../catalogs/2602/execution.json) 与[候选目录](../catalogs/2602/generated/catalog.json)共同核对。快照布局版本和输出 `schema_version` 分开维护，目前都为 `1`。
+[`src/starbridge/catalogs/2602/snapshot.json`](../src/starbridge/catalogs/2602/snapshot.json) 单独维护集合与字段布局，目前包含 16 种节点、11 个根集合和 57 条读取管线。它不复制 Java 成员声明：成员签名、指纹和调用参数继续由 [`execution.json`](../src/starbridge/catalogs/2602/execution.json) 与[候选目录](../src/starbridge/catalogs/2602/generated/catalog.json)共同核对。快照布局版本和输出 `schema_version` 分开维护，目前都为 `1`。
 
-[`core/snapshot.py`](../core/snapshot.py) 校验版本、节点引用、类型分支、输出字段和只读管线；每个调用必须声明 `effect: read`，请求不能加入任意 Java 调用。编译结果作为 `SNAPSHOT_PLAN` 交给共享 `CatalogRuntime` 遍历，运行目录保存 `snapshot-plan.json`。文件和后台会话的 `inspect`、`save`、修改前后快照及重载核对都使用该布局，Java 不再单独维护各对象的固定快照读取表。
+[`src/starbridge/core/snapshot.py`](../src/starbridge/core/snapshot.py) 校验版本、节点引用、类型分支、输出字段和只读管线；每个调用必须声明 `effect: read`，请求不能加入任意 Java 调用。编译结果作为 `SNAPSHOT_PLAN` 交给共享 `CatalogRuntime` 遍历，运行目录保存 `snapshot-plan.json`。文件和后台会话的 `inspect`、`save`、修改前后快照及重载核对都使用该布局，Java 不再单独维护各对象的固定快照读取表。
 
 节点自动输出名称和类型，其他字段按布局明确读取；`tags` 通过 `names` 适配器生成，并非所有节点都隐式读取标签。字段有四种形式：
 

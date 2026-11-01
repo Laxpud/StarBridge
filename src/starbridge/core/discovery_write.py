@@ -374,7 +374,7 @@ def modify_node_property(session_dir, node_id, property_id, expected, value, tim
     from .discovery_rules import build_read_plan
     from .catalog_bundle import session_target
     from .execution import prepare_modification_value
-    from bridge.runner.modifier import ModificationRejected
+    from starbridge.bridge.runner.modifier import ModificationRejected
     if not WRITING_ENABLED:
         raise ModificationRejected('Runtime-discovered writing is not enabled in this release')
     if operate is None:

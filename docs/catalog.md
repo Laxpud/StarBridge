@@ -6,21 +6,21 @@
 
 ## 生成与查看
 
-仓库随附 [`catalogs/2602/generated/catalog.json`](../catalogs/2602/generated/catalog.json)，供 `inspect`、`save`、兼容 `modify` 和 `set-scalar` 自动加载，也可显式传给目录 `describe/read/modify`。它保留生成器标识、安装相对来源路径和 SHA256，人工语义、执行映射和快照布局独立维护；使用现有命令无需自行生成。
+仓库随附 [`src/starbridge/catalogs/2602/generated/catalog.json`](../src/starbridge/catalogs/2602/generated/catalog.json)，供 `inspect`、`save`、兼容 `modify` 和 `set-scalar` 自动加载，也可显式传给目录 `describe/read/modify`。它保留生成器标识、安装相对来源路径和 SHA256，人工语义、执行映射和快照布局独立维护；使用现有命令无需自行生成。
 
 需要重新生成或检查来源时，使用 Python 3.11+，无需第三方 Python 依赖。在仓库根目录执行，`--install` 指向包含 `star/` 和 `doc/` 的安装根目录：
 
 ```bash
 python3 tools/catalog/catalog.py generate \
   --install '/opt/Siemens/21.02.007-R8/STAR-CCM+21.02.007-R8' \
-  --selection catalogs/2602/selection.json \
+  --selection src/starbridge/catalogs/2602/selection.json \
   --output outputs/catalog-2602/generated/catalog.json
 
 python3 tools/catalog/catalog.py check \
   --catalog outputs/catalog-2602/generated/catalog.json \
   --install '/opt/Siemens/21.02.007-R8/STAR-CCM+21.02.007-R8'
 
-cmp catalogs/2602/generated/catalog.json outputs/catalog-2602/generated/catalog.json
+cmp src/starbridge/catalogs/2602/generated/catalog.json outputs/catalog-2602/generated/catalog.json
 ```
 
 生成器从同一安装的 `star/RELEASE_NOTES` 和 `star/version_info.properties` 读取产品版本与 Build，并核对两者的 Build 一致。类型清单来自 `type-search-index.js`；类型页提供类声明、成员签名、注解和继承引用。当前解析器面向安装附带的 HTML5 Javadoc，不读取 JAR 字节码，不执行 Java 反射。
@@ -31,12 +31,12 @@ cmp catalogs/2602/generated/catalog.json outputs/catalog-2602/generated/catalog.
 
 ## 人工语义与合并
 
-人工规则维护在 [`catalogs/2602/overrides.json`](../catalogs/2602/overrides.json)。当前描述标量表达式、用户场函数表达式和替换用户标签集合三项能力，依据现有宏与使用说明整理；这些是离线语义说明，不是执行计划；对应首批写入管线单独维护在 `execution.json`，范围见[目录修改](catalog-modifier.md)。
+人工规则维护在 [`src/starbridge/catalogs/2602/overrides.json`](../src/starbridge/catalogs/2602/overrides.json)。当前描述标量表达式、用户场函数表达式和替换用户标签集合三项能力，依据现有宏与使用说明整理；这些是离线语义说明，不是执行计划；对应首批写入管线单独维护在 `execution.json`，范围见[目录修改](catalog-modifier.md)。
 
 ```bash
 python3 tools/catalog/catalog.py merge \
   --catalog outputs/catalog-2602/generated/catalog.json \
-  --overrides catalogs/2602/overrides.json \
+  --overrides src/starbridge/catalogs/2602/overrides.json \
   --install '/opt/Siemens/21.02.007-R8/STAR-CCM+21.02.007-R8' \
   --output outputs/catalog-2602/catalog.json
 
@@ -51,7 +51,7 @@ python3 tools/catalog/catalog.py describe \
 
 ## v1 数据格式
 
-格式由 [`core/catalog.py`](../core/catalog.py) 校验，所有列出的字段均必需，未知字段、重复 JSON 键和非标准数值常量会被拒绝。目录格式版本、STAR 产品版本、Build 分开维护；此版本尚不包含算例实例、对象永久 ID 或当前属性值。
+格式由 [`src/starbridge/core/catalog.py`](../src/starbridge/core/catalog.py) 校验，所有列出的字段均必需，未知字段、重复 JSON 键和非标准数值常量会被拒绝。目录格式版本、STAR 产品版本、Build 分开维护；此版本尚不包含算例实例、对象永久 ID 或当前属性值。
 
 | 顶层字段 | 含义 |
 |---|---|
@@ -109,9 +109,9 @@ python3 tools/catalog/catalog.py diff \
 
 ```bash
 python3 tools/catalog/catalog.py coverage \
-  --catalog catalogs/2602/generated/catalog.json \
-  --execution catalogs/2602/execution.json \
-  --overrides catalogs/2602/overrides.json \
+  --catalog src/starbridge/catalogs/2602/generated/catalog.json \
+  --execution src/starbridge/catalogs/2602/execution.json \
+  --overrides src/starbridge/catalogs/2602/overrides.json \
   --output outputs/catalog-coverage.json
 ```
 

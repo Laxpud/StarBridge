@@ -10,10 +10,10 @@ import json
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from core.service import Service
-from bridge.runner.modifier import content_snapshot, snapshot_diff
-from bridge.runner.file_bridge import digest
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
+from starbridge.core.service import Service
+from starbridge.bridge.runner.modifier import content_snapshot, snapshot_diff
+from starbridge.bridge.runner.file_bridge import digest
 
 
 def main():

@@ -7,7 +7,7 @@ from pathlib import Path
 from .catalog import member_fingerprint, validate, read_json
 from .catalog_bundle import session_target
 from .execution import load_execution
-from tools.catalog.javadoc import generate
+from starbridge.tools.catalog.javadoc import generate
 
 from .discovery_policy import POLICY_VERSION, TARGET, PRIMITIVES, INPUTS, INPUT_RECEIVER_TYPES, DENY, DYNAMIC_RANGES
 

@@ -2,29 +2,15 @@
 
 [返回项目入口](README.cn.md)
 
-StarBridge 提供本机 stdio MCP 接口。Agent 可以查询版本目录、查找对象、描述与读取属性、提交单项修改，以及显式打开、保存和关闭后台会话。所有工具调用 [Core Service](../core/service.py)，与新的 JSON CLI 使用相同参数和结果；已有文件和会话 CLI 继续保留，并复用相同目录、类型适配器与 Bridge 执行器。
+StarBridge 提供本机 stdio MCP 接口。Agent 可以查询版本目录、查找对象、描述与读取属性、提交单项修改，以及显式打开、保存和关闭后台会话。所有工具调用 [Core Service](../src/starbridge/core/service.py)，与新的 JSON CLI 使用相同参数和结果；已有文件和会话 CLI 继续保留，并复用相同目录、类型适配器与 Bridge 执行器。
 
 当前支持 Linux 管理会话和随附的精确版本目录：2602 Build `21.02.007`、2510 Build `20.06.007`。两版的实际适配范围见[版本说明](catalog-versions.md)。新增运行时发现仅支持 2602 Build `21.02.007`，与既有目录能力分开计量，见[发现契约](runtime-discovery.md)。网格生成、求解执行、GUI 接入和持久化工作记忆尚未提供工具；后续发现与写入扩展见[路线图](roadmap.md#后续里程碑)，覆盖缺口及版本核验见[覆盖范围与版本验证](roadmap.md#覆盖范围与版本验证)。
 
 ## 安装与连接
 
-Core 和既有 CLI 只使用 Python 标准库。MCP 额外使用[官方 Python SDK](https://github.com/modelcontextprotocol/python-sdk)，本次固定为 `mcp==2.3.0`。在仓库根目录创建独立环境：
+使用 [分发与 Harness 接入](distribution.md) 安装固定版本环境并接入客户端。Core 和普通 CLI 只使用 Python 标准库；MCP 依赖通过 `starbridge-cfd[mcp]` 安装。`starbridge-mcp` 启动本机 stdio 服务，`starbridge-cfd` 是供 Registry 消费者按包名启动的同义入口。当前版本尚未发布到 PyPI，先使用本地构建包。
 
-```bash
-python3 -m venv .venv-mcp
-.venv-mcp/bin/python -m pip install -r interfaces/requirements.txt
-```
-
-在 MCP 客户端配置一个 stdio 服务，填写以下两个字段，将 `/absolute/StarBridge` 替换为实际仓库路径：
-
-```json
-{
-  "command": "/absolute/StarBridge/.venv-mcp/bin/python",
-  "args": ["/absolute/StarBridge/interfaces/mcp_server.py"]
-}
-```
-
-客户端外层配置格式依其实现而定。无需启动 HTTP 服务。stdout 仅传输协议消息，STAR 输出留在会话请求目录；这是 [MCP stdio 传输约定](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#stdio)。工具运行权限与启动它的本机进程相同，路径必须是绝对路径，STAR 安装与许可证沿用本机配置。
+安装后无需引用源码仓库路径。源码开发仍可运行 `python3 interfaces/mcp_server.py`，但解释器须已安装 MCP 依赖。无需启动 HTTP 服务；stdout 仅传输协议消息，STAR 输出保留在显式会话／工作目录。所有算例路径均指向 MCP 进程所在机器。
 
 MCP 客户端的请求超时应大于工具的 `timeout`，并为服务启动、宏编译和清理留出余量。`timeout` 单位为秒，可按任务调整：会话操作默认 `180`，安装发现默认 `30`；它不是整个工具调用的硬截止时间。客户端取消、断开或超时不证明 STAR 操作已撤销；重新连接后先查询状态，不能自动重发修改。
 

@@ -10,8 +10,8 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
-from bridge.runner import session_bridge
-from bridge.runner.modifier import ModificationRejected
+from starbridge.bridge.runner import session_bridge
+from starbridge.bridge.runner.modifier import ModificationRejected
 from .catalog import read_json
 from .catalog_bundle import BUNDLES, bundle_root, bundle_target, session_target
 from .coverage import coverage

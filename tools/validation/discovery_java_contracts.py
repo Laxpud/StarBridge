@@ -231,7 +231,7 @@ def main():
                 path = work / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(source, encoding='utf-8')
-            shutil.copyfile(ROOT / 'bridge/java/DiscoveryRuntime.java', work / 'DiscoveryRuntime.java')
+            shutil.copyfile(ROOT / 'src/starbridge/bridge/java/DiscoveryRuntime.java', work / 'DiscoveryRuntime.java')
             sources = sorted(str(path) for path in work.rglob('*.java'))
             built = subprocess.run([str(javac), '-encoding', 'UTF-8', '-d', str(work / 'classes'), *sources],
                                    capture_output=True, text=True, timeout=60)

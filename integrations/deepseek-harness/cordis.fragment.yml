@@ -1,0 +1,16 @@
+# 合并到所用 DSH profile 的插件条目；不要覆盖原 profile。
+# 适用于 @deepseek-ai/dsh-mcp-client 0.2.1-rc.2；插件版本应与 Harness 配套。
+- id: mcp-starbridge
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: starbridge
+    transport: stdio
+    # 本地安装时填入环境中 starbridge-mcp 的绝对路径。
+    # 正式发布后也可改为 uvx，并用 args 指定固定发行版本。
+    command: /absolute/path/to/starbridge-env/bin/starbridge-mcp
+    args: []
+    # 单位 ms；这是接入示例，需大于工具 timeout 并为启动和清理留出余量。
+    toolCallTimeoutMs: 600000
+    failOnStartupError: true
+    # 仅按实际许可证环境加入所需变量；不要将本机密钥提交到仓库。
+    env: {}
