@@ -1,9 +1,17 @@
 # 当前工作
 
-## 分发与 Harness 接入
+## 三端插件、会话接入与运行简化
 
-目标：交付可安装的 Python 发行包、代表性通用 Skill，以及 Codex、Claude Code 和 DeepSeek Harness 的接入方式。能用 `npx add-mcp` 的统一使用安装器；必要的原生 MCP 适配最多限于 Codex、Claude Code 和 DeepSeek Harness。
+方案已确认，尚未实施：仅适配 Codex、Claude Code 和 DSH 插件，优先连接已有 STAR GUI／服务器，统一 `.starbridge` 目录安排，并简化日常读写与执行链路。
 
-实施任务与勾选状态统一见[分发与首批 Harness 接入计划](docs/plans/plan-2026-11-01-14-42.md#实施顺序与交付结果)。本地交付及三端项目级安装接入验收已完成；后续仅测试 Codex、Claude Code 和 DSH 的安装情况，不向模型发送信息执行任务。交付及边界见[分发说明](docs/distribution.md#验收状态)。三个首批目标的验证范围与证据必须分别记录，完成条件见[验收范围](docs/plans/plan-2026-11-01-14-42.md#验收范围)。外部发布另行授权。
+后续实施任务与勾选状态统一维护在 [Plan](docs/plans/plan-2026-11-03-14-23.md)，设计见 [Spec](docs/specs/spec-2026-11-03-14-23.md) 和 [ADR 0002](docs/adr/0002-plugins-sessions-and-storage.md)。其他候选继续保留在[路线图](docs/roadmap.md)，不自动纳入本轮范围。
 
-已有 STAR 能力与验证边界见[运行时发现与写入](docs/runtime-discovery.md)，本里程碑不扩展算例操作或操作系统支持范围。
+## 已有工作记录
+
+### 分发与 Harness 接入
+
+已完成 Python 发行包、代表性通用 Skill 和 Codex、Claude Code、DSH 三端项目级安装接入的本地交付。此前采用程序、MCP 配置和 Skill 分别安装的方式，已有任务记录见[原分发计划](docs/plans/plan-2026-11-01-14-42.md#实施顺序与交付结果)，具体结果与边界见[分发说明](docs/distribution.md#验收状态)。
+
+该轮调整后的范围仅检查三端安装接入，不向模型发送信息执行任务；此前模型与 STAR 工作流的历史记录仍保留在分发说明中。外部发布尚未执行，仍需另行授权。
+
+旧安装方式的后续安排已由 ADR 0002 替代，不再作为并列实施入口。已有 STAR 能力与限制见[运行时发现与写入](docs/runtime-discovery.md)。
