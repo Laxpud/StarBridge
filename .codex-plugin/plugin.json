@@ -1,0 +1,34 @@
+{
+  "name": "starbridge",
+  "version": "0.1.0",
+  "description": "Inspect STAR-CCM+ cases and make controlled changes through local MCP tools and a shared audit skill.",
+  "author": {
+    "name": "Laxpud"
+  },
+  "homepage": "https://github.com/Laxpud/StarBridge",
+  "repository": "https://github.com/Laxpud/StarBridge",
+  "license": "MIT",
+  "keywords": [
+    "STAR-CCM+",
+    "CFD",
+    "MCP",
+    "simulation"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./integrations/plugin/codex.mcp.json",
+  "interface": {
+    "displayName": "StarBridge",
+    "shortDescription": "STAR-CCM+ tools and case audit",
+    "longDescription": "Inspect STAR-CCM+ cases and make controlled changes through local MCP tools and a shared audit skill.",
+    "developerName": "Laxpud",
+    "category": "Productivity",
+    "capabilities": [
+      "MCP",
+      "Skills"
+    ],
+    "websiteURL": "https://github.com/Laxpud/StarBridge",
+    "defaultPrompt": [
+      "Use $starbridge:starbridge-case-audit to inspect this STAR-CCM+ case."
+    ]
+  }
+}

@@ -1,8 +1,66 @@
 # 分发与 Harness 接入
 
-[返回项目入口](README.cn.md) · [工具契约](mcp.md) · [实施计划](plans/plan-2026-11-01-14-42.md)
+[返回项目入口](README.cn.md) · [工具契约](mcp.md) · [实施计划](plans/plan-2026-11-03-14-23.md)
 
-StarBridge 现在可以构建为 `starbridge-cfd` Python 发行包，运行模块与资源统一位于 `starbridge` 命名空间。当前 `0.1.0` 是本地待发布版本，尚未上传 PyPI、创建发布 tag 或登记 MCP Registry。Codex、Claude Code 和 DSH 的项目级安装接入验收已完成，具体版本与边界见[本页验收状态](#验收状态)。自 2026-11-02 起，后续只测试这三端的安装接入，不向模型发送信息执行任务，不将 STAR 工作流作为跨 Harness 安装验收条件。
+StarBridge 可以构建为 `starbridge-cfd` Python 发行包，运行模块与资源统一位于 `starbridge` 命名空间。当前 `0.1.0` 是本地待发布版本，尚未上传 PyPI、创建发布 tag 或登记 MCP Registry。三端插件的本地安装验证已完成，实际版本与边界见[插件安装结果](#本地安装验证2026-11-03)；此前独立安装记录保留在[验收状态](#验收状态)。自 2026-11-02 起，后续只测试这三端的安装接入，不向模型发送信息执行任务，不将 STAR 工作流作为跨 Harness 安装验收条件。
+
+## 三端插件安装
+
+当前三端插件和 Vibekits 收录已完成本地安装验证，本轮已获 Git 提交、推送与 DSH 远端安装验证授权。Python 包、Git tag 和 npm 包不在本轮发布范围；程序直接来自插件 Git 提交。
+
+三端共用 `skills/`、`src/starbridge/` 和 `uv.lock`。插件初次启动通过 `uv sync --frozen` 准备 Python 依赖，环境保存在 `~/.starbridge/runtimes/plugin-<锁文件摘要>/`；后续启动复用该环境。程序从已安装插件的源码加载，不再要求用户单独安装 `starbridge-cfd` 或 Skill，也不下载尚未发布的 PyPI 包。只读插件目录不保存虚拟环境或 Python 字节码。
+
+执行机器需要 `python3` 和 PATH 中的 `uv`。uv 可按项目要求准备 Python 3.11+；首次准备需要访问依赖源，离线使用须预先缓存锁定依赖。算例操作仍需 Linux、适配的 STAR 安装、许可证及对应本机 Javadoc。插件启动不打开算例，不包含 STAR 或许可证。
+
+### Codex 与 Claude Code
+
+发布后添加 `Laxpud/my-awesome-vibekits` 市场，再安装 `starbridge`：
+
+```bash
+codex plugin marketplace add Laxpud/my-awesome-vibekits
+codex plugin add starbridge@laxpud-vibekits
+```
+
+Claude Code 中：
+
+```text
+/plugin marketplace add Laxpud/my-awesome-vibekits
+/plugin install starbridge@laxpud-vibekits
+```
+
+更新和移除继续使用客户端原生插件入口；先更新市场，再更新所选插件并启动新会话。已有单独配置的 `starbridge` MCP 或手动 Skill 应在确认插件可用后停用，避免重复加载；插件不会自动修改旧配置。
+
+Codex 使用插件根目录相对 `cwd` 启动，MCP 启动等待为 180 秒，工具调用等待为 600 秒。Claude Code 使用 `${CLAUDE_PLUGIN_ROOT}` 定位入口。首次下载受客户端启动等待时间限制时，可在已安装插件目录先执行 `python3 integrations/plugin/launch.py --prepare`，完成后重连 MCP。该命令只准备依赖，不启动协议服务或 STAR。
+
+### DeepSeek Harness
+
+DSH 原生 bundle 为 `@laxpud/dsh-starbridge`，当前声明支持官方 `0.2.1-rc.2`，不将其他桌面封装视为已经通过验证。从本地仓库准备和安装：
+
+```bash
+npm pack --ignore-scripts --pack-destination /absolute/path/to/output
+# 替换 profile 名称和生成的 tgz 路径；不覆盖现有 profile。
+dsh plugin --profile <profile> add /absolute/path/to/output/laxpud-dsh-starbridge-0.1.0.tgz --config.auto-install-peers=false
+```
+
+包内只有可直接加载的 JavaScript 和共享源码，不需要安装时构建。DSH 的官方 MCP／Skill peer 由宿主提供；使用 `auto-install-peers=false` 避免 pnpm 再安装另一份宿主服务。pnpm 可能提示包内 skills 的审批或未物理安装 peer；本轮检查的是 DSH 自身的加载结果，不要求 pnpm 向其他工具复制技能。
+
+bundle 插入自己的 `starbridge` 配置行，不替换 profile 的工具或 Skill 服务。适配器通过独立 provider 扫描包内 Skill，并接入 stdio MCP。profile 需提供 DSH 的 `tools` 与 `skills` 服务；常规基础 profile 已具备。可在 profile 的用户 patch 中覆盖该行 `config`，设置 `python`、`env`、`toolCallTimeoutMs`；许可证和必要环境通过 `env` 明确传入，不把密钥写进插件。
+
+发布后可启用实验性的 **Custom plugin indexes**，在 **Discover** 中添加 Vibekits 实际托管的 `dsh/index.json` HTTPS 地址。市场 catalog 的 DSH `versions` 使用本轮实际插件 commit 和时间；索引通过 GitHub Raw 提供，无需开启 Pages。DSH 更新可从 Discover 选择新版本，或用 `dsh plugin --profile <profile> add <新版本来源>` 替换固定来源；移除使用 `dsh plugin --profile <profile> remove @laxpud/dsh-starbridge`，不另设升级器。
+
+### 本地安装验证（2026-11-03）
+
+| 客户端 | 安装方式与实际结果 |
+|---|---|
+| Codex CLI 0.162.1 | 隔离 `CODEX_HOME`，通过本地 marketplace 和 `codex plugin add` 安装；app-server 确认插件 MCP 为 connected、18 个工具，枚举到带插件身份的 `starbridge:starbridge-case-audit` |
+| Claude Code 2.1.316 | 隔离 `CLAUDE_CONFIG_DIR`，通过原生 marketplace／install 安装；控制协议确认插件 MCP connected、18 个工具，并发现插件 Skill |
+| 官方 DSH 0.2.1-rc.2 | 隔离 `DSH_HOME`，原生命令安装本地 tgz；官方 profile 解析器确认 bundle 配置层，加载实际安装适配器后发现 18 个工具、取得 schema 1 契约，官方 Skill provider 加载包内正文 |
+
+验证只发送初始化、工具列表、状态和无会话契约请求，没有发送模型消息、打开 STAR 或改动日常插件配置。运行证据保存在本地 `outputs/plugin-install-20261103/`，不进入 Git。执行沙箱内的 stdio 检查曾超时，最终结果来自正常本机环境。Codex／Claude 的本地市场来源指向本轮源码快照；该结果不代表尚未发布的远端 Git 市场可安装。DSH 空索引已通过官方 format 1 解析器，远端托管、发布 commit 安装和 Discover UI 尚未验证。
+
+## 源码与通用接入
+
+不使用插件时仍可构建 Python wheel，并将 `starbridge-mcp` 接入任意支持 stdio 的宿主。以下保留此前的独立安装方法及历史验收；三端用户的正式安装与更新入口已改为本节插件方式，不再新增其他 Harness 专用适配。
 
 ## 安装程序
 

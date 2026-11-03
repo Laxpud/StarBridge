@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "starbridge": {
+      "command": "python3",
+      "args": [
+        "integrations/plugin/launch.py"
+      ],
+      "cwd": ".",
+      "startup_timeout_sec": 180,
+      "tool_timeout_sec": 600,
+      "env_vars": [
+        "STARBRIDGE_PLUGIN_DATA",
+        "UV_CACHE_DIR",
+        "UV_PYTHON",
+        "UV_OFFLINE",
+        "CDLMD_LICENSE_FILE",
+        "LM_LICENSE_FILE"
+      ]
+    }
+  }
+}

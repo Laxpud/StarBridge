@@ -1,0 +1,42 @@
+{
+  "name": "@laxpud/dsh-starbridge",
+  "version": "0.1.0",
+  "description": "Inspect STAR-CCM+ cases and make controlled changes through local MCP tools and a shared audit skill.",
+  "type": "module",
+  "main": "integrations/deepseek-harness/index.js",
+  "files": [
+    "skills/",
+    "pyproject.toml",
+    "uv.lock",
+    "README.md",
+    "LICENSE",
+    "src/starbridge/**/*.py",
+    "src/starbridge/catalogs/**/*.json",
+    "src/starbridge/bridge/java/**/*.java",
+    "integrations/**/*.py",
+    "integrations/**/*.json",
+    "integrations/**/*.js",
+    "integrations/**/*.yml"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Laxpud/StarBridge.git"
+  },
+  "engines": {
+    "dsh": "0.2.1-rc.2"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./integrations/deepseek-harness/cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-mcp-client": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-skill-filesystem": "0.2.1-rc.2"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-mcp-client": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-skill-filesystem": "0.2.1-rc.2"
+  }
+}

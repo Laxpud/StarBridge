@@ -1,0 +1,5 @@
+# bundle 仅插入自己的适配，不覆盖 profile 已有的 MCP 或 Skill 服务。
+- insert:
+    - id: starbridge
+      name: '@laxpud/dsh-starbridge'
+      config: {}
