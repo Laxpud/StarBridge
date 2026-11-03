@@ -1,9 +1,9 @@
 /**
  * 在已核对版本的 STAR 会话中执行目录裁剪后的定位、读取和单项修改管线。
- * 本类作为同文件辅助类追加到 BridgeFileMacro 源码；计划由 Python 校验，
+ * 本类按安装版本编译并由宏 classpath 复用；计划由 Python 校验，
  * 请求只能选择目录属性或操作，不能提供 Java 类、方法或任意调用片段。
  */
-class CatalogRuntime {
+public class CatalogRuntime {
     /** 返回当前 server 的版本与 Runner 会话世代；不使用保存文件的原始版本。 */
     public static java.util.Map<String, Object> metadata(
             star.common.Simulation sim, String sessionToken) {

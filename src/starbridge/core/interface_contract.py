@@ -305,7 +305,7 @@ def usage_contract():
                 '核对目标值及需要保持的已支持设置，关闭本次创建的会话'],
         },
         'result_paths': {
-            'envelope': '工具 structuredContent 与 text 均为 {status,result} 或 {status,error,session_state?}。',
+            'envelope': '工具 content 中的单份 JSON 文本为 {status,result} 或 {status,error,session_state?}；不重复附带 structuredContent。',
             'discover_installations': 'result.installations[]：status、executable、version、适配标志、javadoc_root；检查 coverage，不把部分搜索当成整机清单。',
             'get_capabilities': '不传版本返回注册范围；指定版本返回 supported。顶层 ok 仅表示查询完成，supported=false 表示此版本未适配。',
             'find_objects': 'result.catalog.objects[]：locator、reference、locator_unique；next_offset 非空需继续。',
@@ -329,7 +329,7 @@ def usage_contract():
         ],
         'pagination': {
             'browse_tree': '传 next_cursor，保持 scope，可省略 node_id；列表变化失效后重新展开。',
-            'describe_node': '传 next_cursor、同一 node_id/scope；property_ids 省略则沿用选择；描述变化需重新开始。',
+            'describe_node': '传 next_cursor、同一 node_id/scope；property_ids 省略则沿用选择。各页来自同一次描述观察，有效期 300 秒；过期重新描述，读取与修改仍刷新实例元数据。',
             'search_settings': '传 next_cursor，保持 query/scope，expand=false；元数据变化导致失效，重新搜索。',
             'find_objects': '传 catalog.next_offset；保持 type_id/name/parent，分页之间没有快照隔离。',
         },

@@ -2,7 +2,7 @@
  * 在已验证的精确版本上枚举一层服务对象，或描述当前实例的 Bean 元数据。
  * 请求来自 Core 的内部引用；本类不执行描述符 getter、setter 或属性编辑器。
  */
-class DiscoveryRuntime {
+public class DiscoveryRuntime {
     /**
      * 在执行计划进入读取或修改管线前重新核对发现时的完整身份绑定。
      * 只走身份与子对象枚举，不读取描述符或属性；不经 CatalogRuntime 回调，避免版本校验递归。

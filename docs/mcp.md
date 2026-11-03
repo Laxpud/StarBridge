@@ -34,7 +34,7 @@ Agent 首次使用可调用 `get_contract`，或读取 `starbridge://contract`�
 | `read_properties` | `session_id`、`target`，可选 `properties` | 逐属性值和错误；省略属性列表表示该类型全部已映射属性 |
 | `modify` | `session_id`、`request`，可选 `audit` | 原样使用 schema 2 属性修改或 schema 3 结构操作契约；必须提供实际读取的 `expected` |
 | `browse_tree` | `session_id`，可选 `node_id`、`cursor`、`offset`、`limit`、`scope`、`max_nodes` | 展开真实对象的一层；不读取属性值，分页游标绑定列表指纹 |
-| `describe_node` | `session_id`，可选 `node_id`、`scope`、`property_ids`、`cursor`、`limit` | 描述真实 Bean 属性及规则支持；支持属性选择和指纹绑定分页 |
+| `describe_node` | `session_id`，可选 `node_id`、`scope`、`property_ids`、`cursor`、`limit` | 描述真实 Bean 属性及规则支持；同一次观察分页，按当前页准备能力说明 |
 | `read_node_properties` | `session_id`、`node_id`、非空 `property_ids` | 刷新身份和描述符后读取显式选择的属性；局部错误独立返回 |
 | `search_settings` | `session_id`、`query`，可选 `expand`、`max_nodes`、`max_depth`、`scope`、`limit`、`cursor` | 默认搜索已发现元数据；扩展必须显式给出，返回覆盖与截断 |
 | `relocate_node` | `session_id`、`locator` | 按完整名称/类型路径重建新会话引用；不继承旧对象身份 |
@@ -115,7 +115,7 @@ request = {
 
 ## 结果和失败恢复
 
-Core 封套位于 MCP 的 `structuredContent`，同样的 JSON 也放在文本内容中。工具错误设置 `isError: true`。
+Core 封套只在 MCP `content` 中作为一份 JSON 文本返回，不再重复提供 `structuredContent`。消费端应解析该文本；工具错误仍设置 `isError: true`。发现属性读取只返回整理后的 `properties`，不再重复附带包含相同值的底层 `result.catalog`。
 
 Core 错误还返回 `recovery`，说明下一步可查询的工具及禁止自动重试的约定；参数 schema 拒绝返回 `error.argument_path`。这些提示不会执行恢复，也不能证明此前会话状态正常。业务返回保持原字段，新增说明不替代 `inspection_complete`、逐属性状态和当前会话记录。
 

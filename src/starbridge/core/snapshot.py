@@ -1,11 +1,13 @@
 """编译兼容快照的集合与字段目录，复用属性目录的成员校验和只读调用管线。"""
 
 import hashlib
+from copy import deepcopy
+from functools import lru_cache
 import json
 from pathlib import Path
 
 from .catalog import _keys, _require, load, read_json
-from .execution import ADAPTERS, _binary_class, _literal, _member, _pipeline, _text, load_execution
+from .execution import ADAPTERS, _binary_class, _literal, _member, _pipeline, _text, load_execution, _file_key
 
 
 def load_snapshot(catalog_path, execution_path, snapshot_path):
@@ -115,8 +117,15 @@ def load_snapshot(catalog_path, execution_path, snapshot_path):
             'nodes': nodes, 'collections': collections}
 
 
+@lru_cache(maxsize=8)
+def _bundled_snapshot(catalog_key, execution_key, snapshot_key):
+    """随附快照布局只在首次使用或文件更新时编译。"""
+    return load_snapshot(catalog_key[0], execution_key[0], snapshot_key[0])
+
+
 def prepare_snapshot(target=None):
     """读取随仓库分发的明确版本目录；实际 server 匹配由 Java 在读取前核对。"""
     from .catalog_bundle import bundle_root
     root = bundle_root(target)
-    return load_snapshot(root / 'generated' / 'catalog.json', root / 'execution.json', root / 'snapshot.json')
+    return deepcopy(_bundled_snapshot(_file_key(root / 'generated' / 'catalog.json'),
+                                      _file_key(root / 'execution.json'), _file_key(root / 'snapshot.json')))

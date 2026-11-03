@@ -219,13 +219,9 @@ class Service:
     def describe_node(self, session_id, node_id=None, scope='simulation', timeout=180,
                       property_ids=None, cursor=None, limit=100):
         """描述当前节点的属性及规则支持状态；不会隐式读取全部属性值。"""
-        from .discovery import describe_node, page_description, _state
-        from .discovery_write import describe_write_support
-        description = describe_node(session_id, node_id=node_id, scope=scope,
-                                    timeout=_timeout(timeout), operate=self._operate)
-        state = _state(session_id)
-        description = describe_write_support(session_id, description, state)
-        return page_description(description, state, property_ids=property_ids, cursor=cursor, limit=limit)
+        from .discovery import describe_page
+        return describe_page(session_id, node_id=node_id, scope=scope, timeout=_timeout(timeout),
+                             operate=self._operate, property_ids=property_ids, cursor=cursor, limit=limit)
 
     def read_node_properties(self, session_id, node_id, property_ids, timeout=180):
         """重新核对引用和实际描述符，再执行明确选择的属性读取计划。"""

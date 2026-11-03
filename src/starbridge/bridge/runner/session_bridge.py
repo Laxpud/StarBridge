@@ -221,7 +221,8 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
                        catalog_plan=catalog_plan, catalog_request=catalog_request,
                        session_token=state['session_token'], legacy_plan=legacy_plan, snapshot_plan=snapshot_plan,
                        discovery_request=discovery_request,
-                       expected_simulation_key=state.get('simulation_key', ''), on_client_start=record_client)
+                       expected_simulation_key=state.get('simulation_key', ''), on_client_start=record_client,
+                       debug=state.get('debug', False))
         if not alive(state):
             raise RuntimeError('Server exited or changed identity during request')
         state['current_file'] = data['after']['session_path']
@@ -317,8 +318,12 @@ def prune_sessions():
     # 只有登记会话均已结束时才删缓存，避免计划文件正被其他客户端加载。
     # 保留目录，重建缓存的写入方始终使用原子替换；不删除未知扩展名的文件。
     if idle:
+        from starbridge.bridge.runner.java_runtime import prune_runtime_cache
+        prune_runtime_cache(cutoff)
         for path in (runtime_root() / 'cache').rglob('*.json'):
             try:
+                if 'java' in path.relative_to(runtime_root() / 'cache').parts:
+                    continue
                 if path.stat().st_mtime < cutoff:
                     path.unlink()
             except OSError:
@@ -374,7 +379,7 @@ def start(args, directory):
                 data = execute(star, None, probe, action='session-info', host='localhost',
                                port=candidate['port'], timeout=min(args.timeout, 15),
                                client_userdir=directory / 'client-settings',
-                               snapshot_plan=args.snapshot_plan, session_token=state['session_token'])
+                               snapshot_plan=args.snapshot_plan, session_token=state['session_token'], debug=state['debug'])
             except RuntimeError:
                 continue
             info = data['after']

@@ -5,9 +5,17 @@
 """
 
 from copy import deepcopy
+from functools import lru_cache
 
 from .catalog import CatalogError
-from .execution import WRITE_IDENTITY_PROPERTIES
+from .execution import WRITE_IDENTITY_PROPERTIES, _file_key
+
+
+@lru_cache(maxsize=8)
+def _accepted_rules(key):
+    """复用当前发行版本的人工规则；文件更新时通过路径、时间和大小换用新缓存。"""
+    from .catalog import read_json
+    return read_json(key[0])
 
 
 # 只允许下列完整规则进入单次赋值事务；实例条件仍需每次准备及 setter 前检查。
@@ -105,8 +113,7 @@ class AcceptedWriteRules:
 
     def __init__(self, target):
         from .catalog_bundle import bundle_root
-        from .catalog import read_json
-        self.source = read_json(bundle_root(target) / 'execution.json')
+        self.source = _accepted_rules(_file_key(bundle_root(target) / 'execution.json'))
 
     def _signature(self, pipeline):
         """用完整 owner/name/参数序列标识同一读取过程。"""
@@ -326,7 +333,7 @@ class GenericWriteRules(AcceptedWriteRules):
                          reason='普通常量数量赋值：固定类型 setter、目标身份、运行时单位/范围检查及写后回读')
 
 
-def describe_write_support(session_dir, description, state):
+def describe_write_support(session_dir, description, state, descriptors=None):
     """用实际编译结果标记支持；条件仍在写前检查，不宣称实例已满足。"""
     from .discovery_rules import build_read_plan
     from .catalog_bundle import session_target
@@ -343,7 +350,8 @@ def describe_write_support(session_dir, description, state):
         return result
     try:
         prepared = build_read_plan(session_dir, result['node'], readable, state,
-                                   writer_hook=GenericWriteRules(session_target(state), properties))
+                                   writer_hook=GenericWriteRules(session_target(state),
+                                       descriptors if descriptors is not None else properties))
         entries = prepared['plan']['properties'][prepared['target']['type']]
     except (ValueError, KeyError, CatalogError) as error:
         # 描述中的支持标志来自编译结果；目标实际写入时单独编译必要范围。
@@ -376,7 +384,7 @@ def modify_node_property(session_dir, node_id, property_id, expected, value, tim
     from .discovery import describe_node, _state
     from .discovery_rules import build_read_plan
     from .catalog_bundle import session_target
-    from .execution import prepare_modification_value
+    from .execution import prepare_modification_plan
     from starbridge.bridge.runner.modifier import ModificationRejected
     if not WRITING_ENABLED:
         raise ModificationRejected('Runtime-discovered writing is not enabled in this release')
@@ -401,7 +409,7 @@ def modify_node_property(session_dir, node_id, property_id, expected, value, tim
             writer_hook=GenericWriteRules(session_target(state), descriptors))
         request = {'schema_version': 2, 'action': 'modify', 'target': prepared['target'],
                    'property': property_id, 'expected': expected, 'value': value}
-        plan, request = prepare_modification_value(prepared['catalog_path'], prepared['execution_path'], request)
+        plan, request = prepare_modification_plan(prepared['plan'], request)
         plan['discovery_binding'] = prepared['binding']
     except (ValueError, KeyError, CatalogError) as error:
         # 交给统一状态封套，不能把内部 rejected 包装成外层 ok。

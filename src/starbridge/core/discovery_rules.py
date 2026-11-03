@@ -1,18 +1,24 @@
 """将实际 Bean 元数据与本机 Javadoc 组合为经过成员指纹校验的读取计划。"""
 
 import hashlib
+from functools import lru_cache
+from collections import OrderedDict
+from copy import deepcopy
+from threading import RLock
 import json
 from pathlib import Path
 
 from .session_store import runtime_root
 from .catalog import member_fingerprint, validate, read_json
 from .catalog_bundle import session_target
-from .execution import load_execution
+from .execution import compile_execution
 from starbridge.tools.catalog.javadoc import generate
 
 from .discovery_policy import POLICY_VERSION, TARGET, PRIMITIVES, INPUTS, INPUT_RECEIVER_TYPES, DENY, DYNAMIC_RANGES
 
 RULE_VERSION = 'discovery-read-v4-' + POLICY_VERSION
+_compiled_plans = OrderedDict()
+_compiled_lock = RLock()
 
 
 def digest(value):
@@ -75,14 +81,34 @@ def installation(state):
         f'STAR installation Javadoc is unavailable for executable {executable}; '
         'expected doc/client/html/type-search-index.js under an ancestor directory. '
         'Use open_session with star pointing to the actual executable inside the matching STAR installation '
-        'and a new session_dir; wrapper scripts outside the installation are not resolved. '
+        'and reconnect; wrapper scripts outside the installation are not resolved. '
         'If the executable is already inside the installation, install its matching local Javadoc.')
 
 
-def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):
-    """为当前节点生成计划；每次生成校验安装 Build 和所有用到的成员声明。
+@lru_cache(maxsize=64)
+def _metadata(root, release, build, rule_version, classes):
+    """按安装位置、精确版本和规则复用官方声明，不在每次读取时重算 Javadoc 摘要。
 
-    返回目录路径、已编译计划、带会话身份的 target 和 descriptor 映射。
+    同一安装路径中的文档修订需清理对应缓存并重启服务；安装版本不会由缓存推断。
+    缓存缺失或 JSON 损坏时重新生成，官方声明只在生成或首次加载时校验。
+    """
+    directory = runtime_root() / 'cache' / 'metadata'
+    directory.mkdir(parents=True, exist_ok=True)
+    cached = directory / (digest([str(root), release, build, rule_version, classes]) + '.json')
+    try:
+        catalog = validate(read_json(cached))
+    except (OSError, ValueError, KeyError):
+        catalog = validate(generate(root, list(classes)))
+        _write(cached, catalog)
+    if catalog['target'] != {'release': release, 'build': build}:
+        raise ValueError('Installation and session Build differ')
+    return catalog
+
+
+def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):
+    """为当前节点生成计划；按安装版本复用声明，校验本次使用的规则和成员。
+
+    返回内存中的已编译计划、带会话身份的 target 和 descriptor 映射。
     writer_hook 仅供内部规则扩展；外部请求不能提供方法或执行步骤。
     """
     target_version = session_target(state)
@@ -102,22 +128,7 @@ def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):
     if writer_hook is not None:
         classes.update(writer_hook.required_classes(selected))
     root = installation(state)
-    # 安装声明与编译计划可重建，放在用户缓存区；对象索引仍属于单个会话。
-    metadata = runtime_root() / 'cache' / 'metadata'
-    metadata.mkdir(parents=True, exist_ok=True)
-    cached = metadata / (digest([str(root), target_version, RULE_VERSION, sorted(classes)]) + '.json')
-    catalog = read_json(cached) if cached.is_file() else None
-    # 源文件内容摘要同时覆盖版本材料和类页面；文件变化时重新解析注解与继承链。
-    sources = [] if catalog is None else catalog['sources'] + [v['source'] for v in catalog['types'].values()]
-    valid = catalog is not None and all((root / item['path']).is_file() and
-        hashlib.sha256((root / item['path']).read_bytes()).hexdigest() == item['sha256'] for item in sources)
-    if not valid:
-        catalog = validate(generate(root, sorted(classes)))
-        _write(cached, catalog)
-    else:
-        catalog = validate(catalog)
-    if catalog['target'] != target_version:
-        raise ValueError('Installation and session Build differ')
+    catalog = _metadata(root, target_version['release'], target_version['build'], RULE_VERSION, tuple(sorted(classes)))
     rules = {'schema_version': 8, 'target': target_version, 'members': {},
              'types': {}, 'properties': {}, 'operations': {}}
 
@@ -188,11 +199,15 @@ def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):
             supplemental.setdefault(identifier, []).append(range_id)
     if writer_hook is not None:
         writer_hook.attach(catalog, rules, selected, type_id, member)
-    cache = runtime_root() / 'cache' / 'plans' / digest([RULE_VERSION, catalog, rules])
-    cache.mkdir(parents=True, exist_ok=True)
-    cp, ep = cache / 'catalog.json', cache / 'execution.json'
-    _write(cp, catalog)
-    _write(ep, rules)
-    return {'catalog_path': cp, 'execution_path': ep, 'plan': load_execution(cp, ep),
+    # 类型适配不包含本次对象 key；同类同属性的计划可以复用，实例绑定仍单独检查。
+    key = digest([str(root), target_version, RULE_VERSION, rules])
+    with _compiled_lock:
+        if key not in _compiled_plans:
+            _compiled_plans[key] = compile_execution(catalog, rules)
+            if len(_compiled_plans) > 128:
+                _compiled_plans.popitem(last=False)
+        _compiled_plans.move_to_end(key)
+        plan = deepcopy(_compiled_plans[key])
+    return {'plan': plan,
             'target': parent, 'property_map': selected, 'supplemental': supplemental,
             'binding': {'session_token': state['session_token'], 'path': node['path']}}

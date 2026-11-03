@@ -18,10 +18,10 @@ from starbridge.core.interface_contract import SERVER_INSTRUCTIONS, tool_input_s
 
 
 def tool_result(result):
-    """所有 Core 与输入校验结果使用相同封套，兼容只支持文本结果的客户端。"""
+    """单份 JSON 文本承载共享 Core 封套，不再复制一份相同的 structuredContent。"""
     return types.CallToolResult(
         content=[types.TextContent(text=json.dumps(result, ensure_ascii=False, allow_nan=False))],
-        structured_content=result, is_error=result['status'] != 'ok')
+        is_error=result['status'] != 'ok')
 
 
 async def validate_arguments(context, call_next):
@@ -70,7 +70,7 @@ WRITE = types.ToolAnnotations(read_only_hint=False, destructive_hint=True,
 
 
 def call(method, arguments):
-    """将 Core 状态同时放入结构化和文本结果，失败时设置 MCP 的 isError。"""
+    """直接返回单份 Core 状态封套，失败时设置 MCP 的 isError。"""
     result = service.call(method, arguments)
     return tool_result(result)
 

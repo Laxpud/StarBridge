@@ -5,6 +5,8 @@
 """
 
 import hashlib
+from copy import deepcopy
+from functools import lru_cache
 import json
 import math
 from pathlib import Path
@@ -292,14 +294,30 @@ def _operations(catalog, methods, source, types, properties):
     return operations
 
 
-def load_execution(catalog_path, execution_path):
-    """加载共享候选目录及人工执行映射，返回已校验的完整运行时目录。
+def _file_key(path):
+    """本地映射以路径、修改时间和大小区分版本，不逐次读取文件内容。"""
+    path = Path(path).resolve()
+    info = path.stat()
+    return str(path), info.st_mtime_ns, info.st_size
 
-    不访问安装或算例；运行 server 版本检查由 Java 在第一次目录调用前执行。
-    catalog_id 覆盖执行映射和版本；成员声明另外由映射中的指纹锁定。
+
+@lru_cache(maxsize=16)
+def _load_execution(catalog_key, execution_key):
+    """同一份随附目录只校验和编译一次；文件变更会产生新的缓存键。"""
+    return compile_execution(load(catalog_key[0]), read_json(execution_key[0]))
+
+
+def load_execution(catalog_path, execution_path):
+    """读取文件入口并复用已编译目录，返回独立计划，防止调用方污染共享缓存。"""
+    return deepcopy(_load_execution(_file_key(catalog_path), _file_key(execution_path)))
+
+
+def compile_execution(catalog, rules):
+    """直接编译已校验的候选目录与规则对象；内部调用不再写 JSON 再读回。
+
+    catalog 来自 load 或 validate；这里核对规则、声明指纹和方法管线。
+    运行版本与对象身份仍在 STAR 中按实际请求检查。
     """
-    catalog = load(catalog_path)
-    rules = read_json(execution_path)
     _require(isinstance(rules, dict), 'Execution rules must be an object')
     _require(type(rules.get('schema_version')) is int and rules['schema_version'] in (1, 2, 3, 4, 5, 6, 7, 8),
              'Unsupported execution schema_version')
@@ -496,8 +514,12 @@ def prepare_read_value(catalog_path, execution_path, request, action):
     describe 另保留目标条件的只读管线；新关联条件需要输入值，仍只提供摘要。
     未映射属性立即拒绝，不因为候选目录中存在 getter 就猜测运行方式。
     """
+    return prepare_read_plan(load_execution(catalog_path, execution_path), request, action)
+
+
+def prepare_read_plan(plan, request, action):
+    """从内部已编译计划裁剪读取范围；仅检查本次请求，不重复加载与编译目录。"""
     _require(action in ('describe', 'read'), 'Unsupported catalog read action')
-    plan = load_execution(catalog_path, execution_path)
     _require(isinstance(request, dict)
              and {'schema_version', 'action', 'target'} <= request.keys()
              and request.keys() <= {'schema_version', 'action', 'target', 'properties'},
@@ -821,7 +843,11 @@ def prepare_modification_value(catalog_path, execution_path, request):
     修改请求格式与旧 Modifier 分开版本化。新值在本地按适配器检查，最终方法和
     参数在 Java 准备阶段解析；活动请求标记之前不会启动客户端或尝试 setter。
     """
-    plan = load_execution(catalog_path, execution_path)
+    return prepare_modification_plan(load_execution(catalog_path, execution_path), request)
+
+
+def prepare_modification_plan(plan, request):
+    """检查单次赋值或结构操作请求，沿用内部已编译的类型、属性和方法适配。"""
     if isinstance(request, dict) and type(request.get('schema_version')) is int and request['schema_version'] == 3:
         return _prepare_operation(plan, request)
     _keys(request, 'schema_version action target property expected value', 'modification')

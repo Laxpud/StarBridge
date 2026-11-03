@@ -20,6 +20,7 @@ from starbridge.bridge.runner.modifier import (ModificationRejected, content_sna
 from starbridge.core.execution import prepare_legacy
 from starbridge.core.snapshot import prepare_snapshot
 from starbridge.core.catalog_bundle import bundle_target, check_plan_targets
+from starbridge.bridge.runner.java_runtime import compile_runtime, source_text
 
 
 def digest(path):
@@ -150,7 +151,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
             action=None, host=None, port=None, expected_session="", timeout=None,
             client_userdir=None, modification=None, catalog_plan=None,
             catalog_request=None, session_token=None, legacy_plan=None, snapshot_plan=None,
-            discovery_request=None, expected_simulation_key='', on_client_start=None):
+            discovery_request=None, expected_simulation_key='', on_client_start=None, debug=False):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
     catalog_actions = {'catalog-find': 'find', 'catalog-read': 'read', 'catalog-describe': 'describe',
                        'catalog-verify': 'read', 'catalog-modify': 'modify',
@@ -200,39 +201,41 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
         # 文件模式每次加载都有独立世代；后台会话传入持久 token，不跨重载复用引用。
         "__SESSION_TOKEN__": session_token or uuid.uuid4().hex,
     }
-    # 修改请求单独留存；Java 容器源码由已校验 JSON 生成，不接收任意 Java 片段。
-    if modification is not None:
+    # 详细计划只在调试时另存；正常请求直接生成已校验的 Java 容器常量。
+    if debug and modification is not None:
         (directory / "request.json").write_text(
             json.dumps(modification, ensure_ascii=False, indent=2) + "\n")
-    if catalog_call:
+    if debug and catalog_call:
         (directory / "catalog-plan.json").write_text(
             json.dumps(catalog_plan, ensure_ascii=False, indent=2) + "\n")
         (directory / "catalog-request.json").write_text(
             json.dumps(catalog_request, ensure_ascii=False, indent=2) + "\n")
-    if legacy_plan is not None:
+    if debug and legacy_plan is not None:
         (directory / 'legacy-plan.json').write_text(
             json.dumps(legacy_plan, ensure_ascii=False, indent=2) + '\n')
-    if snapshot_plan is not None:
+    if debug and snapshot_plan is not None:
         (directory / 'snapshot-plan.json').write_text(
             json.dumps(snapshot_plan, ensure_ascii=False, indent=2) + '\n')
-    if discovery_call:
+    if debug and discovery_call:
         (directory / 'discovery-request.json').write_text(
             json.dumps(discovery_request, ensure_ascii=False, indent=2) + '\n')
     containers = {"__MODIFICATION__": modification, "__CATALOG_PLAN__": catalog_plan,
                   "__CATALOG_REQUEST__": catalog_request, "__LEGACY_PLAN__": legacy_plan,
                   "__SNAPSHOT_PLAN__": snapshot_plan, "__DISCOVERY_REQUEST__": discovery_request}
-    text = template.read_text()
+    text = source_text(template)
     # 一次替换原模板中的占位符，避免用户文本被后续占位符替换再次解释。
     text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|EXPECTED_SIMULATION_KEY|OUTPUT|NAME|UNIT|VALUE|MODIFICATION|CATALOG_PLAN|CATALOG_REQUEST|SESSION_TOKEN|LEGACY_PLAN|SNAPSHOT_PLAN|DISCOVERY_REQUEST)__",
                   lambda match: java_literal(containers[match.group()]) if match.group() in containers
                   else json.dumps(replacements[match.group()], ensure_ascii=True),
                   text)
-    # STAR 当前只接收一个宏源文件；辅助类与宏一起编译，不依赖同目录自动找类。
-    runtime = template.with_name("CatalogRuntime.java").read_text()
-    discovery = template.with_name('DiscoveryRuntime.java').read_text()
-    macro.write_text(text + "\n" + runtime + "\n" + discovery)
+    # 安装内 JDK 编译辅助类一次；-classpath 为所选 STAR 的官方宏加载入口。
+    # 无法定位安装内编译环境时保留内联源码，仍由 STAR 自己编译。
+    classpath, inline = compile_runtime(star, timeout=min(timeout, 90) if timeout else 90)
+    macro.write_text(text + '\n' + inline)
     command = [star, "-noretry", "-nbuserdir",
                str(client_userdir or directory / "star-user")]
+    if classpath is not None:
+        command += ['-classpath', str(classpath)]
     if host is not None:
         command += ["-host", host, "-port", str(port), "-batch", str(macro), "-noexit"]
     else:

@@ -11,7 +11,7 @@ from .session_store import session_directory
 from .catalog import read_json
 from .catalog_bundle import session_target
 from .discovery_rules import RULE_VERSION, _write, build_read_plan, digest, property_id, select_rule
-from .execution import prepare_read_value
+from .execution import prepare_read_plan
 from .discovery_policy import TARGET, rule_evidence
 
 ALIASES = {'松弛': ['relaxation'], '压力': ['pressure'], '速度': ['velocity'],
@@ -237,11 +237,41 @@ def describe_node(session_dir, node_id=None, scope='simulation', timeout=180, op
             'cache_state': 'refreshed', 'rule_version': RULE_VERSION}
 
 
-def page_description(description, state, property_ids=None, cursor=None, limit=100):
-    """对已完整准备的描述结果选择和分页，不裁剪内部编译或写入保持范围。
+def describe_page(session_dir, node_id=None, scope='simulation', timeout=180, operate=None,
+                  property_ids=None, cursor=None, limit=100):
+    """第一页观察实例，后续页面沿用同一描述快照，只准备当前页的写入能力说明。"""
+    from .discovery_write import describe_write_support
+    state = _state(session_dir)
+    directory = _cache_path(session_dir, state) / 'descriptions'
+    if cursor is None:
+        description = describe_node(session_dir, node_id, scope, timeout, operate)
+        if 'node' not in description:
+            return description
+        description.update(_snapshot_id=uuid.uuid4().hex, scope=scope,
+                           observed_at=datetime.now(timezone.utc).isoformat(), expires_at=time.time() + 300)
+        directory.mkdir(exist_ok=True)
+        _write(directory / (description['_snapshot_id'] + '.json'), description)
+    else:
+        saved = _decode(cursor, state, 'description_cursor')
+        if saved.get('scope') != scope or (node_id is not None and saved['node_id'] != node_id):
+            raise ValueError('Description cursor belongs to another node or scope')
+        try:
+            description = read_json(directory / (saved['snapshot_id'] + '.json'))
+        except (OSError, KeyError, ValueError) as error:
+            raise ValueError('Description snapshot is unavailable; start a new description') from error
+        if description['expires_at'] < time.time():
+            raise ValueError('Description snapshot expired; start a new description')
+    page = page_description(description, state, property_ids, cursor, limit)
+    page = describe_write_support(session_dir, page, state, descriptors=description.get('properties', []))
+    page.pop('_snapshot_id', None)
+    return {**page, 'value_source': 'descriptor_snapshot',
+            'validity': 'Pages share one observation; reads and writes refresh runtime descriptors'}
 
-    游标绑定节点、全部属性描述指纹和选择顺序。服务每次先刷新完整描述，
-    再调用本函数；返回的页面不改变原始观察的 complete/partial 状态。
+
+def page_description(description, state, property_ids=None, cursor=None, limit=100):
+    """对同一次完整描述选择和分页，不重复准备页面外的写入计划。
+
+    游标绑定节点、描述快照、属性指纹和选择顺序；页面保留原始观察的完整性状态。
     """
     _budget(limit, 'limit', 500)
     if 'node' not in description:
@@ -272,7 +302,8 @@ def page_description(description, state, property_ids=None, cursor=None, limit=1
     next_cursor = None if next_offset is None else _remember_reference({
         'kind': 'description_cursor', 'session_token': state['session_token'],
         'node_id': node_id, 'fingerprint': fingerprint,
-        'selection': property_ids, 'offset': next_offset}, state)
+        'selection': property_ids, 'offset': next_offset,
+        'snapshot_id': description.get('_snapshot_id'), 'scope': description.get('scope', 'simulation')}, state)
     return {**description, 'properties': selected[offset:end], 'offset': offset,
             'total_count': len(selected), 'descriptor_total_count': len(properties),
             'next_cursor': next_cursor, 'next_offset': next_offset,
@@ -317,6 +348,34 @@ def prepare_node_read(session_dir, node_id, property_ids, timeout=180, operate=N
             'description': description, 'unsupported': unsupported, 'compilation_errors': compilation_errors}
 
 
+def _merge_reads(plans):
+    """把同一对象的可执行属性计划合并，部分声明失败不导致多次启动客户端。"""
+    if len(plans) <= 1:
+        return plans
+    first = plans[0]
+    types, properties, selected, supplemental = {}, {}, {}, {}
+    for prepared in plans:
+        plan = prepared['plan']
+        if (prepared['target'] != first['target'] or prepared['binding'] != first['binding']
+                or plan['target'] != first['plan']['target']):
+            raise ValueError('Read plans must refer to the same object and version')
+        for name, entry in plan['types'].items():
+            if name in types and types[name] != entry:
+                raise ValueError('Read plans contain conflicting type adapters')
+            types[name] = entry
+        for type_id, entries in plan['properties'].items():
+            merged = properties.setdefault(type_id, {})
+            for name, entry in entries.items():
+                if name in merged and merged[name] != entry:
+                    raise ValueError('Read plans contain conflicting property adapters')
+                merged[name] = entry
+        selected.update(prepared['property_map'])
+        supplemental.update(prepared.get('supplemental', {}))
+    plan = {**first['plan'], 'types': types, 'properties': properties, 'operations': {},
+            'catalog_id': digest([item['plan']['catalog_id'] for item in plans])}
+    return [{**first, 'plan': plan, 'property_map': selected, 'supplemental': supplemental}]
+
+
 def read_node_properties(session_dir, node_id, property_ids, timeout=180, operate=None):
     """只读取显式选择的属性；不支持项单独报告，不把部分成功当成完整结果。"""
     started = time.monotonic()
@@ -327,14 +386,14 @@ def read_node_properties(session_dir, node_id, property_ids, timeout=180, operat
     if operate is None:
         from .service import Service
         operate = Service()._operate
-    for prepared in context['prepared_plans']:
+    for prepared in _merge_reads(context['prepared_plans']):
         selected = list(prepared['property_map'])
         if time.monotonic() - started >= timeout:
             errors.extend({'property_id': p, 'reason': 'time_budget'} for p in selected)
             continue
         request = {'schema_version': 1, 'action': 'read', 'target': prepared['target'],
             'properties': selected + [extra for p in selected for extra in prepared.get('supplemental', {}).get(p, [])]}
-        plan, request = prepare_read_value(prepared['catalog_path'], prepared['execution_path'], request, 'read')
+        plan, request = prepare_read_plan(prepared['plan'], request, 'read')
         # 实例绑定不进入可重用类缓存；每次执行重新检查实际父关系和导航路径。
         plan['discovery_binding'] = prepared['binding']
         outcome = operate(str(session_dir), 'read', max(0.1, timeout - (time.monotonic() - started)),
@@ -342,8 +401,9 @@ def read_node_properties(session_dir, node_id, property_ids, timeout=180, operat
         outcomes.append(outcome)
         values.update(outcome.get('catalog', {}).get('properties', {}))
     complete = bool(outcomes) and all(o.get('catalog', {}).get('inspection_complete', False) for o in outcomes)
-    result = outcomes[0] if len(outcomes) == 1 else {
-        'requests': outcomes, 'catalog': {'properties': values, 'inspection_complete': complete}}
+    # 对外只返回整理后的属性一次；调试路径和未确认写入标记仍保留，底层目录包装不重复返回。
+    execution = {key: value for outcome in outcomes for key, value in outcome.items()
+                 if key in ('session_id', 'request_result', 'uncertain_request')}
     properties = {}
     for identifier in property_ids:
         if identifier in context['unsupported']:
@@ -369,7 +429,7 @@ def read_node_properties(session_dir, node_id, property_ids, timeout=180, operat
     return {'schema_version': 1, 'schema_id': 'starbridge.discovery',
             'node': node, 'property_ids': property_ids,
             'properties': properties,
-            'result': result, 'errors': errors, 'inspection_complete': not errors and complete,
+            **execution, 'errors': errors, 'inspection_complete': not errors and complete,
             'observed_at': datetime.now(timezone.utc).isoformat(), 'value_source': 'runtime',
             'validity': 'Observed during this request; external changes require a new read'}
 

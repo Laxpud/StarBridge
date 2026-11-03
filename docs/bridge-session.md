@@ -54,7 +54,7 @@ python3 bridge/runner/session_bridge.py save --session-id SESSION_ID \
 
 进程身份由 PID、Linux 启动时刻及系统启动标识共同确定。连接还绑定 Simulation key，后续调用核对加载对象；用户 GUI 另存为可以改变文件路径。每个会话的 Bridge 请求通过文件锁互斥，但不能阻止用户 GUI 同时操作。
 
-请求使用 `-batch`、`-noexit` 和会话专属客户端配置。子进程使用 `en_US.UTF-8`，不修改用户全局设置。当前默认超时 180 秒；候选会话探测单次最多 15 秒，超时不是整个连接流程的硬截止。
+请求使用 `-batch`、`-noexit` 和会话专属客户端配置。安装内 JDK 可用时，Java 辅助类编译到 `~/.starbridge/cache/java/` 并通过宏 `-classpath` 复用；每次只生成包含当前参数的入口宏。无法定位安装内 JDK 时仍由 STAR 编译内联源码，编译失败则报告错误。子进程使用 `en_US.UTF-8`，不修改用户全局设置。当前默认超时 180 秒；候选会话探测单次最多 15 秒，超时不是整个连接流程的硬截止。
 
 请求活动记录保存客户端进程身份。客户端仍在执行时保持 `running`，新的操作返回 `busy`；`session_status` 可以读取正在执行的状态。控制端中断后，在确认客户端已结束时收尾活动记录。只读失败不冻结会话。
 
@@ -67,7 +67,7 @@ python3 bridge/runner/session_bridge.py save --session-id SESSION_ID \
 | 内容 | 位置与保留方式 |
 |---|---|
 | 会话记录、请求及客户端配置 | `~/.starbridge/sessions/<session_id>/` |
-| 可重建的安装元数据和编译计划 | `~/.starbridge/cache/`，跨会话复用 |
+| 可重建的安装元数据和 Java 辅助类 | `~/.starbridge/cache/`，跨会话复用 |
 | 会话内对象索引和引用 | 对应会话目录，不跨加载复用 |
 | 报告、导出位置约定 | 显式位置优先，其次项目已有 `reports/`、`exports/`、`analysis/`，否则项目 `.starbridge/reports/` 或 `.starbridge/exports/` |
 
@@ -75,6 +75,6 @@ python3 bridge/runner/session_bridge.py save --session-id SESSION_ID \
 
 正常成功请求只留下简短 `operation.json`；失败请求保留诊断。`open_session(debug=true)` 或会话 CLI `start --debug` 保留宏、计划、日志和完整结果，调用结果还会给出 `request_result` 路径。保存的算例始终位于工程路径或用户指定位置。
 
-新连接时顺便清理超过 30 天、已结束且不需要恢复的新版会话数据；含算例文件的目录不删除。只有所有登记会话均已结束时才清理超过 30 天的 JSON 缓存。运行中、结果未确认、记录损坏或被其他请求占用的数据保留，不运行额外清理服务。
+新连接时顺便清理超过 30 天、已结束且不需要恢复的新版会话数据；含算例文件的目录不删除。只有所有登记会话均已结束时才清理超过 30 天的 JSON 缓存和未复用的 Java 编译目录；Java 编译与清理共用目录锁。运行中、结果未确认、记录损坏或被其他请求占用的数据保留，不运行额外清理服务。
 
-本轮会话改造已做静态编译与适用的既有契约检查；真实 GUI 接入、保存、失败恢复和收窄后的写入链路尚未实测。历史后台副本验证不替代这些行为的运行证据。
+本轮会话与执行层改造已做静态编译与适用的既有契约检查；辅助类缓存的实际 STAR 宏加载尚未实测。真实 GUI 接入、保存、失败恢复和收窄后的写入链路尚未实测。历史后台副本验证不替代这些行为的运行证据。
