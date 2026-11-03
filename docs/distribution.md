@@ -6,7 +6,7 @@ StarBridge 可以构建为 `starbridge-cfd` Python 发行包，运行模块与�
 
 ## 三端插件安装
 
-当前三端插件和 Vibekits 收录已完成本地安装验证，本轮已获 Git 提交、推送与 DSH 远端安装验证授权。Python 包、Git tag 和 npm 包不在本轮发布范围；程序直接来自插件 Git 提交。
+当前三端插件和 Vibekits 收录已完成 Git 推送及本地安装验证，DSH 已通过发布后远端安装验证。Python 包、Git tag 和 npm 包不在本轮发布范围；程序直接来自插件 Git 提交。
 
 三端共用 `skills/`、`src/starbridge/` 和 `uv.lock`。插件初次启动通过 `uv sync --frozen` 准备 Python 依赖，环境保存在 `~/.starbridge/runtimes/plugin-<锁文件摘要>/`；后续启动复用该环境。程序从已安装插件的源码加载，不再要求用户单独安装 `starbridge-cfd` 或 Skill，也不下载尚未发布的 PyPI 包。只读插件目录不保存虚拟环境或 Python 字节码。
 
@@ -14,7 +14,7 @@ StarBridge 可以构建为 `starbridge-cfd` Python 发行包，运行模块与�
 
 ### Codex 与 Claude Code
 
-发布后添加 `Laxpud/my-awesome-vibekits` 市场，再安装 `starbridge`：
+添加 `Laxpud/my-awesome-vibekits` 市场，再安装 `starbridge`：
 
 ```bash
 codex plugin marketplace add Laxpud/my-awesome-vibekits
@@ -46,7 +46,7 @@ dsh plugin --profile <profile> add /absolute/path/to/output/laxpud-dsh-starbridg
 
 bundle 插入自己的 `starbridge` 配置行，不替换 profile 的工具或 Skill 服务。适配器通过独立 provider 扫描包内 Skill，并接入 stdio MCP。profile 需提供 DSH 的 `tools` 与 `skills` 服务；常规基础 profile 已具备。可在 profile 的用户 patch 中覆盖该行 `config`，设置 `python`、`env`、`toolCallTimeoutMs`；许可证和必要环境通过 `env` 明确传入，不把密钥写进插件。
 
-发布后可启用实验性的 **Custom plugin indexes**，在 **Discover** 中添加 Vibekits 实际托管的 `dsh/index.json` HTTPS 地址。市场 catalog 的 DSH `versions` 使用本轮实际插件 commit 和时间；索引通过 GitHub Raw 提供，无需开启 Pages。DSH 更新可从 Discover 选择新版本，或用 `dsh plugin --profile <profile> add <新版本来源>` 替换固定来源；移除使用 `dsh plugin --profile <profile> remove @laxpud/dsh-starbridge`，不另设升级器。
+可启用实验性的 **Custom plugin indexes**，在 **Discover** 中添加 [Vibekits DSH 索引](https://raw.githubusercontent.com/Laxpud/my-awesome-vibekits/main/dsh/index.json)。市场 catalog 的 DSH `versions` 使用本轮实际插件 commit 和时间；索引通过 GitHub Raw 提供，无需开启 Pages。DSH 更新可从 Discover 选择新版本，或用 `dsh plugin --profile <profile> add <新版本来源>` 替换固定来源；移除使用 `dsh plugin --profile <profile> remove @laxpud/dsh-starbridge`，不另设升级器。
 
 ### 本地安装验证（2026-11-03）
 
@@ -56,7 +56,7 @@ bundle 插入自己的 `starbridge` 配置行，不替换 profile 的工具或 S
 | Claude Code 2.1.316 | 隔离 `CLAUDE_CONFIG_DIR`，通过原生 marketplace／install 安装；控制协议确认插件 MCP connected、18 个工具，并发现插件 Skill |
 | 官方 DSH 0.2.1-rc.2 | 隔离 `DSH_HOME`，原生命令安装本地 tgz；官方 profile 解析器确认 bundle 配置层，加载实际安装适配器后发现 18 个工具、取得 schema 1 契约，官方 Skill provider 加载包内正文 |
 
-验证只发送初始化、工具列表、状态和无会话契约请求，没有发送模型消息、打开 STAR 或改动日常插件配置。运行证据保存在本地 `outputs/plugin-install-20261103/`，不进入 Git。执行沙箱内的 stdio 检查曾超时，最终结果来自正常本机环境。Codex／Claude 的本地市场来源指向本轮源码快照；该结果不代表尚未发布的远端 Git 市场可安装。DSH 空索引已通过官方 format 1 解析器，远端托管、发布 commit 安装和 Discover UI 尚未验证。
+验证只发送初始化、工具列表、状态和无会话契约请求，没有发送模型消息、打开 STAR 或改动日常插件配置。运行证据保存在本地 `outputs/plugin-install-20261103/`，不进入 Git。执行沙箱内的 stdio 检查曾超时，最终结果来自正常本机环境。Codex／Claude 的本地市场来源指向本轮源码快照；Codex／Claude 的远端原生安装未在本轮重测，四个外部插件的已发布市场来源与包内入口已通过远端检查。DSH 索引已通过官方 format 1 解析器；公开 Raw 索引返回 HTTP 200 且无重定向，原生安装器按索引中的 `c5f878173e0e32a0a807f799874d0c1b823af612` 完成 Git 安装，关键文件与该提交一致。远端安装后再次确认 18 个工具、schema 1 契约和 bundled Skill 正文；证据在本地 `outputs/plugin-remote-20261103/`。未操作 Discover UI。
 
 ## 源码与通用接入
 
