@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from .session_store import runtime_root
 from .catalog import member_fingerprint, validate, read_json
 from .catalog_bundle import session_target
 from .execution import load_execution
@@ -101,7 +102,8 @@ def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):
     if writer_hook is not None:
         classes.update(writer_hook.required_classes(selected))
     root = installation(state)
-    metadata = Path(session_dir) / 'discovery-cache' / 'metadata'
+    # 安装声明与编译计划可重建，放在用户缓存区；对象索引仍属于单个会话。
+    metadata = runtime_root() / 'cache' / 'metadata'
     metadata.mkdir(parents=True, exist_ok=True)
     cached = metadata / (digest([str(root), target_version, RULE_VERSION, sorted(classes)]) + '.json')
     catalog = read_json(cached) if cached.is_file() else None
@@ -186,7 +188,7 @@ def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):
             supplemental.setdefault(identifier, []).append(range_id)
     if writer_hook is not None:
         writer_hook.attach(catalog, rules, selected, type_id, member)
-    cache = Path(session_dir) / 'discovery-cache' / 'plans' / digest([RULE_VERSION, catalog, rules])
+    cache = runtime_root() / 'cache' / 'plans' / digest([RULE_VERSION, catalog, rules])
     cache.mkdir(parents=True, exist_ok=True)
     cp, ep = cache / 'catalog.json', cache / 'execution.json'
     _write(cp, catalog)

@@ -21,7 +21,7 @@ python3 bridge/runner/file_bridge.py inspect example-2510.sim \
 ```bash
 python3 bridge/runner/session_bridge.py start example-2510.sim \
   --star /absolute/path/to/2510/star/bin/starccm+ \
-  --catalog-release 2510 --session-dir outputs/session-2510 --port 49001
+  --catalog-release 2510 --port 49001
 ```
 
 新会话把目标保存为 `session.json.catalog_target`。后续 `inspect`、兼容修改、保存和普通关闭使用该绑定，不再从新的默认值选择目录；显式目录请求必须与会话绑定一致。旧会话没有此字段时，沿用此前固定 2602 的契约。显式字段损坏、未知版本或 Build 不符时拒绝，不能按旧会话处理。

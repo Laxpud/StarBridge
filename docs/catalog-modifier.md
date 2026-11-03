@@ -44,13 +44,13 @@ python3 bridge/runner/file_bridge.py modify 'Base.sim~' \
 
 ```bash
 python3 bridge/runner/session_bridge.py modify \
-  --session-dir outputs/my-session \
+  --session-id SESSION_ID \
   --catalog src/starbridge/catalogs/2602/generated/catalog.json \
   --execution src/starbridge/catalogs/2602/execution.json \
   --request catalog-change.json
 
 python3 bridge/runner/session_bridge.py save \
-  --session-dir outputs/my-session --output outputs/Base_catalog_session.sim
+  --session-id SESSION_ID --output outputs/Base_catalog_session.sim
 ```
 
 会话修改只改变内存，`save` 单独落盘；会话保存本身不独立重载文件。Runner 的文件锁只串行管理自身请求，不是与外部客户端或 GUI 之间的事务锁。
@@ -240,7 +240,7 @@ python3 bridge/runner/session_bridge.py save \
 
 ```bash
 python3 bridge/runner/session_bridge.py read \
-  --session-dir outputs/my-session \
+  --session-id SESSION_ID \
   --catalog src/starbridge/catalogs/2602/generated/catalog.json \
   --execution src/starbridge/catalogs/2602/execution.json \
   --request tensor-read.json > tensor-state.json
@@ -268,7 +268,7 @@ with Path("tensor-switch.json").open("x") as stream:
 PY_REQUEST
 
 python3 bridge/runner/session_bridge.py modify \
-  --session-dir outputs/my-session \
+  --session-id SESSION_ID \
   --catalog src/starbridge/catalogs/2602/generated/catalog.json \
   --execution src/starbridge/catalogs/2602/execution.json \
   --request tensor-switch.json

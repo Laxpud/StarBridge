@@ -150,7 +150,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
             action=None, host=None, port=None, expected_session="", timeout=None,
             client_userdir=None, modification=None, catalog_plan=None,
             catalog_request=None, session_token=None, legacy_plan=None, snapshot_plan=None,
-            discovery_request=None):
+            discovery_request=None, expected_simulation_key=''):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
     catalog_actions = {'catalog-find': 'find', 'catalog-read': 'read', 'catalog-describe': 'describe',
                        'catalog-verify': 'read', 'catalog-modify': 'modify',
@@ -163,7 +163,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
         raise ValueError('Discovery requires its matching request and action')
     if discovery_call and (catalog_call or modification is not None or output is not None):
         raise ValueError('Discovery cannot be combined with mutation or catalog requests')
-    snapshot_call = actual_action in {'inspect', 'save', 'modify', 'file-modify', 'set-scalar',
+    snapshot_call = actual_action in {'session-info', 'inspect', 'save', 'modify', 'file-modify', 'set-scalar',
                                      'file-set', 'catalog-verify', 'catalog-modify', 'file-catalog-modify'}
     if snapshot_call != (snapshot_plan is not None):
         raise ValueError('Snapshot actions require their bundled snapshot plan')
@@ -191,6 +191,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
         "__RESULT__": str(result),
         "__ACTION__": actual_action,
         "__EXPECTED_SESSION__": str(expected_session),
+        "__EXPECTED_SIMULATION_KEY__": expected_simulation_key,
         "__OUTPUT__": str(output) if output else "",
         "__NAME__": name,
         "__UNIT__": unit,
@@ -221,7 +222,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
                   "__SNAPSHOT_PLAN__": snapshot_plan, "__DISCOVERY_REQUEST__": discovery_request}
     text = template.read_text()
     # 一次替换原模板中的占位符，避免用户文本被后续占位符替换再次解释。
-    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|OUTPUT|NAME|UNIT|VALUE|MODIFICATION|CATALOG_PLAN|CATALOG_REQUEST|SESSION_TOKEN|LEGACY_PLAN|SNAPSHOT_PLAN|DISCOVERY_REQUEST)__",
+    text = re.sub(r"__(?:RESULT|ACTION|EXPECTED_SESSION|EXPECTED_SIMULATION_KEY|OUTPUT|NAME|UNIT|VALUE|MODIFICATION|CATALOG_PLAN|CATALOG_REQUEST|SESSION_TOKEN|LEGACY_PLAN|SNAPSHOT_PLAN|DISCOVERY_REQUEST)__",
                   lambda match: java_literal(containers[match.group()]) if match.group() in containers
                   else json.dumps(replacements[match.group()], ensure_ascii=True),
                   text)

@@ -10,7 +10,7 @@
 
 ## 入口与参数
 
-MCP 工具使用 `starbridge.` 前缀，JSON CLI 使用下表原名。所有调用的 `session_dir` 都是已有后台会话的绝对路径，`timeout` 单位为秒，默认 `180`。
+MCP 工具使用 `starbridge.` 前缀，JSON CLI 使用下表原名。所有调用的 `session_id` 都是已有后台会话的绝对路径，`timeout` 单位为秒，默认 `180`。
 
 | 方法 | 参数与默认值 | 作用 |
 |---|---|---|
@@ -30,7 +30,7 @@ MCP 工具使用 `starbridge.` 前缀，JSON CLI 使用下表原名。所有调�
 先打开独立工作会话，方式见[后台会话](bridge-session.md)或 [MCP 说明](mcp.md)。用以下 JSON 调用 `browse_tree`：
 
 ```json
-{"session_dir": "/absolute/session", "limit": 100}
+{"session_id": "/absolute/session", "limit": 100}
 ```
 
 Core 返回 `{"status":"ok","result":...}`。读取 `result.children`，按返回的名称和上下文选择目标，把它的 `node_id` 原样传入下一次 `browse_tree`。需要下一页时传入 `result.next_cursor`，保留相同 `scope`；游标已经绑定父节点，允许省略 `node_id`。列表指纹变化会使旧游标失效，此时重新展开，不拼接前后两个树状态的页面。
@@ -38,14 +38,14 @@ Core 返回 `{"status":"ok","result":...}`。读取 `result.children`，按返�
 到达所需设置节点后，先调用 `describe_node`：
 
 ```json
-{"session_dir": "/absolute/session", "node_id": "<returned node_id>"}
+{"session_id": "/absolute/session", "node_id": "<returned node_id>"}
 ```
 
 按属性名称、说明、类型和支持状态选择一项，再调用 `read_node_properties`：
 
 ```json
 {
-  "session_dir": "/absolute/session",
+  "session_id": "/absolute/session",
   "node_id": "<returned node_id>",
   "property_ids": ["<returned property_id>"]
 }
@@ -70,14 +70,14 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 先搜索已发现范围：
 
 ```json
-{"session_dir": "/absolute/session", "query": "松弛"}
+{"session_id": "/absolute/session", "query": "松弛"}
 ```
 
 若索引范围不足，显式要求扩展：
 
 ```json
 {
-  "session_dir": "/absolute/session",
+  "session_id": "/absolute/session",
   "query": "松弛",
   "expand": true,
   "max_nodes": 80,
@@ -119,7 +119,7 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 ```json
 {
-  "session_dir": "/absolute/reloaded-session",
+  "session_id": "/absolute/reloaded-session",
   "locator": [
     {"name": "<previous root name>", "java_class": "<returned root class>"},
     {"name": "<child name>", "java_class": "<returned child class>"}
@@ -155,7 +155,7 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 ```json
 {
-  "session_dir": "/absolute/session",
+  "session_id": "/absolute/session",
   "node_id": "<returned node_id>",
   "property_id": "<returned property_id>",
   "expected": {"definition": "0.0", "unit": "m", "si_unit": "m", "raw_value": 0.0, "si_value": 0.0},

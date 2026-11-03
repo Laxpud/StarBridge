@@ -2,7 +2,7 @@
 
 ## 三端插件、会话接入与运行简化
 
-方案已确认，尚未实施：仅适配 Codex、Claude Code 和 DSH 插件，优先连接已有 STAR GUI／服务器，统一 `.starbridge` 目录安排，并简化日常读写与执行链路。
+实施中：第一部分“调整会话与文件位置”已完成代码改造，真实 GUI 接入与保存行为尚未实测。后续按计划简化状态、读写与执行链路，再交付 Codex、Claude Code 和 DSH 三端插件。
 
 后续实施任务与勾选状态统一维护在 [Plan](docs/plans/plan-2026-11-03-14-23.md)，设计见 [Spec](docs/specs/spec-2026-11-03-14-23.md) 和 [ADR 0002](docs/adr/0002-plugins-sessions-and-storage.md)。其他候选继续保留在[路线图](docs/roadmap.md)，不自动纳入本轮范围。
 

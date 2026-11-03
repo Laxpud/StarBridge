@@ -13,6 +13,7 @@ from pathlib import Path
 import time
 from datetime import datetime, timezone
 
+from .session_store import session_directory
 from .catalog import read_json
 from .catalog_bundle import session_target
 from .discovery_rules import RULE_VERSION, _write, build_read_plan, digest, property_id, select_rule
@@ -28,7 +29,7 @@ ALIASES = {'松弛': ['relaxation'], '压力': ['pressure'], '速度': ['velocit
 
 def _state(session_dir):
     """所有缓存按当前会话 token 隔离；精确版本不支持时在启动客户端前拒绝。"""
-    directory = Path(session_dir)
+    directory = session_directory(session_dir)
     if not directory.is_absolute():
         raise ValueError('session_dir must be absolute')
     state = read_json(directory / 'session.json')
@@ -106,7 +107,7 @@ def _invoke(session_dir, request, timeout, operate):
 
 def _cache_path(session_dir, state):
     """元数据索引绑定版本、会话和规则，旧会话文件不会成为当前搜索依据。"""
-    path = Path(session_dir) / 'discovery-cache' / digest([state['session_token'], session_target(state), RULE_VERSION])
+    path = session_directory(session_dir) / 'discovery-cache' / digest([state['session_token'], session_target(state), RULE_VERSION])
     path.mkdir(parents=True, exist_ok=True)
     return path
 

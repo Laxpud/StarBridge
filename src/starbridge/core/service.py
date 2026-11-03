@@ -17,6 +17,7 @@ from .catalog_bundle import BUNDLES, bundle_root, bundle_target, session_target
 from .coverage import coverage
 from .execution import prepare_find, prepare_modification_value, prepare_read_value
 from .snapshot import prepare_snapshot
+from .session_store import new_session_directory, session_directory, public_session
 
 
 METHODS = (
@@ -64,10 +65,10 @@ class Service:
             status = 'rejected' if isinstance(error, (ModificationRejected, ValueError)) else 'error'
             state = None
             # 错误封套仅查看本次显式目标，不扫描用户会话，也不修改恢复状态。
-            directory = arguments.get('session_dir') if isinstance(arguments, dict) else None
-            if isinstance(directory, str) and Path(directory).is_absolute():
+            directory = arguments.get('session_id') if isinstance(arguments, dict) else None
+            if isinstance(directory, str):
                 try:
-                    state = read_json(Path(directory) / 'session.json')
+                    state = read_json(session_directory(directory) / 'session.json')
                 except (OSError, ValueError):
                     pass
             if isinstance(error, session_bridge.OperationUncertain) or (
@@ -145,20 +146,20 @@ class Service:
                     '可执行文件的某个父目录下须有本机 doc/client/html/type-search-index.js。',
                 ],
                 'instance_conditions': 'not_checked'},
-            'unavailable': ['mesh_generation', 'solver_execution', 'persistent_memory', 'gui_attachment'],
+            'unavailable': ['mesh_generation', 'solver_execution', 'persistent_memory'],
         }
 
-    def _operate(self, session_dir, action, timeout=180, **values):
-        """复用原会话执行器，保留互斥、进程身份、输入摘要与不确定状态处理。"""
+    def _operate(self, session_id, action, timeout=180, **values):
+        """复用原会话执行器，保留互斥、进程身份与不确定状态处理。"""
         if not sys.platform.startswith('linux'):
             raise ValueError('Managed sessions currently support Linux only')
-        directory = _path(session_dir, 'session_dir')
+        directory = session_directory(session_id)
         args = SimpleNamespace(action=action, timeout=_timeout(timeout), **values)
         return session_bridge.operate(args, directory)
 
-    def _catalog(self, session_dir, action, request, timeout):
+    def _catalog(self, session_id, action, request, timeout):
         """用会话绑定版本准备请求；执行器持锁后再次核对，之后才设置活动标记。"""
-        directory = _path(session_dir, 'session_dir')
+        directory = session_directory(session_id)
         _timeout(timeout)
         root = bundle_root(session_target(read_json(directory / 'session.json')))
         paths = (root / 'generated' / 'catalog.json', root / 'execution.json')
@@ -168,7 +169,7 @@ class Service:
             plan, prepared = prepare_find(*paths, request)
         else:
             plan, prepared = prepare_read_value(*paths, request, action)
-        result = self._operate(session_dir, action, timeout, catalog_plan=plan, catalog_request=prepared)
+        result = self._operate(session_id, action, timeout, catalog_plan=plan, catalog_request=prepared)
         if action == 'describe':
             # 将准备阶段生成的新值格式放回同一属性描述；不改动 Java 的条件检查及现有字段。
             entries = plan['properties'][prepared['target']['type']]
@@ -176,98 +177,107 @@ class Service:
                 description['write_contract'] = entries[identifier].get('write_contract')
         return result
 
-    def find_objects(self, session_dir, type_id, name=None, parent=None, offset=0, limit=100, timeout=180):
+    def find_objects(self, session_id, type_id, name=None, parent=None, offset=0, limit=100, timeout=180):
         """枚举目录类型，可按精确名称过滤；子类型要求 parent，单页最多 500 项。"""
         request = {'schema_version': 1, 'action': 'find', 'type': type_id, 'offset': offset, 'limit': limit}
         if name is not None:
             request['name'] = name
         if parent is not None:
             request['parent'] = parent
-        return self._catalog(session_dir, 'find', request, timeout)
+        return self._catalog(session_id, 'find', request, timeout)
 
-    def _read(self, session_dir, target, properties, action, timeout):
+    def _read(self, session_id, target, properties, action, timeout):
         """保留调用者选择的属性；省略表示该类型全部已映射属性。"""
         request = {'schema_version': 1, 'action': action, 'target': target}
         if properties is not None:
             request['properties'] = properties
-        return self._catalog(session_dir, action, request, timeout)
+        return self._catalog(session_id, action, request, timeout)
 
-    def describe_object(self, session_dir, target, properties=None, timeout=180):
+    def describe_object(self, session_id, target, properties=None, timeout=180):
         """描述属性、结构操作及当前已声明条件；不会预判尚未给出的新值。"""
-        return self._read(session_dir, target, properties, 'describe', timeout)
+        return self._read(session_id, target, properties, 'describe', timeout)
 
-    def read_properties(self, session_dir, target, properties=None, timeout=180):
+    def read_properties(self, session_id, target, properties=None, timeout=180):
         """返回逐属性值和错误，不把部分读取成功报告为完整设置导出。"""
-        return self._read(session_dir, target, properties, 'read', timeout)
+        return self._read(session_id, target, properties, 'read', timeout)
 
-    def modify(self, session_dir, request, timeout=180):
+    def modify(self, session_id, request, timeout=180):
         """提交一个 schema 2 属性修改或 schema 3 结构操作，保留 expected 核对与回读。"""
-        return self._catalog(session_dir, 'modify', request, timeout)
+        return self._catalog(session_id, 'modify', request, timeout)
 
-    def browse_tree(self, session_dir, node_id=None, cursor=None, offset=0, limit=100,
+    def browse_tree(self, session_id, node_id=None, cursor=None, offset=0, limit=100,
                     scope='simulation', max_nodes=2000, timeout=180):
         """从根或已发现节点读取一层对象；游标绑定本次关系集合，不递归扫描。"""
         from .discovery import browse_tree
-        return browse_tree(session_dir, node_id=node_id, cursor=cursor, offset=offset,
+        return browse_tree(session_id, node_id=node_id, cursor=cursor, offset=offset,
                            limit=limit, scope=scope, max_nodes=max_nodes,
                            timeout=_timeout(timeout), operate=self._operate)
 
-    def describe_node(self, session_dir, node_id=None, scope='simulation', timeout=180,
+    def describe_node(self, session_id, node_id=None, scope='simulation', timeout=180,
                       property_ids=None, cursor=None, limit=100):
         """描述当前节点的属性及规则支持状态；不会隐式读取全部属性值。"""
         from .discovery import describe_node, page_description, _state
         from .discovery_write import describe_write_support
-        description = describe_node(session_dir, node_id=node_id, scope=scope,
+        description = describe_node(session_id, node_id=node_id, scope=scope,
                                     timeout=_timeout(timeout), operate=self._operate)
-        state = _state(session_dir)
-        description = describe_write_support(session_dir, description, state)
+        state = _state(session_id)
+        description = describe_write_support(session_id, description, state)
         return page_description(description, state, property_ids=property_ids, cursor=cursor, limit=limit)
 
-    def read_node_properties(self, session_dir, node_id, property_ids, timeout=180):
+    def read_node_properties(self, session_id, node_id, property_ids, timeout=180):
         """重新核对引用和实际描述符，再执行明确选择的属性读取计划。"""
         from .discovery import read_node_properties
-        return read_node_properties(session_dir, node_id=node_id, property_ids=property_ids,
+        return read_node_properties(session_id, node_id=node_id, property_ids=property_ids,
                                     timeout=_timeout(timeout), operate=self._operate)
 
-    def relocate_node(self, session_dir, locator, timeout=180):
+    def relocate_node(self, session_id, locator, timeout=180):
         """在新加载中按结构化路径唯一定位对象，返回当前会话的新引用。"""
         from .discovery import relocate_node
-        return relocate_node(session_dir, locator=locator, timeout=_timeout(timeout),
+        return relocate_node(session_id, locator=locator, timeout=_timeout(timeout),
                              operate=self._operate)
 
-    def modify_node_property(self, session_dir, node_id, property_id, expected, value, timeout=180):
+    def modify_node_property(self, session_id, node_id, property_id, expected, value, timeout=180):
         """按受控规则修改单个发现属性；保留旧状态、完整快照和回读，不自动保存。"""
         from .discovery_write import modify_node_property
-        return modify_node_property(session_dir, node_id=node_id, property_id=property_id,
+        return modify_node_property(session_id, node_id=node_id, property_id=property_id,
                                     expected=expected, value=value, timeout=_timeout(timeout),
                                     operate=self._operate)
 
-    def search_settings(self, session_dir, query, expand=False, max_nodes=100, max_depth=4,
+    def search_settings(self, session_id, query, expand=False, max_nodes=100, max_depth=4,
                         scope='simulation', timeout=180, limit=100, cursor=None):
         """搜索已有发现范围；只有显式 expand 才按节点、深度和耗时预算继续发现。"""
         from .discovery import search_settings
-        return search_settings(session_dir, query=query, expand=expand, max_nodes=max_nodes,
+        return search_settings(session_id, query=query, expand=expand, max_nodes=max_nodes,
                                max_depth=max_depth, scope=scope, timeout=_timeout(timeout),
                                operate=self._operate, limit=limit, cursor=cursor)
 
-    def inspect_session(self, session_dir, timeout=180):
+    def inspect_session(self, session_id, timeout=180):
         """读取既有 Inspector 快照范围；与按需属性读取共用目录，不表示全配置导出。"""
-        return self._operate(session_dir, 'inspect', timeout)
+        return self._operate(session_id, 'inspect', timeout)
 
-    def open_session(self, input, session_dir, star='starccm+', release=None, port=49001, timeout=180, build=None):
-        """先检测所选程序版本，再复制输入并启动工作会话；不按固定 release 默认值选目录。
+    def open_session(self, input=None, star='starccm+', release=None, port=None, timeout=180, build=None,
+                     project_dir=None, debug=False):
+        """先检测所选程序版本，优先连接匹配的本机会话；没有匹配时直接加载输入。
 
         用户给出的 release/Build 作为预期值核对。未知版本、Build 或预期不符时，
-        在创建会话目录和加载算例前拒绝；实际 server 的版本仍由初始快照再核验。
+        在创建会话目录和加载算例前拒绝；实际 server 的版本仍由初始只读请求再核验。
         """
         from .environment import inspect_installation
         if not sys.platform.startswith('linux'):
             raise ValueError('Managed sessions currently support Linux only')
-        if type(port) is not int or not 1024 <= port <= 65535:
+        if port is not None and (type(port) is not int or not 1024 <= port <= 65535):
             raise ValueError('port must be between 1024 and 65535')
         if not isinstance(star, str) or not star:
             raise ValueError('star must be an executable name or path')
-        source, directory = _path(input, 'input'), _path(session_dir, 'session_dir')
+        source = _path(input, 'input') if input is not None else None
+        project = _path(project_dir, 'project_dir') if project_dir is not None else None
+        if project is not None and not project.is_dir():
+            raise ValueError('project_dir must be an existing directory')
+        if source is None and (port is None or project is None):
+            raise ValueError('Without input, specify port and project_dir for an existing session')
+        if type(debug) is not bool:
+            raise ValueError('debug must be a boolean')
+        directory = new_session_directory()
         timeout = _timeout(timeout)
         for name, value in (('release', release), ('build', build)):
             if value is not None and (not isinstance(value, str) or not value):
@@ -283,22 +293,23 @@ class Service:
             raise ValueError(f'No registered catalog for detected STAR version {target}; '
                              'query get_capabilities for support; no session was created')
         args = SimpleNamespace(input=source, star=detected['executable'], port=port,
-                               timeout=timeout, snapshot_plan=prepare_snapshot(target))
-        return session_bridge.start(args, directory)
+                               timeout=timeout, snapshot_plan=prepare_snapshot(target),
+                               project_dir=project, debug=debug)
+        return public_session(session_bridge.connect(args, directory))
 
-    def session_status(self, session_dir):
+    def session_status(self, session_id):
         """读取会话记录并检查进程身份，不启动 Java 客户端，也不重新核验 server Build。"""
-        return self._operate(session_dir, 'status')
+        return public_session(self._operate(session_id, 'status'))
 
-    def save_session(self, session_dir, output, timeout=180):
-        """仅另存到尚不存在的 .sim 文件；不会覆盖输入，保存不自动关闭服务。"""
-        return self._operate(session_dir, 'save', timeout, output=_path(output, 'output'))
+    def save_session(self, session_id, output=None, timeout=180):
+        """省略 output 保存当前路径；给出新路径则另存为，保存不自动关闭服务。"""
+        return self._operate(session_id, 'save', timeout, output=_path(output, 'output') if output is not None else None)
 
-    def close_session(self, session_dir, discard=False, timeout=180):
-        """默认先核对修改标志；仅显式 discard 才放弃剩余内存状态并清理本次进程。"""
+    def close_session(self, session_id, discard=False, timeout=180):
+        """外部会话只断开；自有服务默认检查未保存修改，显式 discard 才放弃内存状态。"""
         if type(discard) is not bool:
             raise ValueError('discard must be a boolean')
-        return self._operate(session_dir, 'stop', timeout, discard=discard)
+        return public_session(self._operate(session_id, 'stop', timeout, discard=discard))
 
 
 def contract():
@@ -315,7 +326,7 @@ def contract():
         },
         'session_lifetime': 'Explicit open/save/close; client exit does not close a session.',
         'identity': 'Object references belong to one session token; use full locators after reload.',
-        'paths': 'All simulation, session and output paths must be absolute.',
+        'paths': 'Simulation, project and output paths must be absolute; session_id is returned by open_session.',
         'request_schemas': {'read': 1, 'property_modification': 2, 'structural_operation': 3,
                             'discovery': 1},
         'runtime_discovery': {

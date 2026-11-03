@@ -39,7 +39,7 @@ uvx --from 'starbridge-cfd[mcp]==0.1.0' starbridge-mcp
 
 源码仓库中的 `starbridge.py`、`interfaces/mcp_server.py`、两个 `bridge/runner/*_bridge.py` 和 `tools/catalog/catalog.py` 保留为转发入口。原顶层 `core` 等 Python 导入路径已迁移到 `starbridge.core` 等命名空间，不提供旧内部导入别名。目录资源在 `src/starbridge/catalogs/`，Java 模板在 `src/starbridge/bridge/java/`；显式指定自定义目录文件的开发命令需要更新路径。
 
-程序不会把运行结果写入安装目录。会话、请求日志、生成宏、Javadoc 元数据缓存和规则编译缓存位于调用者指定的 `session_dir`／`work-dir`；输出算例使用显式新路径。升级或删除环境不自动关闭后台 STAR 会话，也不删除这些数据。
+程序不会把运行结果写入安装目录。共享会话的运行数据位于 `~/.starbridge/sessions/`，可重建缓存位于 `~/.starbridge/cache/`，后续调用使用返回的 `session_id`。保存可写回当前文件或显式另存；文件 CLI 仍使用调用者指定的 `work-dir`。具体目录与保留规则见[会话说明](bridge-session.md)。升级或删除环境不自动关闭后台 STAR 会话，也不删除这些数据。
 
 ## 接入 MCP
 

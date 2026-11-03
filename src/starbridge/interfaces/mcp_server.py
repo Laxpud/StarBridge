@@ -117,7 +117,7 @@ def discover_installations(star: StrictStr | None = None, search_roots: list[Str
 
 
 @server.tool(name='starbridge.find_objects', annotations=READ)
-def find_objects(session_dir: StrictStr, type_id: StrictStr, name: StrictStr | None = None,
+def find_objects(session_id: StrictStr, type_id: StrictStr, name: StrictStr | None = None,
                  parent: dict | None = None, offset: StrictInt = 0, limit: StrictInt = 100,
                  timeout: StrictFloat = 180) -> types.CallToolResult:
     """按已适配目录类型枚举当前实例；未知对象类型在发现能力可用时先沿对象树导航。
@@ -131,7 +131,7 @@ def find_objects(session_dir: StrictStr, type_id: StrictStr, name: StrictStr | N
 
 
 @server.tool(name='starbridge.describe_object', annotations=READ)
-def describe_object(session_dir: StrictStr, target: dict, properties: list[StrictStr] | None = None,
+def describe_object(session_id: StrictStr, target: dict, properties: list[StrictStr] | None = None,
                     timeout: StrictFloat = 180) -> types.CallToolResult:
     """描述已定位目录对象的属性、写入格式和结构操作；不读取全部当前值。
 
@@ -144,7 +144,7 @@ def describe_object(session_dir: StrictStr, target: dict, properties: list[Stric
 
 
 @server.tool(name='starbridge.read_properties', annotations=READ)
-def read_properties(session_dir: StrictStr, target: dict, properties: list[StrictStr] | None = None,
+def read_properties(session_id: StrictStr, target: dict, properties: list[StrictStr] | None = None,
                     timeout: StrictFloat = 180) -> types.CallToolResult:
     """读取目录属性的当前值；properties 省略表示该类型全部已映射属性，不代表全算例。
 
@@ -156,7 +156,7 @@ def read_properties(session_dir: StrictStr, target: dict, properties: list[Stric
 
 
 @server.tool(name='starbridge.modify', annotations=WRITE)
-def modify(session_dir: StrictStr, request: dict, timeout: StrictFloat = 180) -> types.CallToolResult:
+def modify(session_id: StrictStr, request: dict, timeout: StrictFloat = 180) -> types.CallToolResult:
     """修改一个已描述的目录属性或执行一个已发布的结构操作，只改变内存。
 
     属性 request={schema_version:2,action:'modify',target,property,expected,value}；
@@ -169,7 +169,7 @@ def modify(session_dir: StrictStr, request: dict, timeout: StrictFloat = 180) ->
 
 
 @server.tool(name='starbridge.inspect_session', annotations=READ)
-def inspect_session(session_dir: StrictStr, timeout: StrictFloat = 180) -> types.CallToolResult:
+def inspect_session(session_id: StrictStr, timeout: StrictFloat = 180) -> types.CallToolResult:
     """获取已有 Inspector 布局的概览，result.snapshot 含参数、场函数、区域、边界等。
 
     快照仅覆盖已有布局，缺少字段不表示 STAR 没有此设置，也不是完整依赖检查。
@@ -179,7 +179,7 @@ def inspect_session(session_dir: StrictStr, timeout: StrictFloat = 180) -> types
 
 
 @server.tool(name='starbridge.browse_tree', annotations=READ)
-def browse_tree(session_dir: StrictStr, node_id: StrictStr | None = None,
+def browse_tree(session_id: StrictStr, node_id: StrictStr | None = None,
                 cursor: StrictStr | None = None, offset: StrictInt = 0, limit: StrictInt = 100,
                 scope: StrictStr = 'simulation', max_nodes: StrictInt = 2000,
                 timeout: StrictFloat = 180) -> types.CallToolResult:
@@ -194,7 +194,7 @@ def browse_tree(session_dir: StrictStr, node_id: StrictStr | None = None,
 
 
 @server.tool(name='starbridge.describe_node', annotations=READ)
-def describe_node(session_dir: StrictStr, node_id: StrictStr | None = None,
+def describe_node(session_id: StrictStr, node_id: StrictStr | None = None,
                   scope: StrictStr = 'simulation', timeout: StrictFloat = 180,
                   property_ids: list[StrictStr] | None = None, cursor: StrictStr | None = None,
                   limit: StrictInt = 100) -> types.CallToolResult:
@@ -209,7 +209,7 @@ def describe_node(session_dir: StrictStr, node_id: StrictStr | None = None,
 
 
 @server.tool(name='starbridge.read_node_properties', annotations=READ)
-def read_node_properties(session_dir: StrictStr, node_id: StrictStr, property_ids: list[StrictStr],
+def read_node_properties(session_id: StrictStr, node_id: StrictStr, property_ids: list[StrictStr],
                          timeout: StrictFloat = 180) -> types.CallToolResult:
     """发现能力可用时，用返回的节点和属性 ID 读取明确选择的当前值，必须传非空 property_ids。
 
@@ -221,7 +221,7 @@ def read_node_properties(session_dir: StrictStr, node_id: StrictStr, property_id
 
 
 @server.tool(name='starbridge.search_settings', annotations=READ)
-def search_settings(session_dir: StrictStr, query: StrictStr, expand: StrictBool = False,
+def search_settings(session_id: StrictStr, query: StrictStr, expand: StrictBool = False,
                     max_nodes: StrictInt = 100, max_depth: StrictInt = 4,
                     scope: StrictStr = 'simulation', timeout: StrictFloat = 180,
                     limit: StrictInt = 100, cursor: StrictStr | None = None) -> types.CallToolResult:
@@ -237,7 +237,7 @@ def search_settings(session_dir: StrictStr, query: StrictStr, expand: StrictBool
 
 
 @server.tool(name='starbridge.relocate_node', annotations=READ)
-def relocate_node(session_dir: StrictStr, locator: list[dict],
+def relocate_node(session_id: StrictStr, locator: list[dict],
                   timeout: StrictFloat = 180) -> types.CallToolResult:
     """发现能力可用时，在保存重载或新会话后，按之前节点的 locator 名称/类型路径重新定位。
 
@@ -248,7 +248,7 @@ def relocate_node(session_dir: StrictStr, locator: list[dict],
 
 
 @server.tool(name='starbridge.modify_node_property', annotations=WRITE)
-def modify_node_property(session_dir: StrictStr, node_id: StrictStr, property_id: StrictStr,
+def modify_node_property(session_id: StrictStr, node_id: StrictStr, property_id: StrictStr,
                          expected: dict | StrictStr | StrictBool | StrictInt | StrictFloat,
                          value: dict | StrictStr | StrictBool | StrictInt | StrictFloat,
                          timeout: StrictFloat = 180) -> types.CallToolResult:
@@ -264,27 +264,25 @@ def modify_node_property(session_dir: StrictStr, node_id: StrictStr, property_id
 
 
 @server.tool(name='starbridge.open_session', annotations=WRITE)
-def open_session(input: StrictStr, session_dir: StrictStr, star: StrictStr = 'starccm+',
-                 release: StrictStr | None = None, port: StrictInt = 49001,
-                 timeout: StrictFloat = 180, build: StrictStr | None = None) -> types.CallToolResult:
-    """从已有算例复制工作文件，启动独立 Linux STAR 后台会话并执行初始快照。
+def open_session(input: StrictStr | None = None, star: StrictStr = 'starccm+',
+                 release: StrictStr | None = None, port: StrictInt | None = None,
+                 timeout: StrictFloat = 180, build: StrictStr | None = None,
+                 project_dir: StrictStr | None = None, debug: StrictBool = False) -> types.CallToolResult:
+    """优先连接匹配的本机 STAR GUI／服务器，否则直接加载原算例启动自有后台服务。
 
-    star 取用户指定或 discover_installations 的结果；也可用已确认符合任务的 PATH 默认命令。
-    get_capabilities 可事先查询适配；本工具始终执行 -version 确认实际版本，不要求先调用发现工具。
-    release/build 可省略，给出时作为用户预期核对；不使用固定 release 默认值，也不自动更换安装。
-    未登记适配或预期不匹配在创建会话目录前拒绝；实际 server 版本仍在初始快照核验，需要可用许可证。
-    运行时发现还要求从 star 路径找到同安装 Javadoc；优先传安装目录内实际程序，不能依赖外部包装脚本。
-    session_dir 必须尚不存在，input 为绝对文件路径；port 可按环境选择未占用端口，不自动分配。
-    Linux 后台会话是当前实现范围；不会接管已有 GUI。已有可用会话可直接沿用，无需重复打开。
-    result 为会话记录，含 state、catalog_target、current_file、session_token；后续沿用同一目录。
-    客户端退出不会关闭 STAR；保存、关闭需分别调用。失败后检查状态，不复用已创建目录重开。
+    input 是算例绝对路径；不指定 input 时必须给已有服务的 port 和 project_dir。
+    star 为用户指定或实际探测的安装程序；release/build 是可选预期，未适配版本拒绝连接。
+    自动发现限于同用户、同安装且 /proc 可见的本机服务，初始请求核对版本与加载对象。
+    多个会话加载相同文件时用 port 选择；未指定 port 且需要启动时自动分配空闲端口。
+    返回 session_id，后续原样传回；运行目录由服务管理。项目默认采用算例所在目录。
+    不复制算例、不自动保存。debug=true 保留详细请求文件；外部会话关闭时只断开连接。
     """
     return call('open_session', locals())
 
 
 @server.tool(name='starbridge.session_status', annotations=READ)
-def session_status(session_dir: StrictStr) -> types.CallToolResult:
-    """查询已知 session_dir 的记录和当前进程存活情况，不启动 Java 或重新核对 Build。
+def session_status(session_id: StrictStr) -> types.CallToolResult:
+    """查询已知 session_id 的记录和当前进程存活情况，不启动 Java 或重新核对 Build。
 
     result 包含 state、server_alive、active_request、last_request、last_request_status（字段可缺省）。
     用于断开、超时或 uncertain 后排查；ready 不等于上次修改成功，需结合请求结果。
@@ -294,24 +292,22 @@ def session_status(session_dir: StrictStr) -> types.CallToolResult:
 
 
 @server.tool(name='starbridge.save_session', annotations=WRITE)
-def save_session(session_dir: StrictStr, output: StrictStr, timeout: StrictFloat = 180) -> types.CallToolResult:
-    """将当前内存状态另存为新的绝对 .sim 文件，父目录必须已存在；不覆盖原输入或已有文件。
+def save_session(session_id: StrictStr, output: StrictStr | None = None, timeout: StrictFloat = 180) -> types.CallToolResult:
+    """按明确保存指令写回当前算例；提供 output 时另存为新的绝对 .sim 路径。
 
-    result.snapshot.session_path 为保存路径，request_result 为请求证据；不自动关闭或独立重载。
-    如需持久化验收，用新 session_dir 打开输出文件，重新定位、描述和读取目标。
-    原会话仍运行时新会话要用不同端口；即使保存成功，STAR 的 modified 标志仍可能为 true。
+    新路径的父目录必须存在；无保存路径的 GUI 算例必须指定 output。
+    result.output 返回实际绝对路径；不自动关闭或重新加载，也不自动生成备份。
     """
     return call('save_session', locals())
 
 
 @server.tool(name='starbridge.close_session', annotations=WRITE)
-def close_session(session_dir: StrictStr, discard: StrictBool = False,
+def close_session(session_id: StrictStr, discard: StrictBool = False,
                   timeout: StrictFloat = 180) -> types.CallToolResult:
-    """关闭本工具管理的后台会话，不隐式保存；成功返回会话记录 state=stopped。
+    """外部会话只断开连接；自有后台服务才停止进程，均不隐式保存。
 
-    默认先核对修改标志，有修改或结果不确定时拒绝关闭。discard=true 明确丢弃剩余内存状态，
-    仅在任务已授权丢弃或已确认保存成果后使用，不作为自动错误恢复。
-    保存后 modified 仍可能为 true；不要反复保存或未经确认就丢弃。不会删除原输入和另存文件。
+    外部会话返回 state=disconnected，用户 STAR 和内存修改仍保留。
+    自有服务默认拒绝丢弃未保存修改；discard=true 只用于已授权放弃内存状态的任务。
     """
     return call('close_session', locals())
 

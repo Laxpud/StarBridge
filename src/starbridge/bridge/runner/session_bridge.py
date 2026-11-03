@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""管理本机后台 STAR 会话，通过临时批处理客户端连续读取、修改和另存。"""
+"""连接本机已有 STAR 或启动自有服务，按明确指令修改内存、保存和断开。"""
 
 import argparse
 from contextlib import contextmanager
@@ -19,11 +19,12 @@ import time
 import uuid
 
 
-from starbridge.bridge.runner.file_bridge import (catalog_content, catalog_diff, digest, execute,
+from starbridge.bridge.runner.file_bridge import (catalog_content, catalog_diff, execute,
                          prepare_catalog_modification, prepare_catalog_read, prepare_legacy,
                          prepare_snapshot)
 from starbridge.bridge.runner.modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
-from starbridge.core.catalog_bundle import bundle_target, check_plan_targets, session_target
+from starbridge.core.catalog_bundle import check_plan_targets, session_target
+from starbridge.core.session_store import session_directory, runtime_root, public_session
 
 
 class OperationUncertain(RuntimeError):
@@ -92,6 +93,8 @@ def locked(directory):
 
 def terminate_owned(state):
     """先停止实际算例服务，再清理已记录的 MPI 子进程；逐个核对 PID 身份。"""
+    if state.get('ownership') == 'external':
+        raise ValueError('External STAR processes must never be terminated by StarBridge')
     owner = state.get('process')
     owned = state.get('owned_processes', [])
     if owner is not None and process_identity(owner['pid']) == owner:
@@ -122,7 +125,7 @@ def terminate_owned(state):
 def request(directory, state, action, timeout, *, output=None, name='', value=0.0, unit='',
             modification=None, catalog_plan=None, catalog_request=None, legacy_plan=None,
             snapshot_plan=None, discovery_request=None):
-    """连接已登记的服务并校验目标文件身份；修改失败不自动重试。"""
+    """核对进程和加载对象身份后执行请求；不检查磁盘原文件摘要或自动保存。"""
     if not alive(state):
         raise RuntimeError('Managed server is not running; refusing to connect to its old port')
     check_plan_targets(catalog_plan, legacy_plan, snapshot_plan, target=session_target(state))
@@ -135,15 +138,14 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
     write_json(directory / 'session.json', dict(state, active_request=identifier))
     data = execute(state['star'], None, run, output, name, value, unit,
                    action=action, host=state['host'], port=state['port'],
-                   expected_session=state['current_file'], timeout=timeout,
+                   expected_session=state['current_file'] or '', timeout=timeout,
                    client_userdir=directory / 'client-settings', modification=modification,
                    catalog_plan=catalog_plan, catalog_request=catalog_request,
                    session_token=state['session_token'], legacy_plan=legacy_plan, snapshot_plan=snapshot_plan,
-                   discovery_request=discovery_request)
+                   discovery_request=discovery_request,
+                   expected_simulation_key=state.get('simulation_key', ''))
     if not alive(state):
         raise RuntimeError('Server exited or changed identity during request')
-    if digest(Path(state['input'])) != state['input_sha256']:
-        raise RuntimeError('Original input file changed')
     state['current_file'] = data['after']['session_path']
     state['modified'] = data['after']['modified']
     state['last_request'] = identifier
@@ -155,35 +157,185 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
     return data, run
 
 
+def local_servers(star):
+    """从同一安装、同一用户的本机进程查找监听端口，不扫描网络或其他用户。
+
+    端口仅作为候选；连接后还要由宏核对实际算例路径、版本和 Simulation key。
+    Linux /proc 不可见的进程无法自动接入，不能据此宣称发现了所有 GUI。
+    """
+    # 1. 只考虑安装内 STAR 原生程序；Java 客户端的辅助 HTTP 端口不作为候选。
+    installation = Path(star).resolve().parents[1]
+    listeners = {}
+    for name in ('tcp', 'tcp6'):
+        for line in Path('/proc/net', name).read_text().splitlines()[1:]:
+            fields = line.split()
+            if fields[3] == '0A':
+                listeners[fields[9]] = int(fields[1].rsplit(':', 1)[1], 16)
+    found = {}
+    for process in Path('/proc').glob('[0-9]*'):
+        try:
+            if process.stat().st_uid != os.getuid():
+                continue
+            executable = (process / 'exe').resolve(strict=True)
+            # 已安装启动器的 _get_starccm_server_binary 使用 star-ccm+；
+            # 排除 Python 启动器、插件服务和 MPI 辅助程序的监听端口。
+            if not executable.is_relative_to(installation) or executable.name != 'star-ccm+':
+                continue
+            identity = process_identity(int(process.name))
+            if identity is None:
+                continue
+            for fd in (process / 'fd').iterdir():
+                link = os.readlink(fd)
+                if link.startswith('socket:[') and link[8:-1] in listeners:
+                    port = listeners[link[8:-1]]
+                    found[(identity['pid'], port)] = {'process': identity, 'port': port}
+        except (OSError, ValueError):
+            # 进程可能在枚举期间退出；后续连接前还会再次检查身份。
+            continue
+    return list(found.values())
+
+
+def connect(args, directory):
+    """串行处理连接与复用，避免三端同时为同一 STAR 建立互不共享锁的会话。"""
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    with locked(directory.parent):
+        prune_sessions()
+        return start(args, directory)
+
+
+def prune_sessions():
+    """连接时清理超过 30 天的已结束运行数据，保留未确认请求与所有算例文件。
+
+    只处理新版服务生成的目录；运行中的会话、旧手工目录和需要恢复的记录不删除。
+    不启动常驻清理服务，也不触碰项目目录中的报告和导出。
+    """
+    cutoff = time.time() - 30 * 86400
+    idle = True
+    for record in (runtime_root() / 'sessions').glob('*/session.json'):
+        try:
+            directory = record.parent
+            with locked(directory):
+                state = json.loads(record.read_text())
+                if (state.get('state') not in ('stopped', 'disconnected')
+                        or state.get('active_request') or state.get('recovery_required')):
+                    idle = False
+                    continue
+                if (state.get('schema_version') != 2 or state.get('session_id') != directory.name
+                        or directory.is_symlink() or record.stat().st_mtime >= cutoff
+                        or any(directory.rglob('*.sim*'))):
+                    continue
+                shutil.rmtree(directory)
+        except (OSError, ValueError, ModificationRejected):
+            # 清理失败不阻碍连接；并发占用或损坏记录留给使用者处理。
+            idle = False
+            continue
+    # 只有登记会话均已结束时才删缓存，避免计划文件正被其他客户端加载。
+    # 保留目录，重建缓存的写入方始终使用原子替换；不删除未知扩展名的文件。
+    if idle:
+        for path in (runtime_root() / 'cache').rglob('*.json'):
+            try:
+                if path.stat().st_mtime < cutoff:
+                    path.unlink()
+            except OSError:
+                continue
+
+
+def compact_request(state, run, action):
+    """成功请求只保留简短操作记录；失败或调试请求留下完整诊断文件。"""
+    if state.get('debug') or state.get('state') != 'ready' or state.get('active_request'):
+        return
+    try:
+        write_json(run / 'operation.json', {
+            'action': action, 'status': state.get('last_request_status'),
+            'current_file': state.get('current_file'), 'modified': state.get('modified')})
+        for path in run.iterdir():
+            if path.name != 'operation.json':
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+    except OSError:
+        # 清理不是算例操作的一部分；清理失败不能把已确认的修改变成 uncertain。
+        return
+
+
 def start(args, directory):
-    """复制输入并启动独立服务，随后用一次只读请求确认该算例可用。"""
-    source = args.input.resolve(strict=True)
-    if not source.is_file():
+    """优先核对已有服务器，只有无匹配会话时才直接加载原算例启动服务。"""
+    source = args.input.resolve(strict=True) if args.input is not None else None
+    if source is not None and not source.is_file():
         raise ValueError('Input must be a file')
     star = shutil.which(args.star)
     if star is None:
         raise ValueError(f'STAR executable not found: {args.star}')
     directory.mkdir(parents=True, exist_ok=False)
     with locked(directory):
-        # 1. 隔离磁盘文件；本机原件永远不作为后台服务的保存目标。
-        original = digest(source)
-        working = directory / 'working.sim'
-        shutil.copy2(source, working)
-        if digest(working) != original or digest(source) != original:
-            raise RuntimeError('Input changed while creating working copy')
+        # 1. 项目位置在连接时固定；另存为不会悄悄迁移项目产物目录。
+        state = {'schema_version': 2, 'session_id': directory.name,
+                 'state': 'starting', 'host': 'localhost', 'star': star,
+                 'input': str(source) if source is not None else None,
+                 'current_file': str(source) if source is not None else None,
+                 'modified': None, 'active_request': None,
+                 'project_dir': str(getattr(args, 'project_dir', None) or source.parent),
+                 'debug': getattr(args, 'debug', False),
+                 'session_token': uuid.uuid4().hex, 'catalog_target': args.snapshot_plan['target']}
+        matches = []
+        for candidate in local_servers(star):
+            if args.port is not None and candidate['port'] != args.port:
+                continue
+            probe_state = dict(state, ownership='external', **candidate)
+            # 先用最小只读请求识别当前加载文件，不生成全范围 Inspector 快照。
+            probe = directory / 'probes' / uuid.uuid4().hex
+            try:
+                data = execute(star, None, probe, action='session-info', host='localhost',
+                               port=candidate['port'], timeout=min(args.timeout, 15),
+                               client_userdir=directory / 'client-settings',
+                               snapshot_plan=args.snapshot_plan, session_token=state['session_token'])
+            except RuntimeError:
+                continue
+            info = data['after']
+            if (data['status'] == 'ok' and alive(probe_state) and (source is None or
+                    (info.get('session_path') and Path(info['session_path']).resolve() == source))):
+                matches.append(dict(probe_state, simulation_key=info['simulation_key'],
+                                    current_file=info.get('session_path') or None,
+                                    modified=info['modified'], state='ready'))
+        if len(matches) > 1:
+            state['state'] = 'failed'
+            write_json(directory / 'session.json', state)
+            raise ValueError('Multiple STAR sessions match input; specify port to select one')
+        if matches:
+            state = matches[0]
+            # 已登记的连接继续沿用其锁、引用世代和进程所有权；不能将自有服务误记为外部。
+            for record in directory.parent.glob('*/session.json'):
+                try:
+                    existing = json.loads(record.read_text())
+                except (OSError, ValueError):
+                    continue
+                if (existing.get('port') == state['port'] and alive(existing)
+                        and existing.get('simulation_key') == state['simulation_key']):
+                    if existing.get('recovery_required'):
+                        raise OperationUncertain('Previous connection requires recovery: '
+                                                 + existing['session_id'])
+                    if existing.get('state') not in ('stopped', 'disconnected', 'failed'):
+                        shutil.rmtree(directory)
+                        return existing
+            write_json(directory / 'session.json', state)
+            if not state.get('debug'):
+                shutil.rmtree(directory / 'probes', ignore_errors=True)
+            return state
+        if source is None:
+            state['state'] = 'failed'
+            write_json(directory / 'session.json', state)
+            raise ValueError('No accessible STAR session at the specified port')
         # 2. 端口冲突提前失败，服务还会使用 portrange=1 禁止自动换到其他端口。
         with socket.socket() as probe:
-            probe.bind(('0.0.0.0', args.port))
-        command = [star, '-server', '-np', '1', '-noretry', '-loc', '-port', str(args.port),
-                   '-portrange', '1', '-load', str(working)]
+            probe.bind(('0.0.0.0', args.port or 0))
+            port = probe.getsockname()[1]
+        command = [star, '-server', '-np', '1', '-noretry', '-loc', '-port', str(port),
+                   '-portrange', '1', '-load', str(source)]
         write_json(directory / 'server-command.json', command)
         environment = os.environ.copy()
         environment.update(LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8')
-        state = {'schema_version': 1, 'state': 'starting', 'host': 'localhost',
-                 'port': args.port, 'star': star, 'input': str(source),
-                 'input_sha256': original, 'working_copy': str(working),
-                 'current_file': str(working), 'modified': None, 'active_request': None,
-                 'session_token': uuid.uuid4().hex, 'catalog_target': args.snapshot_plan['target']}
+        state.update(ownership='owned', port=port)
         with (directory / 'server.log').open('w') as log:
             process = subprocess.Popen(command, cwd=directory, env=environment,
                                        stdin=subprocess.DEVNULL, stdout=log,
@@ -197,7 +349,7 @@ def start(args, directory):
                 if process.poll() is not None or not alive(state):
                     raise RuntimeError(f'Server startup failed; see {directory / "server.log"}')
                 log = (directory / 'server.log').read_text(errors='replace')
-                if re.search(r'Server::start -host \S+:' + str(args.port) + r'\b', log):
+                if re.search(r'Server::start -host \S+:' + str(port) + r'\b', log):
                     rank = re.search(r'Process rank 0 \S+ (\d+)', log)
                     if rank is None:
                         raise RuntimeError('Server rank PID was not reported')
@@ -209,12 +361,14 @@ def start(args, directory):
                 if time.monotonic() >= deadline:
                     raise RuntimeError('Server startup timed out')
                 time.sleep(0.2)
-            data, run = request(directory, state, 'inspect', max(1, deadline - time.monotonic()),
+            data, run = request(directory, state, 'session-info', max(1, deadline - time.monotonic()),
                                 snapshot_plan=args.snapshot_plan)
             if data['status'] != 'ok':
                 raise ModificationRejected(f'Initial inspection rejected: {data.get("error")}; see {run}')
             state['initial_request'] = run.name
+            state['simulation_key'] = data['after']['simulation_key']
             write_json(directory / 'session.json', state)
+            compact_request(state, run, 'session-info')
         except BaseException:
             terminate_owned(state)
             process.wait(timeout=10)
@@ -225,11 +379,18 @@ def start(args, directory):
 
 
 def operate(args, directory):
-    """对管理目录中的现有会话执行一个命令；不接管用户手动启动的 STAR。"""
+    """对已有连接执行命令；外部会话断开只更新本地记录，不结束 STAR 进程。"""
     with locked(directory):
         state = json.loads((directory / 'session.json').read_text())
         if args.action == 'status':
             return dict(state, server_alive=alive(state))
+        if state['state'] in ('stopped', 'disconnected', 'failed'):
+            raise ValueError('Session is closed; open a new connection')
+        if args.action == 'stop' and state.get('ownership') == 'external':
+            state['recovery_required'] = state['state'] != 'ready' or bool(state.get('active_request'))
+            state['state'] = 'disconnected'
+            write_json(directory / 'session.json', state)
+            return state
         # 启动器异常退出时，显式放弃仍可清理身份匹配的遗留 MPI 进程。
         if not alive(state) and not (args.action == 'stop' and args.discard):
             raise RuntimeError('Managed server is not running')
@@ -266,10 +427,20 @@ def operate(args, directory):
             return state
         output = None
         if args.action == 'save':
-            output = args.output.resolve()
-            if (output.exists() or output.suffix != '.sim' or not output.parent.is_dir()
-                    or output == Path(state['input'])):
-                raise ValueError('Output must be a new .sim file with an existing parent directory')
+            # GUI 可能在连接后另存为；先读取同一对象的当前路径，再决定显式保存的目标。
+            data, info_run = request(directory, state, 'session-info', args.timeout,
+                                     snapshot_plan=args.snapshot_plan)
+            if data['status'] != 'ok':
+                raise ModificationRejected(f'Save identity check rejected: {data.get("error")}')
+            compact_request(state, info_run, 'session-info')
+            destination = getattr(args, 'output', None) or state.get('current_file')
+            if not destination:
+                raise ValueError('This simulation has no save path; specify output')
+            output = Path(destination).resolve()
+            current = Path(state['current_file']).resolve() if state.get('current_file') else None
+            if (not output.parent.is_dir() or (output != current and
+                    (output.exists() or output.suffix != '.sim'))):
+                raise ValueError('Save-as requires a new .sim file with an existing parent directory')
         try:
             catalog_call = getattr(args, 'catalog_plan', None) is not None
             action = 'catalog-' + args.action if catalog_call else args.action
@@ -304,8 +475,11 @@ def operate(args, directory):
             if output:
                 if not output.is_file() or Path(data['after']['session_path']).resolve() != output:
                     raise RuntimeError('Saved file/path was not confirmed')
-            result = {'session': str(directory), 'process': state['process'],
-                      'request_result': str(run / 'result.json')}
+            result = {'session_id': state.get('session_id', str(directory))}
+            if state.get('debug'):
+                result['request_result'] = str(run / 'result.json')
+            if output:
+                result['output'] = str(output)
             if args.action == 'discovery':
                 result['discovery'] = data['discovery']
             elif catalog_call:
@@ -328,6 +502,7 @@ def operate(args, directory):
                     result.update(catalog_before=data['catalog_before'],
                                   catalog_diff=catalog_diff(data['catalog_before'], data['catalog'],
                                                             args.catalog_plan))
+            compact_request(state, run, action)
             return result
         except ModificationRejected:
             # 宏已确认写入前拒绝，request 已清除活动标记；不把拒绝变成未知写入结果。
@@ -349,20 +524,23 @@ def main():
     commands = parser.add_subparsers(dest='action', required=True)
     for action in ['start', 'status', 'inspect', 'describe', 'read', 'set-scalar', 'modify', 'save', 'stop']:
         command = commands.add_parser(action)
-        command.add_argument('--session-dir', type=Path, required=True)
+        if action != 'start':
+            command.add_argument('--session-id', required=True)
         if action != 'status':
             command.add_argument('--timeout', type=float, default=180)
         if action == 'start':
             command.add_argument('input', type=Path)
             command.add_argument('--star', default='starccm+')
-            command.add_argument('--catalog-release', default='2602', help='Exact bundled release to bind to this session')
-            command.add_argument('--port', type=int, default=49001)
+            command.add_argument('--catalog-release', help='Expected release; detected from the selected executable when omitted')
+            command.add_argument('--port', type=int)
+            command.add_argument('--project-dir', type=Path)
+            command.add_argument('--debug', action='store_true')
         elif action == 'set-scalar':
             command.add_argument('--name', required=True)
             command.add_argument('--value', type=float, required=True)
             command.add_argument('--unit', required=True)
         elif action == 'save':
-            command.add_argument('--output', type=Path, required=True)
+            command.add_argument('--output', type=Path)
         elif action == 'modify':
             command.add_argument('--request', type=Path, required=True)
             command.add_argument('--catalog', type=Path)
@@ -376,7 +554,7 @@ def main():
     args = parser.parse_args()
     if args.action != 'status' and (not math.isfinite(args.timeout) or args.timeout <= 0):
         parser.error('--timeout must be positive and finite')
-    if args.action == 'start' and not 1024 <= args.port <= 65535:
+    if args.action == 'start' and args.port is not None and not 1024 <= args.port <= 65535:
         parser.error('--port must be between 1024 and 65535')
     if args.action == 'set-scalar' and not math.isfinite(args.value):
         parser.error('--value must be finite')
@@ -396,9 +574,16 @@ def main():
     # 新会话显式绑定；既有会话在持锁后使用保存的目标，不依赖新的 CLI 默认值。
     # status 与显式 discard 不加载目录，以便目录损坏时仍能查询或清理本次服务。
     if args.action == 'start':
-        args.snapshot_plan = prepare_snapshot(bundle_target(args.catalog_release))
-    directory = args.session_dir.resolve()
-    result = start(args, directory) if args.action == 'start' else operate(args, directory)
+        # 细分 CLI 与共享入口采用同一安装探测和目录分配，不再各自选择默认版本。
+        from starbridge.core.service import Service
+        result = Service().open_session(str(args.input.resolve()), star=args.star,
+            release=args.catalog_release, port=args.port, timeout=args.timeout,
+            project_dir=str(args.project_dir.resolve()) if args.project_dir else None,
+            debug=args.debug)
+    else:
+        result = operate(args, session_directory(args.session_id))
+        if args.action in ('status', 'stop'):
+            result = public_session(result)
     # 部分对象读取失败不意味着会话身份不确定；保留可用快照，并显式提示缺失内容。
     if not result.get('snapshot', {}).get('inspection_complete', True):
         print('StarBridge warning: Inspection is incomplete; check snapshot read_errors.',

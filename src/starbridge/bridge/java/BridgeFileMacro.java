@@ -16,6 +16,7 @@ public class BridgeFileMacro extends StarMacro {
     private static final String RESULT = __RESULT__;
     private static final String ACTION = __ACTION__;
     private static final String EXPECTED_SESSION = __EXPECTED_SESSION__;
+    private static final String EXPECTED_SIMULATION_KEY = __EXPECTED_SIMULATION_KEY__;
     private static final String OUTPUT = __OUTPUT__;
     private static final String NAME = __NAME__;
     private static final String UNIT = __UNIT__;
@@ -33,14 +34,19 @@ public class BridgeFileMacro extends StarMacro {
         try {
             Simulation sim = getActiveSimulation();
             // 1. 先核对服务身份；目录版本检查必须早于旧快照或任何目录属性访问。
-            if (!EXPECTED_SESSION.isEmpty()
-                    && !Path.of(sim.getSessionPath()).toRealPath().equals(
-                        Path.of(EXPECTED_SESSION).toRealPath())) {
+            if (!EXPECTED_SIMULATION_KEY.isEmpty()
+                    && !EXPECTED_SIMULATION_KEY.equals(sim.getObjectKeyAsString())) {
+                throw new IllegalArgumentException("Simulation was replaced; open a new connection");
+            }
+            // 已绑定对象 key 后允许用户在 GUI 中另存为；重载造成 key 改变仍会拒绝。
+            if (EXPECTED_SIMULATION_KEY.isEmpty() && !EXPECTED_SESSION.isEmpty()
+                    && !Path.of(sim.getSessionPath()).toAbsolutePath().normalize().equals(
+                        Path.of(EXPECTED_SESSION).toAbsolutePath().normalize())) {
                 throw new IllegalArgumentException("Unexpected simulation session: " + sim.getSessionPath());
             }
             // 2. 需要旧快照的入口先核对其目录；修改还须在任何准备或属性读取前核对写入目录。
             // 此处拒绝能确定尚未读取对象属性或写入，会话无需被标记为 uncertain。
-            if (List.of("inspect", "save", "modify", "file-modify", "set-scalar", "file-set",
+            if (List.of("session-info", "inspect", "save", "modify", "file-modify", "set-scalar", "file-set",
                     "catalog-modify", "file-catalog-modify", "catalog-verify").contains(ACTION)) {
                 try {
                     CatalogRuntime.checkVersion(sim, SNAPSHOT_PLAN, SESSION_TOKEN);
@@ -55,6 +61,13 @@ public class BridgeFileMacro extends StarMacro {
                     writeResult("rejected", unchanged, unchanged, error.getMessage());
                     return;
                 }
+            }
+            // 会话接入只需要版本、加载对象和文件位置；不要求完整 Inspector 可读取。
+            if (ACTION.equals("session-info")) {
+                Map<String, Object> info = fields("session_path", sim.getSessionPath(),
+                        "modified", sim.isModified(), "simulation_key", sim.getObjectKeyAsString());
+                writeResult("ok", info, info, null);
+                return;
             }
             if (ACTION.equals("discovery")) {
                 discover(sim);
@@ -87,8 +100,12 @@ public class BridgeFileMacro extends StarMacro {
             Map<String, Object> before = snapshot(sim);
             Map<String, Object> after = before;
             if (ACTION.equals("save")) {
-                if (OUTPUT.isEmpty() || Files.exists(Path.of(OUTPUT))) {
-                    throw new IllegalArgumentException("Save requires a new output file");
+                // 当前加载路径允许显式覆盖；另存为仍要求新文件，避免覆盖无关算例。
+                boolean current = sim.getSessionPath() != null && !sim.getSessionPath().isEmpty() && !OUTPUT.isEmpty()
+                        && Path.of(OUTPUT).toAbsolutePath().normalize().equals(
+                            Path.of(sim.getSessionPath()).toAbsolutePath().normalize());
+                if (OUTPUT.isEmpty() || (Files.exists(Path.of(OUTPUT)) && !current)) {
+                    throw new IllegalArgumentException("Save-as requires a new output file");
                 }
                 sim.saveState(OUTPUT);
                 after = snapshot(sim);

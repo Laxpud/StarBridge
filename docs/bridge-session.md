@@ -1,97 +1,76 @@
-# 后台常驻会话
+# STAR 会话接入
 
-[返回项目入口](README.cn.md) · [文件 Bridge](bridge-file.md) · [设计文档](../StarBridge.md)
+[返回项目入口](README.cn.md) · [文件 Bridge](bridge-file.md) · [MCP 契约](mcp.md)
 
-会话 Runner 让 STAR 后台加载一次工作副本，后续读取、修改和另存都连接这个服务。每次请求仍启动一个临时 Java 批处理客户端，客户端退出后服务继续保留算例及未保存修改。常驻 Java 适配器留待后续研究。
+StarBridge 优先连接与目标算例匹配的本机 STAR GUI／服务器；没有可用会话时启动自有后台服务，直接加载原算例。连接、读取和修改均不自动保存，也不创建 `working.sim` 或备份副本。每次请求仍通过临时 Java 批处理客户端执行，客户端退出后 STAR 继续运行。
 
-当前仅支持本机 Linux、Python 3.11 或更新版本；默认绑定 STAR 2602 Build 21.02.007，2510 的选择与验证范围见[版本说明](catalog-versions.md)。需要可用的安装、许可证和兼容算例。默认调用 `PATH` 中的 `starccm+`，启动时可用 `--star` 指定路径。
+需要 Linux、Python 3.11+、兼容的 STAR 安装和许可证。共享 CLI、MCP 与会话 CLI 均先检测所选程序版本，再核对已登记适配；`release/build` 只作为可选预期，不用于替换安装。支持范围见[版本说明](catalog-versions.md)。
 
-## 启动并操作
+## 连接与使用
 
-在仓库根目录执行，输入文件、会话目录及输出路径按实际情况替换：
+MCP `open_session` 或共享 CLI 的参数示例：
 
-```bash
-python3 bridge/runner/session_bridge.py start 'Base.sim~' \
-  --session-dir outputs/my-session --port 49001
-
-python3 bridge/runner/session_bridge.py status \
-  --session-dir outputs/my-session
-
-python3 bridge/runner/session_bridge.py inspect \
-  --session-dir outputs/my-session
-
-python3 bridge/runner/session_bridge.py set-scalar \
-  --session-dir outputs/my-session \
-  --name _AirfoilPitchAmplitude --value 6 --unit deg
-
-python3 bridge/runner/session_bridge.py inspect \
-  --session-dir outputs/my-session
-
-python3 bridge/runner/session_bridge.py save \
-  --session-dir outputs/my-session --output outputs/Base_session_example.sim
+```json
+{
+  "input": "/absolute/case.sim",
+  "star": "/absolute/STAR-CCM+/star/bin/starccm+"
+}
 ```
 
-`start` 要求会话目录尚不存在。它把输入复制为目录内的 `working.sim`，以单进程计算配置启动独立 STAR 服务，并用一次读取确认服务可用。原输入不作为保存目标；每次请求完成后都会核对原输入的 SHA256。若用户在外部修改原输入，检查也会失败，此后需查看日志并处理会话。
+返回 `session_id`，后续调用原样传回，不再要求调用者创建会话目录。项目位置默认采用算例所在目录，也可用 `project_dir` 指定既有目录。位置在连接时固定，另存为不会迁移项目目录。
 
-`status` 只读取本地记录并核对进程身份，不启动 Java 客户端；其中 `modified` 是上次成功请求的值。`inspect` 通过随附快照布局和共享目录读取服务的当前状态，并精确核对当前 server 版本。快照字段、读取错误及覆盖范围见 [Inspector 对象快照](inspector.md)。
+自动发现限于同一用户、同一安装且 Linux `/proc` 可见的本机进程。候选端口还需通过只读宏核对实际加载路径、精确版本和 Simulation key；不能把端口开放当作匹配成功。同一文件有多个匹配会话时，用 `port` 选择。没有指定端口且需要启动新服务时，自动选择空闲端口；启动时仍用 `-portrange 1` 防止悄悄换端口。远程服务和不可见的进程不在当前发现范围内。
 
-表达式和标签修改使用 `modify --request`，预期旧状态检查、回读与拒绝处理见 [Modifier 单项修改](modifier.md)。它也只修改内存。兼容 `modify` 和 `set-scalar` 自动加载该会话绑定版本的随附目录，使用统一准备、写入及回读流程，无需生成目录或修改旧命令；当前 server 必须精确匹配 2602 Build 21.02.007。显式指定目录的 schema 2 用法见[目录修改](catalog-modifier.md)。
+连接没有保存路径的 GUI 算例时，省略 `input`，明确给出 `port` 和 `project_dir`。找不到已有服务会拒绝，不创建空白算例。同一个已登记连接会复用会话 ID、互斥锁和引用世代。
 
-`set-scalar` **只修改内存，不保存文件**。它将已有标量设置为数值常量，替换原表达式，检查单位量纲并回读目标数值与单位。它没有调用者提供的 `expected`，内部按当前值准备修改不会保护陈旧请求。临时客户端退出后，另一次 `inspect` 仍能读到该修改。
-
-`save` 显式另存当前会话；目标必须是不存在的 `.sim` 文件，父目录必须存在。保存后，会话记录随 STAR 的当前文件路径更新。该命令在保存前检查快照目录版本，确认保存调用、文件存在及会话路径，不自动重新加载。需要独立核对磁盘值时，可使用文件入口：
+源码会话 CLI 示例：
 
 ```bash
-python3 bridge/runner/file_bridge.py inspect outputs/Base_session_example.sim \
-  --work-dir outputs/check-session-save
+python3 bridge/runner/session_bridge.py start '/absolute/case.sim' \
+  --star '/absolute/STAR-CCM+/star/bin/starccm+'
+
+# 将返回的 session_id 填入后续命令。
+python3 bridge/runner/session_bridge.py status --session-id SESSION_ID
+python3 bridge/runner/session_bridge.py inspect --session-id SESSION_ID
+python3 bridge/runner/session_bridge.py save --session-id SESSION_ID
+python3 bridge/runner/session_bridge.py save --session-id SESSION_ID \
+  --output '/absolute/case-edited.sim'
 ```
 
-## 关闭会话
+`status` 读取会话记录并核对进程身份，不启动 Java 客户端；`modified` 是最近成功请求的值。`inspect` 读取既有 Inspector 范围，不表示完整设置导出。表达式、标签及目录修改的调用方式见[修改说明](modifier.md)与[目录修改](catalog-modifier.md)；这些修改仍只作用于内存。
 
-```bash
-python3 bridge/runner/session_bridge.py stop --session-dir outputs/my-session
-```
+## 保存和断开
 
-普通 `stop` 先通过目录快照查询 STAR 的 `isModified()`；只要 STAR 报告存在未保存修改，就拒绝关闭。**本机实测中，另存完成后这个标志仍为真，原因尚未确定。** 程序保留该保护，不擅自把它清零。核对另存文件后，或明确不需要剩余内存状态时，使用：
+`save_session(session_id)` 写回 STAR 当前加载文件。给出 `output` 时另存为；目标必须是新的 `.sim` 文件且父目录已存在，避免覆盖无关算例。没有保存路径时必须指定 `output`。保存前会刷新同一加载对象的当前路径，以跟随用户在 GUI 中的另存为；结果的 `output` 是实际绝对路径。保存不自动关闭或重新加载。
 
-```bash
-python3 bridge/runner/session_bridge.py stop \
-  --session-dir outputs/my-session --discard
-```
+`close_session` 根据 `ownership` 处理：
 
-`--discard` 放弃服务中尚未落盘的状态；不会删除输入、已保存的输出或请求记录。服务会收到终止信号，程序按记录核对并清理其 MPI 子进程；必要时对身份仍匹配的遗留进程强制结束。它不等同于 STAR GUI 的交互式退出。
+- `external`：只将连接标为 `disconnected`，不发送终止信号，不丢弃用户 STAR 中的修改。
+- `owned`：核对未保存修改后停止本次拥有的进程，返回 `stopped`。只有明确授权放弃内存状态时才使用 `discard=true`。
 
-## 身份、隔离与失败处理
+历史实测中，STAR 另存后 `isModified()` 仍可能为真；程序不擅自清零或自动丢弃。细分 CLI 使用 `stop --session-id SESSION_ID`，需要放弃自有服务的未保存修改时添加 `--discard`。
 
-启动使用固定端口和 `-portrange 1`，端口被占用时失败。每次请求连接 `localhost` 和记录的端口，并核对当前算例文件路径。启动器与实际服务的 PID、Linux 启动时刻和系统启动标识共同确定身份，避免 PID 复用后连接或停止别的服务。
+## 身份和失败处理
 
-同一会话的 Bridge 请求通过文件锁串行执行。每次请求使用 `-batch` 和 `-noexit`：宏执行完后客户端退出，后台服务保留。客户端使用会话专属 `-nbuserdir`，子进程使用 `en_US.UTF-8`，不改动用户全局客户端配置或区域设置。
+进程身份由 PID、Linux 启动时刻及系统启动标识共同确定。连接还绑定 Simulation key，后续调用核对加载对象；用户 GUI 另存为可以改变文件路径。每个会话的 Bridge 请求通过文件锁互斥，但不能阻止用户 GUI 同时操作。
 
-除 `status` 外，命令的 `--timeout` 默认是 180 秒；启动的等待和首次读取共用这一时间预算。请求超时或执行失败时，操作可能已经生效，记录会进入 `uncertain`，或保留 `active_request` 标记；后续操作会被阻止，只有 `status` 和 `stop --discard` 可继续。不要自动重试修改；先查看请求日志、结果及可能已生成的文件。当前没有会话恢复或重新接管接口。`inspect`、`save`、`modify` 和 `set-scalar` 的明确版本拒绝，以及修改的写入前拒绝，返回 `rejected` 并保持已有会话 `ready`，不属于未知写入结果。`start` 的首次目录检查被拒绝会清理刚启动的服务；普通 `stop` 的关闭前检查被拒绝会保留服务。`status` 与 `stop --discard` 不加载目录，仍可在目录失效时查询和清理本次拥有的服务。
+请求使用 `-batch`、`-noexit` 和会话专属客户端配置。子进程使用 `en_US.UTF-8`，不修改用户全局设置。当前默认超时 180 秒；候选会话探测单次最多 15 秒，超时不是整个连接流程的硬截止。
 
-此实现只管理自己启动的后台服务，不连接用户已有 GUI 会话。独立进程、文件与客户端目录用于区分运行状态，但仍共享机器资源和许可证。`-loc` 仅控制 STAR 的服务发现范围，不能当作网络防火墙；此原型不提供远程访问或额外的端口安全配置。
+失败状态简化仍在[实施计划第二部分](plans/plan-2026-11-03-14-23.md)中。当前未知结果仍可能阻止后续读写；可查询状态，外部会话可以断开，自有会话只有明确 `discard` 才能停止。未知写入不自动重试、回滚或保存。
 
-## 运行产物与实现
+## 运行数据与项目产物
 
-所有命令成功时输出 JSON。读取、设置和保存结果包含当前快照及对应 `result.json` 的路径。兼容 `modify` 和 `set-scalar` 还返回 `catalog_before`、`catalog` 与 `catalog_diff`；原有快照、修改请求和 `snapshot_diff` 字段按各命令原契约保留。目录结果含目标类型全部已配属性，字段和引用比较规则见[目录结果与差异](catalog-modifier.md#结果与差异)。
-
-| 路径 | 内容 |
+| 内容 | 位置与保留方式 |
 |---|---|
-| `session.json` | 服务身份、输入摘要、当前文件、最近请求及生命周期状态 |
-| `working.sim` | 输入的初始工作副本；内存修改不会自动写入此文件 |
-| `server-command.json` / `server.log` | 服务启动参数与日志 |
-| `requests/<请求 ID>/` | 每次客户端的命令、宏、日志、修改前后快照及目录结果；兼容写入口另存 `legacy-plan.json`，快照操作另存 `snapshot-plan.json` |
-| `client-settings/` | 当前会话的临时客户端配置与缓存 |
-| `session.lock` | Bridge 请求互斥锁 |
+| 会话记录、请求及客户端配置 | `~/.starbridge/sessions/<session_id>/` |
+| 可重建的安装元数据和编译计划 | `~/.starbridge/cache/`，跨会话复用 |
+| 会话内对象索引和引用 | 对应会话目录，不跨加载复用 |
+| 报告、导出位置约定 | 显式位置优先，其次项目已有 `reports/`、`exports/`、`analysis/`，否则项目 `.starbridge/reports/` 或 `.starbridge/exports/` |
 
-[session_bridge.py](../bridge/runner/session_bridge.py) 管理生命周期；[file_bridge.py](../bridge/runner/file_bridge.py) 生成宏并运行客户端；两者共用 [BridgeFileMacro.java](../src/starbridge/bridge/java/BridgeFileMacro.java)。[共享 Core Service](../src/starbridge/core/service.py) 已将这些能力接入 [JSON CLI 与 MCP](mcp.md)，本页的原脚本命令继续可用。
+连接不会创建项目 `.starbridge`。目前检查结果直接返回；项目产物路径解析供实际生成报告和导出的入口调用，不意味着已新增报告或导出工具。
 
-## 已确认的范围
+正常成功请求只留下简短 `operation.json`；失败请求保留诊断。`open_session(debug=true)` 或会话 CLI `start --debug` 保留宏、计划、日志和完整结果，调用结果还会给出 `request_result` 路径。保存的算例始终位于工程路径或用户指定位置。
 
-本机 `Base.sim~` 读取到 32 个标量参数。跨独立客户端把 `_AirfoilPitchAmplitude` 从 `5 deg` 设置为 `6 deg` 并再次读取，期间服务 PID 不变、算例只加载一次，原输入及工作副本摘要未变化。另存文件重新加载后参数快照一致，服务关闭后记录的进程退出、端口释放。
+新连接时顺便清理超过 30 天、已结束且不需要恢复的新版会话数据；含算例文件的目录不删除。只有所有登记会话均已结束时才清理超过 30 天的 JSON 缓存。运行中、结果未确认、记录损坏或被其他请求占用的数据保留，不运行额外清理服务。
 
-以上只确认参数读写、保存和生命周期；没有执行网格或求解，没有验证向量分支、GUI 共享会话、异常恢复、其他主机或 STAR 版本。
-
-扩展对象快照的文件与会话对照结果及未实测分支见 [Inspector 验证范围](inspector.md#验证范围)。
-
-迁入共享目录后的兼容写入口、写入前拒绝与会话另存重载结果见 [Modifier 验证范围](modifier.md#已确认的范围)。
+本轮会话改造已做静态编译与既有契约检查；真实 GUI 接入、原路径保存和未命名 GUI 算例尚未实测。历史后台副本验证不替代这些行为的运行证据。

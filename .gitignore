@@ -2,6 +2,7 @@
 *.sim
 *.sim~
 /outputs/
+.starbridge/
 __pycache__/
 *.pyc
 /.venv-mcp/

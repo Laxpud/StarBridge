@@ -38,7 +38,7 @@ python3 bridge/runner/file_bridge.py read 'Base.sim~' \
 
 ```bash
 python3 bridge/runner/session_bridge.py read \
-  --session-dir outputs/my-session \
+  --session-id SESSION_ID \
   --catalog src/starbridge/catalogs/2602/generated/catalog.json \
   --execution src/starbridge/catalogs/2602/execution.json \
   --request read-request.json
@@ -54,7 +54,7 @@ python3 bridge/runner/file_bridge.py describe 'Base.sim~' \
   --work-dir outputs/catalog-describe-file
 
 python3 bridge/runner/session_bridge.py describe \
-  --session-dir outputs/my-session \
+  --session-id SESSION_ID \
   --catalog src/starbridge/catalogs/2602/generated/catalog.json \
   --execution src/starbridge/catalogs/2602/execution.json \
   --request describe-request.json

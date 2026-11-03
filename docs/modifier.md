@@ -43,10 +43,10 @@ python3 bridge/runner/file_bridge.py modify 'Base.sim~' \
 
 ```bash
 python3 bridge/runner/session_bridge.py modify \
-  --session-dir outputs/my-session --request change.json
+  --session-id SESSION_ID --request change.json
 
 python3 bridge/runner/session_bridge.py save \
-  --session-dir outputs/my-session --output outputs/Base_session_modified.sim
+  --session-id SESSION_ID --output outputs/Base_session_modified.sim
 ```
 
 会话 `modify` 只改变内存；`save` 显式保存。会话保存本身不重新加载文件，独立磁盘核对仍使用文件 `inspect`。每次修改请求保持文件锁串行，不能把它当作与外部 Java 客户端或用户 GUI 之间的事务锁；此原型只管理自己启动的后台服务。
