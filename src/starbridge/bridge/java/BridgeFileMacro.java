@@ -49,7 +49,7 @@ public class BridgeFileMacro extends StarMacro {
             if (List.of("session-info", "inspect", "save", "modify", "file-modify", "set-scalar", "file-set",
                     "catalog-modify", "file-catalog-modify", "catalog-verify").contains(ACTION)) {
                 try {
-                    CatalogRuntime.checkVersion(sim, SNAPSHOT_PLAN, SESSION_TOKEN);
+                    if (SNAPSHOT_PLAN != null) CatalogRuntime.checkVersion(sim, SNAPSHOT_PLAN, SESSION_TOKEN);
                     if (List.of("modify", "file-modify", "set-scalar", "file-set").contains(ACTION)) {
                         CatalogRuntime.checkVersion(sim, LEGACY_PLAN, SESSION_TOKEN);
                     } else if (ACTION.equals("catalog-modify") || ACTION.equals("file-catalog-modify")) {
@@ -177,15 +177,13 @@ public class BridgeFileMacro extends StarMacro {
     }
 
     /**
-     * 目录修改先完成版本、目标、预期状态与全部读取检查，再执行一次已准备的写入。
-     * prepare 之后的异常不能转为 rejected：此时写入或保存可能已生效。
+     * 目录修改只核对目标、旧值与规则指定关联项；完整快照仅在显式审查或文件重载时读取。
+     * prepare 之后的异常仍表示结果未确认，不能重试 setter。
      */
     private void modifyCatalog(Simulation sim) throws Exception {
         Map<String, Object> before = fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
         CatalogRuntime.PreparedChange prepared;
-        CatalogRuntime.SnapshotCapture capturedBefore = null;
-        Map<String, Object> writeTarget = null, snapshotScope = null;
-        boolean discoveryWrite = CATALOG_PLAN != null && CATALOG_PLAN.containsKey("discovery_binding");
+        boolean auditing = SNAPSHOT_PLAN != null;
         boolean saving = ACTION.equals("file-catalog-modify");
         try {
             if (CATALOG_PLAN == null || CATALOG_REQUEST == null || MODIFICATION != null || LEGACY_PLAN != null
@@ -193,20 +191,9 @@ public class BridgeFileMacro extends StarMacro {
                     || (saving && OUTPUT.isEmpty()) || (!saving && !OUTPUT.isEmpty())) {
                 throw new IllegalArgumentException("Catalog modification requires a matching request and save mode");
             }
-            // 1. 当前 server gate 与目标属性检查必须早于旧快照 API 和任何设置调用。
-            if (discoveryWrite && saving)
-                throw new IllegalArgumentException("Discovery modifications require a separate explicit save");
+            // 1. 版本、定位、旧值、单位、范围和必要关联项均由目标写计划验证。
             prepared = CatalogRuntime.prepareChange(sim, CATALOG_PLAN, CATALOG_REQUEST, SESSION_TOKEN);
-            if (discoveryWrite) {
-                if (!(prepared instanceof CatalogRuntime.PreparedModification))
-                    throw new IllegalArgumentException("Discovery snapshot scope requires a property assignment");
-                writeTarget = ((CatalogRuntime.PreparedModification) prepared).snapshotWriteTarget();
-                capturedBefore = CatalogRuntime.snapshotWithBindings(sim, SNAPSHOT_PLAN, SESSION_TOKEN);
-                before = capturedBefore.snapshot;
-            } else before = snapshot(sim);
-            if (!Boolean.TRUE.equals(before.get("inspection_complete"))) {
-                throw new IllegalArgumentException("Modification requires a complete covered snapshot");
-            }
+            if (auditing) before = snapshot(sim);
             if (saving && Files.exists(Path.of(OUTPUT))) {
                 throw new IllegalArgumentException("Output already exists: " + OUTPUT);
             }
@@ -215,46 +202,27 @@ public class BridgeFileMacro extends StarMacro {
             return;
         }
 
-        // 2. 这里只执行后端已经准备好的设置动作；失败继续抛出，让会话进入 uncertain。
+        // 2. apply 只执行一次赋值并回读；旧 Inspector 的其他设置不作为成功条件。
         Map<String, Object> catalog = prepared.apply();
-        CatalogRuntime.SnapshotCapture capturedAfter = discoveryWrite
-                ? CatalogRuntime.snapshotWithBindings(sim, SNAPSHOT_PLAN, SESSION_TOKEN) : null;
-        Map<String, Object> after = discoveryWrite ? capturedAfter.snapshot : snapshot(sim);
-        // setter 已尝试后才核对快照影响范围；任何额外变化沿 uncertain 路径传播，绝不重试。
-        if (discoveryWrite) {
-            try {
-                snapshotScope = CatalogRuntime.verifyDiscoverySnapshot(capturedBefore, capturedAfter, writeTarget);
-            } catch (IllegalArgumentException error) {
-                // setter 已成功执行一次；保存当时证据供审阅，不能把影响校验失败改报写前拒绝或重试。
-                Map<String, Object> uncertain = fields("status", "uncertain", "before", before, "after", after,
-                        "catalog_before", prepared.before(), "catalog", catalog, "catalog_request", CATALOG_REQUEST,
-                        "error", error.getMessage(), "setter_attempts", 1,
-                        "snapshot_scope", fields("target", writeTarget, "before_bindings", capturedBefore.bindings,
-                                "after_bindings", capturedAfter.bindings, "verification", "failed"));
-                Files.writeString(Path.of(RESULT), json(uncertain), StandardCharsets.UTF_8);
-                return;
-            }
-        }
-        if (!Boolean.TRUE.equals(after.get("inspection_complete"))
-                || !Boolean.TRUE.equals(catalog.get("inspection_complete"))) {
+        Map<String, Object> after = auditing ? snapshot(sim)
+                : fields("session_path", sim.getSessionPath(), "modified", sim.isModified());
+        if (!Boolean.TRUE.equals(catalog.get("inspection_complete"))) {
             throw new IllegalStateException("Modification readback is incomplete");
         }
         if (saving) {
-            // 3. 先回读成功再另存；保存后的属性不得偏离已验证值，重载由 Runner 独立完成。
+            // 文件入口仍独立重载；这里先保存并核对目标计划中的回读值。
             sim.saveState(OUTPUT);
             after = snapshot(sim);
             Map<String, Object> saved = CatalogRuntime.inspect(sim, CATALOG_PLAN, catalogReadRequest(), SESSION_TOKEN);
-            if (!Boolean.TRUE.equals(after.get("inspection_complete"))
-                    || !Boolean.TRUE.equals(saved.get("inspection_complete"))
+            if (!Boolean.TRUE.equals(saved.get("inspection_complete"))
                     || !sameValue(catalog.get("properties"), saved.get("properties"))) {
                 throw new IllegalStateException("Saved catalog values differ from verified readback");
             }
             catalog = saved;
         }
         Map<String, Object> result = fields("status", "ok", "before", before, "after", after,
-                "catalog_before", prepared.before(), "catalog", catalog, "catalog_request", CATALOG_REQUEST);
-        if (snapshotScope != null) result.put("snapshot_scope", snapshotScope);
-        if (discoveryWrite) result.put("setter_attempts", 1);
+                "catalog_before", prepared.before(), "catalog", catalog, "catalog_request", CATALOG_REQUEST,
+                "snapshot_audit", auditing, "setter_attempts", 1);
         Files.writeString(Path.of(RESULT), json(result), StandardCharsets.UTF_8);
     }
 

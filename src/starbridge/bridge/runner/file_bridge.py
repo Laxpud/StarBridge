@@ -150,7 +150,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
             action=None, host=None, port=None, expected_session="", timeout=None,
             client_userdir=None, modification=None, catalog_plan=None,
             catalog_request=None, session_token=None, legacy_plan=None, snapshot_plan=None,
-            discovery_request=None, expected_simulation_key=''):
+            discovery_request=None, expected_simulation_key='', on_client_start=None):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
     catalog_actions = {'catalog-find': 'find', 'catalog-read': 'read', 'catalog-describe': 'describe',
                        'catalog-verify': 'read', 'catalog-modify': 'modify',
@@ -164,8 +164,9 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
     if discovery_call and (catalog_call or modification is not None or output is not None):
         raise ValueError('Discovery cannot be combined with mutation or catalog requests')
     snapshot_call = actual_action in {'session-info', 'inspect', 'save', 'modify', 'file-modify', 'set-scalar',
-                                     'file-set', 'catalog-verify', 'catalog-modify', 'file-catalog-modify'}
-    if snapshot_call != (snapshot_plan is not None):
+                                     'file-set', 'catalog-verify', 'file-catalog-modify'}
+    if ((snapshot_call and snapshot_plan is None)
+            or (not snapshot_call and actual_action != 'catalog-modify' and snapshot_plan is not None)):
         raise ValueError('Snapshot actions require their bundled snapshot plan')
     legacy_call = actual_action in {'modify', 'file-modify', 'set-scalar', 'file-set'}
     if legacy_call != (legacy_plan is not None):
@@ -245,10 +246,15 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
                                    stdin=subprocess.DEVNULL, stdout=log,
                                    stderr=subprocess.STDOUT, start_new_session=True)
         try:
+            if on_client_start is not None:
+                on_client_start(process.pid)
             process.wait(timeout=timeout)
-        except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        except BaseException:
             # 只终止本次创建的客户端进程组，不触碰独立运行的后台服务。
-            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
@@ -258,7 +264,7 @@ def execute(star, source, directory, output=None, name="", value=0.0, unit="", *
     if process.returncode != 0 or not result.is_file():
         raise RuntimeError(f"STAR did not complete the macro; see {directory / 'star.log'}")
     data = json.loads(result.read_text())
-    # 发现写入的影响校验可能在 setter 后失败；保留宏证据，由会话层冻结后续操作。
+    # 写入回读可能在 setter 后失败；保留宏证据，由会话层阻止后续写入并允许读取核对。
     if data.get('status') == 'uncertain' and actual_action == 'catalog-modify':
         return data
     if data.get("status") != "ok" and not (

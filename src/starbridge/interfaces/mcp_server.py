@@ -156,14 +156,14 @@ def read_properties(session_id: StrictStr, target: dict, properties: list[Strict
 
 
 @server.tool(name='starbridge.modify', annotations=WRITE)
-def modify(session_id: StrictStr, request: dict, timeout: StrictFloat = 180) -> types.CallToolResult:
+def modify(session_id: StrictStr, request: dict, timeout: StrictFloat = 180, audit: StrictBool = False) -> types.CallToolResult:
     """修改一个已描述的目录属性或执行一个已发布的结构操作，只改变内存。
 
     属性 request={schema_version:2,action:'modify',target,property,expected,value}；
     结构操作 request={schema_version:3,action:'modify',target,operation,expected,arguments:{method}}。
     expected 取当前读取 value；属性 value 遵循 write_contract，method 取可用 method_choices.id。
-    result.catalog 是回读，catalog_diff/snapshot_diff 为核验差异；成功后按任务显式 save_session。
-    uncertain 时停止并查询 session_status，不重试、不回滚、不保存。详细格式见 get_contract。
+    result.catalog 是目标回读；audit=true 时另返回完整快照和 Diff。成功后按任务显式 save_session。
+    uncertain 时查询 session_status，可只读核对，不重试、不回滚、不保存。详细格式见 get_contract。
     """
     return call('modify', locals())
 
@@ -251,14 +251,14 @@ def relocate_node(session_id: StrictStr, locator: list[dict],
 def modify_node_property(session_id: StrictStr, node_id: StrictStr, property_id: StrictStr,
                          expected: dict | StrictStr | StrictBool | StrictInt | StrictFloat,
                          value: dict | StrictStr | StrictBool | StrictInt | StrictFloat,
-                         timeout: StrictFloat = 180) -> types.CallToolResult:
+                         timeout: StrictFloat = 180, audit: StrictBool = False) -> types.CallToolResult:
     """发现写入能力可用时，按当前描述的 write_contract 修改一个支持的发现属性，只改变内存。
 
     使用当前有效 describe_node 契约，并从 read_node_properties 取得完整 value 用作 expected。
     常量标量新值如 {value:0.001,unit:'m'}，向量如 {components:[0,0,0.125],unit:'m'}，
     仅在该属性契约允许时适用；不要照抄示例单位或假设任意 setter 都可执行。
-    result 含 catalog 回读、catalog_diff、snapshot_diff、snapshot_scope 和 setter_attempts。
-    任务要求持久化时另行 save_session；uncertain 时停止并查询 session_status，不重试、不回滚、不保存。
+    result 含目标 catalog 回读与 setter_attempts；audit=true 时另返回完整快照和 Diff。
+    任务要求持久化时另行 save_session；uncertain 时查询 session_status，可只读核对，不重试、不回滚、不保存。
     """
     return call('modify_node_property', locals())
 
@@ -286,7 +286,7 @@ def session_status(session_id: StrictStr) -> types.CallToolResult:
 
     result 包含 state、server_alive、active_request、last_request、last_request_status（字段可缺省）。
     用于断开、超时或 uncertain 后排查；ready 不等于上次修改成功，需结合请求结果。
-    同会话正在执行时状态查询也可能因锁而拒绝；此工具不会取消、恢复或重试操作。
+    执行中也可查询状态；state=running 表示请求未结束，uncertain_request 标识未确认写入。此工具不重试操作。
     """
     return call('session_status', locals())
 

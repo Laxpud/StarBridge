@@ -27,10 +27,10 @@ MCP 工具使用 `starbridge.` 前缀，JSON CLI 使用下表原名。所有调�
 
 ## 导航、描述、读取
 
-先打开独立工作会话，方式见[后台会话](bridge-session.md)或 [MCP 说明](mcp.md)。用以下 JSON 调用 `browse_tree`：
+先连接或打开工作会话，方式见[后台会话](bridge-session.md)或 [MCP 说明](mcp.md)。用以下 JSON 调用 `browse_tree`：
 
 ```json
-{"session_id": "/absolute/session", "limit": 100}
+{"session_id": "<returned session_id>", "limit": 100}
 ```
 
 Core 返回 `{"status":"ok","result":...}`。读取 `result.children`，按返回的名称和上下文选择目标，把它的 `node_id` 原样传入下一次 `browse_tree`。需要下一页时传入 `result.next_cursor`，保留相同 `scope`；游标已经绑定父节点，允许省略 `node_id`。列表指纹变化会使旧游标失效，此时重新展开，不拼接前后两个树状态的页面。
@@ -38,14 +38,14 @@ Core 返回 `{"status":"ok","result":...}`。读取 `result.children`，按返�
 到达所需设置节点后，先调用 `describe_node`：
 
 ```json
-{"session_id": "/absolute/session", "node_id": "<returned node_id>"}
+{"session_id": "<returned session_id>", "node_id": "<returned node_id>"}
 ```
 
 按属性名称、说明、类型和支持状态选择一项，再调用 `read_node_properties`：
 
 ```json
 {
-  "session_id": "/absolute/session",
+  "session_id": "<returned session_id>",
   "node_id": "<returned node_id>",
   "property_ids": ["<returned property_id>"]
 }
@@ -70,14 +70,14 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 先搜索已发现范围：
 
 ```json
-{"session_id": "/absolute/session", "query": "松弛"}
+{"session_id": "<returned session_id>", "query": "松弛"}
 ```
 
 若索引范围不足，显式要求扩展：
 
 ```json
 {
-  "session_id": "/absolute/session",
+  "session_id": "<returned session_id>",
   "query": "松弛",
   "expand": true,
   "max_nodes": 80,
@@ -113,7 +113,7 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 ## 身份、重定位和缓存
 
-`node_id` 和分页游标由会话目录中的独立私钥签名；公开 `session_token` 不是签名密钥。引用包含会话世代和完整观察路径，运行时逐层核对 key、名称、类型及实际父身份。调用方应原样保存和传递引用，不解析或构造其内容。名称相同不证明是同一实例；重命名、删除重建、关系变化或换会话都可能使旧引用失效。
+`node_id` 和分页游标是会话内短 ID，服务从 `references.sqlite3` 查找已发现的路径或分页状态，并检查引用种类和会话世代。没有 HMAC 或专用密钥；运行时仍逐层核对 key、名称、类型及实际父身份。旧签名引用需重新浏览取得短 ID，旧搜索索引不跨引用格式复用。调用方应原样保存和传递引用，不解析或构造其内容。名称相同不证明是同一实例；重命名、删除重建、关系变化或换会话都可能使旧引用失效。
 
 跨加载使用此前返回的 `locator`，调用 `relocate_node`：
 
@@ -155,7 +155,7 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 ```json
 {
-  "session_id": "/absolute/session",
+  "session_id": "<returned session_id>",
   "node_id": "<returned node_id>",
   "property_id": "<returned property_id>",
   "expected": {"definition": "0.0", "unit": "m", "si_unit": "m", "raw_value": 0.0, "si_value": 0.0},
@@ -165,16 +165,18 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 向量新值格式为 `{"components":[0,0,0.125],"unit":"m"}`；其他已接受类型按其 writer 的契约提供新值。通过 JSON CLI 执行 `python3 starbridge.py modify_node_property --arguments /absolute/write-node.json`，或使用相同参数调用 `starbridge.modify_node_property`。`write_enabled=true` 只证明发布范围和规则支持；`target_conditions`、`value_conditions` 在描述时仍为 `not_checked`。
 
-修改刷新完整节点描述并编译全部已支持读取项，在会话锁内核对版本、引用、`expected`、单位、范围及声明条件，临近 setter 再核对必要状态。成功结果保留 `catalog_before`、`catalog`、`catalog_diff`、`snapshot`、`snapshot_diff` 和 `setter_attempts: 1`。读取计划始终没有 writer，描述支持状态不会暗中执行赋值。
+修改刷新节点描述，只为目标属性和已接受规则要求的关联项生成写计划，在会话锁内核对版本、引用、`expected`、单位、范围及声明条件，临近 setter 再核对必要状态。通用常量赋值不再读取并保持同节点所有其他属性，也不要求旧 Inspector 全范围保持不变。
 
-`snapshot_scope` 用实际对象和数量 key 将原快照字段绑定到目标：目标在快照内时，仅允许对应数量的声明值字段变化，模式为 `bound_quantity_fields`；目标不在原快照时，模式为 `unchanged_snapshot`，要求原快照内容和全部绑定保持不变。`modified` 元数据单独忽略，名称、维度及其他内容不能随之放行。通用规则还保持同节点其他已支持读取结果。该范围仍不等于全部算例设置或完整物理依赖。
+成功结果保留目标的 `catalog_before`、`catalog` 和 `setter_attempts: 1`。显式传入 `audit: true` 时附带完整 Inspector 前后快照、`snapshot_diff` 和 `catalog_diff`，供审查；审查结果不作为全范围不变的强制赋值条件。也可按需调用 `inspect_session` 取得快照。旧 `snapshot_scope` 不再作为普通写入结果返回。
 
-写前明确拒绝返回 `rejected`，不会执行 setter。写后回读失败、超时或影响超出声明范围返回 `uncertain`，会话阻止继续操作，不重试、不回滚、不保存。快照影响验证失败的原始请求记录保留前后快照、目录结果、绑定证据、错误和 `setter_attempts: 1`；其他异常以日志和已有结果为准，不猜测尝试次数。先查看 `session_status` 及错误中给出的请求路径，当前恢复方式是明确关闭并弃置该会话，再从已知文件新建会话。
+写前明确拒绝返回 `rejected`，不会执行 setter。请求仍在执行时返回 `busy`；状态查询可在执行中读取记录。只读失败在客户端结束后记录为本次错误，不冻结会话。写入结果未确认时保留 `uncertain_request`，允许状态查询和只读核对，阻止新的修改与保存；成功读取不会自动清除未确认写入，也不自动重试、回滚或保存。重连同一未确认外部会话仍沿用其限制。
 
-成功修改仍须显式调用 `save_session` 另存到新文件。重载后使用 `relocate_node`、重新描述和读取，核对目标值及已有快照覆盖内容；旧 `node_id` 不能跨加载使用。锁和回读不提供跨客户端原子事务或 CFD 合理性保证。
+成功修改仍须显式调用 `save_session`，省略 output 写回当前文件，指定新路径则另存为。重载后重新定位、描述和读取；旧 `node_id` 不能跨加载使用。锁和回读不提供跨客户端原子事务或 CFD 合理性保证。
 
 
 ## 验证范围
+
+当前简化实现已通过 9 项适用的既有 Core 检查、15 项既有快照比较器检查和 STAR 2602 库编译；原私钥签名专项检查已不适用，未修改测试文件。真实会话失败恢复和收窄后的写入链路尚未实测。以下为旧实现的历史证据，不替代新行为的运行验证。
 
 2026-10-30，在 Linux、2602 Build `21.02.007` 的 `Base.sim~` 隔离副本上验证了公开 Core、JSON CLI 和 stdio MCP 入口。原件 SHA256 为 `33d98c6cad076ae9959c2039b988c0aecb0154f7ac63d79a2a805a88ae5ce895`；读取前后的既有快照内容和原件摘要保持不变。
 

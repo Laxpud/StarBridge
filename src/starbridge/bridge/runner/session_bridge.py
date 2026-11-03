@@ -31,6 +31,10 @@ class OperationUncertain(RuntimeError):
     """标记本次客户端启动后的不确定结果，区别于并发请求的活动标记。"""
 
 
+class OperationBusy(ModificationRejected):
+    """请求仍在执行；不能把忙碌解释为本次操作失败或未知写入。"""
+
+
 def write_json(path, data):
     """原子更新会话记录，避免中断后读到只写了一半的 JSON。"""
     temporary = path.with_suffix('.tmp')
@@ -87,8 +91,72 @@ def locked(directory):
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise ModificationRejected('Session is busy with another Bridge request')
+            raise OperationBusy('Session is busy with another Bridge request')
         yield
+
+
+def client_running(state):
+    """检查请求客户端及其进程组；控制进程异常退出后仍保留在运行的客户端为忙碌。"""
+    identity = state.get('client_process')
+    if identity is None:
+        if 'client_process' in state:
+            return False
+        owner = state.get('request_owner')
+        return owner is not None and process_identity(owner['pid']) == owner
+    if process_identity(identity['pid']) == identity:
+        return True
+    # 启动器退出不保证 Java 子进程已结束；组内同次启动后产生的进程仍计为执行中。
+    for path in Path('/proc').glob('[0-9]*'):
+        try:
+            current = process_identity(int(path.name))
+            if (current and current['pgid'] == identity['pgid']
+                    and current['boot_id'] == identity['boot_id']
+                    and int(current['start_ticks']) >= int(identity['start_ticks'])
+                    and path.stat().st_uid == os.getuid()):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def finish_request(directory, state, status, *, uncertain=False):
+    """结束已停止的请求，单独保留未确认写入，后续成功读取不会抹掉它。"""
+    identifier = state.get('active_request') or state.get('last_request')
+    state.update(last_request=identifier, last_request_status=status, active_request=None)
+    if uncertain:
+        state['uncertain_request'] = identifier
+    for key in ('client_process', 'request_owner', 'active_action', 'active_mutating'):
+        state.pop(key, None)
+    state['state'] = 'uncertain' if state.get('uncertain_request') else 'ready'
+    write_json(directory / 'session.json', state)
+
+
+def refresh_request(directory, state):
+    """持锁后恢复中断的调用记录；已结束的只读失败可继续，写入不自动重试。"""
+    if state.get('active_request'):
+        disconnected = state.get('state') == 'disconnected'
+        if client_running(state):
+            if not disconnected:
+                state['state'] = 'running'
+            return
+        identifier = state['active_request']
+        result = directory / 'requests' / identifier / 'result.json'
+        try:
+            data = json.loads(result.read_text())
+        except (OSError, ValueError):
+            data = {}
+        mutating = state.get('active_mutating', True)
+        # 控制端中断时可能尚未完成 Python 回读检查；只有宏明确 rejected 才证明未赋值。
+        uncertain = mutating and data.get('status') != 'rejected'
+        finish_request(directory, state, 'uncertain' if uncertain else data.get('status', 'error'),
+                       uncertain=uncertain)
+        if disconnected:
+            state.update(state='disconnected', recovery_required=bool(state.get('uncertain_request')))
+            write_json(directory / 'session.json', state)
+    elif state.get('state') == 'uncertain' and not state.get('uncertain_request'):
+        # 旧记录没有请求类型，不能凭缺少字段推断旧写入未执行。
+        state['uncertain_request'] = state.get('last_request', 'legacy-request')
+        write_json(directory / 'session.json', state)
 
 
 def terminate_owned(state):
@@ -135,25 +203,42 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
         write_json(directory / 'session.json', state)
     identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
     run = directory / 'requests' / identifier
-    write_json(directory / 'session.json', dict(state, active_request=identifier))
-    data = execute(state['star'], None, run, output, name, value, unit,
-                   action=action, host=state['host'], port=state['port'],
-                   expected_session=state['current_file'] or '', timeout=timeout,
-                   client_userdir=directory / 'client-settings', modification=modification,
-                   catalog_plan=catalog_plan, catalog_request=catalog_request,
-                   session_token=state['session_token'], legacy_plan=legacy_plan, snapshot_plan=snapshot_plan,
-                   discovery_request=discovery_request,
-                   expected_simulation_key=state.get('simulation_key', ''))
-    if not alive(state):
-        raise RuntimeError('Server exited or changed identity during request')
-    state['current_file'] = data['after']['session_path']
-    state['modified'] = data['after']['modified']
-    state['last_request'] = identifier
-    state['last_request_status'] = data['status']
-    state['active_request'] = None
-    # 收到完整失败结果只说明请求已结束，不能将已经发生的未知写入恢复为 ready。
-    state['state'] = 'uncertain' if data['status'] == 'uncertain' else 'ready'
+    mutating = action in ('save', 'modify', 'set-scalar', 'catalog-modify')
+    state.update(active_request=identifier, active_action=action, active_mutating=mutating,
+                 request_owner=process_identity(os.getpid()), state='running')
     write_json(directory / 'session.json', state)
+
+    def record_client(pid):
+        """客户端启动后立即保存进程身份，供服务中断后的状态查询使用。"""
+        state['client_process'] = process_identity(pid)
+        write_json(directory / 'session.json', state)
+
+    try:
+        data = execute(state['star'], None, run, output, name, value, unit,
+                       action=action, host=state['host'], port=state['port'],
+                       expected_session=state['current_file'] or '', timeout=timeout,
+                       client_userdir=directory / 'client-settings', modification=modification,
+                       catalog_plan=catalog_plan, catalog_request=catalog_request,
+                       session_token=state['session_token'], legacy_plan=legacy_plan, snapshot_plan=snapshot_plan,
+                       discovery_request=discovery_request,
+                       expected_simulation_key=state.get('simulation_key', ''), on_client_start=record_client)
+        if not alive(state):
+            raise RuntimeError('Server exited or changed identity during request')
+        state['current_file'] = data['after']['session_path']
+        state['modified'] = data['after']['modified']
+    except BaseException as error:
+        dispatched = 'client_process' in state
+        if dispatched and client_running(state):
+            write_json(directory / 'session.json', state)
+            if isinstance(error, Exception):
+                raise OperationBusy('Request client is still running; query session_status') from error
+            raise
+        uncertain = mutating and dispatched
+        finish_request(directory, state, 'uncertain' if uncertain else 'error', uncertain=uncertain)
+        if uncertain and isinstance(error, Exception):
+            raise OperationUncertain(str(error)) from error
+        raise
+    finish_request(directory, state, data['status'], uncertain=data['status'] == 'uncertain')
     return data, run
 
 
@@ -311,10 +396,18 @@ def start(args, directory):
                 except (OSError, ValueError):
                     continue
                 if (existing.get('port') == state['port'] and alive(existing)
-                        and existing.get('simulation_key') == state['simulation_key']):
+                        and existing.get('simulation_key') == state['simulation_key']
+                        and existing.get('server_process', existing.get('process')) == state['process']):
                     if existing.get('recovery_required'):
-                        raise OperationUncertain('Previous connection requires recovery: '
-                                                 + existing['session_id'])
+                        # 重连沿用未确认记录，允许只读核对，不能用新 ID 绕过写入限制。
+                        with locked(record.parent):
+                            existing = json.loads(record.read_text())
+                            refresh_request(record.parent, existing)
+                            existing['state'] = ('running' if existing.get('active_request') else
+                                                 'uncertain' if existing.get('uncertain_request') else 'ready')
+                            write_json(record, existing)
+                        shutil.rmtree(directory)
+                        return existing
                     if existing.get('state') not in ('stopped', 'disconnected', 'failed'):
                         shutil.rmtree(directory)
                         return existing
@@ -380,10 +473,18 @@ def start(args, directory):
 
 def operate(args, directory):
     """对已有连接执行命令；外部会话断开只更新本地记录，不结束 STAR 进程。"""
+    if args.action == 'status':
+        try:
+            with locked(directory):
+                state = json.loads((directory / 'session.json').read_text())
+                refresh_request(directory, state)
+                return dict(state, server_alive=alive(state))
+        except OperationBusy:
+            state = json.loads((directory / 'session.json').read_text())
+            return dict(state, state='running', server_alive=alive(state))
     with locked(directory):
         state = json.loads((directory / 'session.json').read_text())
-        if args.action == 'status':
-            return dict(state, server_alive=alive(state))
+        refresh_request(directory, state)
         if state['state'] in ('stopped', 'disconnected', 'failed'):
             raise ValueError('Session is closed; open a new connection')
         if args.action == 'stop' and state.get('ownership') == 'external':
@@ -394,9 +495,11 @@ def operate(args, directory):
         # 启动器异常退出时，显式放弃仍可清理身份匹配的遗留 MPI 进程。
         if not alive(state) and not (args.action == 'stop' and args.discard):
             raise RuntimeError('Managed server is not running')
-        uncertain = state['state'] != 'ready' or state.get('active_request') is not None
-        if uncertain and not (args.action == 'stop' and args.discard):
-            raise OperationUncertain('Previous operation outcome is unknown; inspect logs or stop --discard')
+        if state.get('active_request'):
+            raise OperationBusy('Request is still running; query session_status')
+        if (state.get('uncertain_request') and args.action in ('save', 'modify', 'set-scalar', 'stop')
+                and not (args.action == 'stop' and args.discard)):
+            raise OperationUncertain('Write outcome is unconfirmed; status and read-only requests remain available')
         # 持锁后从会话绑定选择版本。所有本地计划校验都在请求活动标记与 uncertain
         # 捕获块之前完成，版本错配只拒绝本次输入，不污染可继续使用的会话。
         if not (args.action == 'stop' and args.discard):
@@ -405,7 +508,8 @@ def operate(args, directory):
             check_plan_targets(catalog_plan, target=target)
             if args.action == 'set-scalar' or (args.action == 'modify' and catalog_plan is None):
                 args.legacy_plan = prepare_legacy(getattr(args, 'modification', None), target=target)
-            if args.action in ('inspect', 'save', 'modify', 'set-scalar', 'stop'):
+            if (args.action in ('inspect', 'save', 'set-scalar', 'stop')
+                    or (args.action == 'modify' and (catalog_plan is None or getattr(args, 'audit', False)))):
                 args.snapshot_plan = prepare_snapshot(target)
             check_plan_targets(catalog_plan, getattr(args, 'legacy_plan', None),
                                getattr(args, 'snapshot_plan', None), target=target)
@@ -476,6 +580,8 @@ def operate(args, directory):
                 if not output.is_file() or Path(data['after']['session_path']).resolve() != output:
                     raise RuntimeError('Saved file/path was not confirmed')
             result = {'session_id': state.get('session_id', str(directory))}
+            if state.get('uncertain_request'):
+                result['uncertain_request'] = state['uncertain_request']
             if state.get('debug'):
                 result['request_result'] = str(run / 'result.json')
             if output:
@@ -492,27 +598,28 @@ def operate(args, directory):
                 result.update(catalog_before=data['catalog_before'], catalog=data['catalog'],
                               catalog_diff=catalog_diff(data['catalog_before'], data['catalog'], legacy_plan))
             if args.action == 'modify':
-                result.update(modification=args.catalog_request if catalog_call else args.modification,
-                              snapshot=data['after'], snapshot_diff=snapshot_diff(data['before'], data['after']))
-                if 'snapshot_scope' in data:
-                    # 运行时已按对象 key 约束允许变化的快照字段；Diff 仅展示通过验证后的差异。
-                    result['snapshot_scope'] = data['snapshot_scope']
+                result['modification'] = args.catalog_request if catalog_call else args.modification
+                if not catalog_call or data.get('snapshot_audit'):
+                    result.update(snapshot=data['after'], snapshot_diff=snapshot_diff(data['before'], data['after']))
+                if 'setter_attempts' in data:
                     result['setter_attempts'] = data['setter_attempts']
                 if catalog_call:
-                    result.update(catalog_before=data['catalog_before'],
-                                  catalog_diff=catalog_diff(data['catalog_before'], data['catalog'],
-                                                            args.catalog_plan))
+                    result['catalog_before'] = data['catalog_before']
+                    if data.get('snapshot_audit'):
+                        result['catalog_diff'] = catalog_diff(data['catalog_before'], data['catalog'], args.catalog_plan)
             compact_request(state, run, action)
             return result
         except ModificationRejected:
             # 宏已确认写入前拒绝，request 已清除活动标记；不把拒绝变成未知写入结果。
             raise
+        except (OperationUncertain, OperationBusy):
+            raise
         except BaseException as error:
-            # 超时或客户端失败可能发生在写入之后；保留不确定状态并禁止静默重试。
-            state['state'] = 'uncertain'
-            write_json(directory / 'session.json', state)
-            if isinstance(error, Exception):
-                raise OperationUncertain(str(error)) from error
+            # 请求执行器已经区分传输失败；这里只处理成功返回后发现的写入回读或保存核对失败。
+            if args.action in ('save', 'modify', 'set-scalar') and state.get('last_request_status') == 'ok':
+                finish_request(directory, state, 'uncertain', uncertain=True)
+                if isinstance(error, Exception):
+                    raise OperationUncertain(str(error)) from error
             raise
 
 
@@ -543,6 +650,7 @@ def main():
             command.add_argument('--output', type=Path)
         elif action == 'modify':
             command.add_argument('--request', type=Path, required=True)
+            command.add_argument('--audit', action='store_true')
             command.add_argument('--catalog', type=Path)
             command.add_argument('--execution', type=Path)
         elif action in ('describe', 'read'):

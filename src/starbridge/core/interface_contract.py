@@ -98,6 +98,7 @@ PARAMETER_DESCRIPTIONS = {
     'locator': '直接使用发现节点返回的 locator 数组；逐层 name/java_class，不含旧 key 或 token。',
     'request': '一次 schema 2 属性修改或 schema 3 结构操作；先描述和读取，不从记忆构造 expected。',
     'project_dir': '项目绝对目录；省略采用算例所在目录，后续调用沿用。',
+    'audit': '显式读取完整 Inspector 前后快照和 Diff 供审查；默认只核对目标与必要关联项。',
     'debug': '是否保留详细宏、执行计划和完整请求结果，默认 false。',
     'input': '已有算例的绝对路径；优先连接匹配的 STAR，否则直接加载原文件。不指定时须给已有服务的 port 和 project_dir。',
     'star': '匹配 release/Build 的 STAR 程序绝对路径或 PATH 名称，需要许可证；发现接口沿解析符号链接后的路径寻找安装 Javadoc，安装目录外的包装脚本无法定位文档，优先传实际安装内程序。',
@@ -315,7 +316,7 @@ def usage_contract():
             'read_node_properties': 'result.properties[id].value；逐项 status、relation/range 的独立状态及 inspection_complete。',
             'search_settings': 'result.matches[].node/property；coverage 的 errors/truncations/unsupported；命中须重新描述读取。',
             'relocate_node': 'result.node.node_id：新会话引用；检查 state/errors，不继承旧 Java 对象身份。',
-            'modify': 'result.catalog_before、catalog、catalog_diff、snapshot、snapshot_diff；发现写入还含 snapshot_scope/setter_attempts。',
+            'modify': 'result.catalog_before、catalog 为目标与必要关联项的读写结果，setter_attempts 记录尝试次数；audit=true 时另返回 snapshot、snapshot_diff 和 catalog_diff。',
             'session': 'open_session/session_status/close_session 的 result 为会话记录；只有 session_status 实时检查 server_alive。',
             'save_session': 'result.output 为实际保存路径；保存不包含重载验证。',
         },
@@ -334,9 +335,9 @@ def usage_contract():
         },
         'recovery': {
             'rejected': '本次输入或赋值前被拒绝，不代表会话历史状态正常，也不保证打开会话时未创建目录；先检查 session_state，再纠正输入或重读旧值。',
-            'uncertain': '查询 session_status 和错误指向的请求日志；不重试、不回滚、不保存。当前恢复为明确弃置该会话，再从已知文件新建。',
+            'uncertain': '查询 session_status 与 uncertain_request；可以读取目标核对，但不自动重试、回滚或保存，成功读取不会清除未确认写入记录。',
             'client_timeout': '取消或断开不撤销 STAR 操作；先 session_status，核对 active_request/last_request/last_request_status。',
-            'busy': '同会话一次一个请求；忙碌时状态查询也可能拒绝，不并行重发修改。',
+            'busy': '请求仍在执行；session_status 可查询当前记录，等待结束，不并行重发修改。',
             'close': '即使另存成功 STAR 仍可能 modified=true；先确认已保存的成果和丢弃意图，再显式 discard=true。',
             'diagnostics': '请求诊断位于 ~/.starbridge/sessions/<session_id>/requests/<ID>/；调试模式保留详细执行文件。',
         },
@@ -362,14 +363,19 @@ def usage_contract():
 def recovery_guidance(status, session_id=None, state=None):
     """只建议检查当前显式会话，不自动重试或把拒绝当成整个会话无异常。"""
     known_session = isinstance(state, dict)
-    uncertain = status == 'uncertain' or (known_session and state.get('state') == 'uncertain')
+    uncertain = status == 'uncertain' or (known_session and
+                 (state.get('state') == 'uncertain' or bool(state.get('uncertain_request'))))
+    if status == 'busy':
+        return {'automatic_retry': False, 'next_tool': 'starbridge.session_status',
+                'arguments': {'session_id': session_id} if known_session else {},
+                'instruction': '请求仍在执行，查询状态并等待，不重复提交操作。'}
     return {
         'automatic_retry': False,
         'next_tool': 'starbridge.session_status' if known_session else 'starbridge.get_contract',
         'arguments': {'session_id': session_id} if known_session else {},
         'instruction': (
             '结果可能已改变内存；先检查会话状态和请求证据，不重试、不回滚、不保存。'
-            '需要恢复时明确弃置该会话，再从已知文件新建。'
+            '可以使用只读工具核对当前目标；成功读取不会自动解除写入限制。'
             if uncertain else
             '检查错误和会话状态；仅确认本次写入未执行且会话可用后，才重新读取或纠正输入。'
             '关闭失败不要擅自设置 discard=true。'),

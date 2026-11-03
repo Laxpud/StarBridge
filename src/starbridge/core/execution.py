@@ -35,6 +35,9 @@ WRITE_ADAPTERS = {
 }
 # 结构操作的参数只用于其最终调用，不能混入普通属性 writer 的契约。
 OPERATION_ADAPTERS = {'profile_method': {'method'}, 'material_method': {'method'}}
+# 普通赋值涉及的身份与数量上下文；其他读取项只在规则明确声明保持时进入写计划。
+WRITE_IDENTITY_PROPERTIES = {'name', 'function_name', 'value_type', 'dimensions', 'unit',
+                             'profile_method', 'property_method', 'coordinate_system', 'local_orientation', 'basis'}
 JAVA_TYPE = re.compile(r'[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\[\])*\Z')
 PRIMITIVES = {'boolean', 'byte', 'char', 'short', 'int', 'long', 'float', 'double'}
 QUERY_OPERATORS = {
@@ -904,7 +907,8 @@ def prepare_modification_value(catalog_path, execution_path, request):
             # 规范化请求显式移除这些元数据，不宣称仍比较了已移除的 token/key。
             expected.append({'name': tag['name'], 'java_class': tag['java_class']})
         request = {**request, 'value': sorted(value), 'expected': sorted(expected, key=lambda item: item['name'])}
-    # 所有本类型读取都留在计划中，用于修改前完整性检查与修改后差异；只保留一个写入。
+    # 仅保留目标、写入规则明确要求的保持项及身份字段；其他 getter 失败不阻断赋值。
+    # 完整快照由调用方按需请求，不参与此处的普通赋值前提。
     required = {}
     needed = [identifier]
     if adapter in ('reference', 'object_selection'):
@@ -915,9 +919,11 @@ def prepare_modification_value(catalog_path, execution_path, request):
         while current is not None:
             required[current] = plan['types'][current]
             current = plan['types'][current]['parent_type']
+    selected = {request['property'], *prop['write'].get('preserved_properties', [])}
+    selected.update(WRITE_IDENTITY_PROPERTIES & properties.keys())
     clipped = {name: {key: item for key, item in value.items()
                       if key != 'write' or name == request['property']}
-               for name, value in properties.items()}
+               for name, value in properties.items() if name in selected}
     return ({**plan, 'types': required, 'properties': {identifier: clipped}, 'operations': {}}, request)
 
 

@@ -1,15 +1,9 @@
-"""编排会话对象树发现、签名引用、按需属性读取与有界文本搜索。"""
+"""编排会话对象树发现、短引用查找、按需属性读取与有界文本搜索。"""
 
-import base64
-import hashlib
-import hmac
 import json
-import fcntl
-import os
-import secrets
-import stat
-import tempfile
-from pathlib import Path
+import sqlite3
+import uuid
+from contextlib import closing
 import time
 from datetime import datetime, timezone
 
@@ -37,63 +31,50 @@ def _state(session_dir):
         raise ValueError('Runtime discovery is unsupported for this exact version')
     if not state.get('session_token'):
         raise ValueError('Session has no identity token')
-    state['_discovery_secret'] = _reference_secret(directory)
+    state['_reference_directory'] = directory
     return state
 
 
-def _reference_secret(directory):
-    """在独立 0600 文件中保管签名密钥，公开会话 token 只标识世代。
-
-    文件锁串行化首次初始化，原子替换保证其他进程只观察到完整密钥；
-    密钥仅注入当前内存 state，不写入可返回给客户端的 session.json。
-    """
-    key_path = directory / '.discovery-reference-key'
-    lock_path = directory / '.discovery-reference-key.lock'
-    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'r+b') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        if not key_path.exists():
-            with tempfile.NamedTemporaryFile(dir=directory, prefix='.discovery-key-', delete=False) as stream:
-                stream.write(secrets.token_bytes(32))
-                stream.flush()
-                os.fsync(stream.fileno())
-                temporary = Path(stream.name)
-            temporary.replace(key_path)
-        key_fd = os.open(key_path, os.O_RDONLY | os.O_NOFOLLOW)
-        with os.fdopen(key_fd, 'rb') as stream:
-            info = os.fstat(stream.fileno())
-            if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600 or info.st_uid != os.getuid():
-                raise ValueError('Discovery signing key requires an owner-only regular file')
-            key = stream.read(33)
-        if len(key) != 32:
-            raise ValueError('Invalid discovery signing key')
-        return key
+def _references(state):
+    """打开当前会话的引用表；SQLite 事务协调多个客户端，表中不保存签名密钥。"""
+    connection = sqlite3.connect(state['_reference_directory'] / 'references.sqlite3', timeout=30)
+    connection.execute('CREATE TABLE IF NOT EXISTS refs '
+                       '(id TEXT PRIMARY KEY, token TEXT NOT NULL, kind TEXT NOT NULL, '
+                       'payload TEXT NOT NULL, UNIQUE(token, kind, payload))')
+    return connection
 
 
-def _sign(payload, state):
-    """句柄内容由 Core 签名，调用者不能替换路径中的对象 key 或类。"""
-    raw = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
-    encoded = base64.urlsafe_b64encode(raw).decode().rstrip('=')
-    signature = hmac.new(state['_discovery_secret'], raw, hashlib.sha256).hexdigest()
-    return encoded + '.' + signature
+def _remember_reference(payload, state):
+    """给服务已发现的对象或分页状态分配短 ID；相同会话中的同一内容复用 ID。"""
+    raw = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    token, kind = state['session_token'], payload['kind']
+    prefixes = {'node': 'n', 'cursor': 'c', 'description_cursor': 'd', 'search_cursor': 's'}
+    with closing(_references(state)) as connection, connection:
+        row = connection.execute('SELECT id FROM refs WHERE token=? AND kind=? AND payload=?',
+                                 (token, kind, raw)).fetchone()
+        if row:
+            return row[0]
+        # 唯一约束处理并发生成；极少见的随机 ID 冲突重新分配，不覆盖其他引用。
+        while True:
+            identifier = prefixes[kind] + '_' + uuid.uuid4().hex[:16]
+            connection.execute('INSERT OR IGNORE INTO refs VALUES (?, ?, ?, ?)',
+                               (identifier, token, kind, raw))
+            row = connection.execute('SELECT id FROM refs WHERE token=? AND kind=? AND payload=?',
+                                     (token, kind, raw)).fetchone()
+            if row:
+                return row[0]
 
 
 def _decode(value, state, kind):
-    """先核验签名再解析身份；跨加载旧 token 生成的句柄明确失效。"""
-    if not isinstance(value, str):
-        raise ValueError('Discovery reference must be an opaque string')
-    try:
-        encoded, signature = value.rsplit('.', 1)
-        raw = base64.urlsafe_b64decode(encoded + '=' * (-len(encoded) % 4))
-        expected = hmac.new(state['_discovery_secret'], raw, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(signature, expected):
-            raise ValueError('Stale or invalid discovery reference')
-        payload = json.loads(raw)
-        if payload['kind'] != kind or payload['session_token'] != state['session_token']:
-            raise ValueError('Discovery reference kind or session mismatch')
-        return payload
-    except (KeyError, TypeError, json.JSONDecodeError, UnicodeError) as error:
-        raise ValueError('Invalid discovery reference') from error
+    """仅解析当前会话表内的 ID；类型或世代不匹配时拒绝，实际对象仍由 STAR 核对。"""
+    if not isinstance(value, str) or len(value) != 18:
+        raise ValueError('Invalid discovery reference; browse again')
+    with closing(_references(state)) as connection:
+        row = connection.execute('SELECT payload FROM refs WHERE id=? AND token=? AND kind=?',
+                                 (value, state['session_token'], kind)).fetchone()
+    if row is None:
+        raise ValueError('Stale reference or session mismatch; browse again')
+    return json.loads(row[0])
 
 
 def _invoke(session_dir, request, timeout, operate):
@@ -107,7 +88,8 @@ def _invoke(session_dir, request, timeout, operate):
 
 def _cache_path(session_dir, state):
     """元数据索引绑定版本、会话和规则，旧会话文件不会成为当前搜索依据。"""
-    path = session_directory(session_dir) / 'discovery-cache' / digest([state['session_token'], session_target(state), RULE_VERSION])
+    path = session_directory(session_dir) / 'discovery-cache' / digest(
+        [state['session_token'], session_target(state), RULE_VERSION, 'short-refs-v1'])
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -118,7 +100,7 @@ def _decorate(node, state):
     if node.get('kind') == 'proxy':
         return {**result, 'node_id': None, 'breadcrumbs': node['path']}
     result['breadcrumbs'] = [{'name': p['name'], 'java_class': p['java_class']} for p in node['path']]
-    result['node_id'] = _sign({'kind': 'node', 'session_token': state['session_token'], 'path': node['path']}, state)
+    result['node_id'] = _remember_reference({'kind': 'node', 'session_token': state['session_token'], 'path': node['path']}, state)
     result['locator'] = [{'name': p['name'], 'java_class': p['java_class']} for p in node['path']]
     return result
 
@@ -143,7 +125,7 @@ def _remember(session_dir, state, node, properties=None, **coverage):
 
 
 def _target(node_id, state):
-    """只有 Core 已签名的路径可进入运行时；根节点允许省略。"""
+    """从会话引用表取得服务已发现的路径；根节点允许省略。"""
     if node_id is None:
         return None
     return {'session_token': state['session_token'], 'path': _decode(node_id, state, 'node')['path']}
@@ -196,7 +178,7 @@ def browse_tree(session_dir, node_id=None, cursor=None, offset=0, limit=100, sco
         _remember(session_dir, state, child, scope=scope)
     next_cursor = None
     if result.get('next_offset') is not None:
-        next_cursor = _sign({'kind': 'cursor', 'session_token': state['session_token'],
+        next_cursor = _remember_reference({'kind': 'cursor', 'session_token': state['session_token'],
             'node_id': node['node_id'], 'scope': scope, 'offset': result['next_offset'],
             'fingerprint': result.get('fingerprint')}, state)
     return {**result, 'schema_version': 1, 'node': node, 'children': children,
@@ -287,7 +269,7 @@ def page_description(description, state, property_ids=None, cursor=None, limit=1
         offset = saved['offset']
     end = offset + limit
     next_offset = end if end < len(selected) else None
-    next_cursor = None if next_offset is None else _sign({
+    next_cursor = None if next_offset is None else _remember_reference({
         'kind': 'description_cursor', 'session_token': state['session_token'],
         'node_id': node_id, 'fingerprint': fingerprint,
         'selection': property_ids, 'offset': next_offset}, state)
@@ -510,7 +492,7 @@ def search_settings(session_dir, query, expand=False, max_nodes=100, max_depth=4
             raise ValueError('Search cursor invalidated by query or metadata change')
         offset = saved['offset']
     next_offset = offset + limit
-    next_cursor = _sign({'kind': 'search_cursor', 'session_token': state['session_token'],
+    next_cursor = _remember_reference({'kind': 'search_cursor', 'session_token': state['session_token'],
         'query': query, 'scope': scope, 'fingerprint': fingerprint, 'offset': next_offset}, state) if next_offset < len(matches) else None
     return {'schema_version': 1, 'query': query, 'matches': matches[offset:next_offset],
             'next_cursor': next_cursor, 'total_matches': len(matches), 'coverage': {

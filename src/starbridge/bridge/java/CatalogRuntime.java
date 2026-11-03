@@ -908,7 +908,7 @@ class CatalogRuntime {
                 Resolved referenced = locate(sim, object(plan.get("types"), "plan.types"), binding.target, token, 0);
                 checkGuards(sim, referenced, fields("guards", binding.guards), token);
             }
-            // 准备与执行之间可能有其他客户端修改；重新核对完整目标状态，
+            // 准备与执行之间可能有其他客户端修改；重新核对目标与规则要求的关联状态，
             // 防止过时 expected 进入 setter。失败沿不确定路径返回，不自动重试。
             java.util.Map<String, Object> immediatelyBefore = inspect(sim, plan, readRequest, token);
             require(Boolean.TRUE.equals(immediatelyBefore.get("inspection_complete")),
@@ -954,7 +954,7 @@ class CatalogRuntime {
     }
 
     /**
-     * 在任何 setter 前核对完整读取、预期状态、单位和标签，再解析唯一最终调用。
+     * 在任何 setter 前核对计划中的目标、关联读取、预期状态、单位和标签，再解析唯一最终调用。
      * 只有此方法的拒绝可解释为未写入；调用方不能把 apply 的异常转成 rejected。
      */
     public static PreparedModification prepareModification(star.common.Simulation sim,
@@ -976,7 +976,7 @@ class CatalogRuntime {
         require(Boolean.TRUE.equals(entry.get("writable")), "Property is not implemented for writing");
         java.util.Map<String, Object> writer = object(entry.get("write"), "property.write");
         java.util.List<Object> checks = checkGuards(sim, resolved, writer, token);
-        // 2. 全部前提通过后读取本类型所有属性；旧关联只忽略协议约定的引用元数据。
+        // 2. 全部前提通过后读取已裁剪写计划的属性；旧关联只忽略协议约定的引用元数据。
         java.util.Map<String, Object> before = inspect(sim, plan, readRequest, token);
         require(Boolean.TRUE.equals(before.get("inspection_complete")), "Modification requires complete catalog reads");
         require(sameValue(identity(resolved.object, token), object(before.get("target"), "before.target").get("reference")),

@@ -31,7 +31,7 @@ def public_session(state):
     """返回连接所需的状态，避免让调用者管理内部进程、日志和客户端目录。"""
     keys = ('session_id', 'state', 'ownership', 'catalog_target', 'current_file',
             'project_dir', 'modified', 'session_token', 'server_alive', 'active_request',
-            'last_request', 'last_request_status', 'recovery_required')
+            'last_request', 'last_request_status', 'recovery_required', 'uncertain_request')
     return {key: state[key] for key in keys if key in state}
 
 

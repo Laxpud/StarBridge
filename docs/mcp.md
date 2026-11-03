@@ -32,13 +32,13 @@ Agent 首次使用可调用 `get_contract`，或读取 `starbridge://contract`�
 | `find_objects` | `session_id`、`type_id`，可选 `name`、`parent`、`offset`、`limit` | 按目录定位管线枚举实例；`name` 为精确匹配，子对象必须提供完整父路径 |
 | `describe_object` | `session_id`、`target`，可选 `properties` | 属性与结构操作描述，以及已声明目标条件的实际结果 |
 | `read_properties` | `session_id`、`target`，可选 `properties` | 逐属性值和错误；省略属性列表表示该类型全部已映射属性 |
-| `modify` | `session_id`、`request` | 原样使用 schema 2 属性修改或 schema 3 结构操作契约；必须提供实际读取的 `expected` |
+| `modify` | `session_id`、`request`，可选 `audit` | 原样使用 schema 2 属性修改或 schema 3 结构操作契约；必须提供实际读取的 `expected` |
 | `browse_tree` | `session_id`，可选 `node_id`、`cursor`、`offset`、`limit`、`scope`、`max_nodes` | 展开真实对象的一层；不读取属性值，分页游标绑定列表指纹 |
 | `describe_node` | `session_id`，可选 `node_id`、`scope`、`property_ids`、`cursor`、`limit` | 描述真实 Bean 属性及规则支持；支持属性选择和指纹绑定分页 |
 | `read_node_properties` | `session_id`、`node_id`、非空 `property_ids` | 刷新身份和描述符后读取显式选择的属性；局部错误独立返回 |
 | `search_settings` | `session_id`、`query`，可选 `expand`、`max_nodes`、`max_depth`、`scope`、`limit`、`cursor` | 默认搜索已发现元数据；扩展必须显式给出，返回覆盖与截断 |
 | `relocate_node` | `session_id`、`locator` | 按完整名称/类型路径重建新会话引用；不继承旧对象身份 |
-| `modify_node_property` | `session_id`、`node_id`、`property_id`、`expected`、`value` | 按完整规则赋值一次，返回回读、Diff、`snapshot_scope` 和 `setter_attempts`；不自动保存 |
+| `modify_node_property` | `session_id`、`node_id`、`property_id`、`expected`、`value`，可选 `audit` | 核对目标与必要关联项后赋值一次并回读；audit=true 附带完整快照和 Diff，不自动保存 |
 | `inspect_session` | `session_id` | 既有 Inspector 快照范围；不是全部算例设置导出 |
 | `open_session` | `input`，可选 `star`、`release`、`build`、`port`、`project_dir`、`debug`、`timeout` | 优先连接匹配的本机 STAR，否则直接加载原算例；返回服务分配的 `session_id`。省略 input 时须给 port 和 project_dir |
 | `session_status` | `session_id` | 会话记录及进程身份检查；不启动 Java 客户端，不重新核对 server Build |
@@ -70,7 +70,7 @@ Agent 首次使用可调用 `get_contract`，或读取 `starbridge://contract`�
 
 把上述参数交给 `starbridge.browse_tree` 即可读取根层。浏览默认一页 100 项、最多观察 2000 个子项；搜索默认 `expand=false`，显式扩展默认最多访问 100 个节点、深度 4，结果一页 100 项。两者当前 `limit` 上限 500，`max_nodes` 上限 10000；搜索深度上限 32。这些发现工具的默认 `timeout` 为 180 秒。`scope` 默认为 `simulation`，`all` 可纳入材料数据库资源，不表示全树已遍历。需要新发现时可设 `expand=true` 并调整预算；当前实现每次从根扩展，不保证断点续扫或全树穷尽。Java 单次发现内部还有 30 秒上限，增大外层 `timeout` 不会提高该上限；结果仍须检查覆盖与截断。
 
-描述能力与读取当前值是分开的；`read_node_properties` 不接受省略属性列表来读取全部属性。搜索命中是带观察时间的缓存候选，必须重新描述或读取以核对当前身份。未知代理不返回可用 `node_id`。`modify_node_property` 已开放限定规则族，需传入当前读取的完整 `expected`。描述中的 `write_enabled=true` 表示存在接受的写入实现，实例和新值条件仍在写前校验。写后影响验证失败返回 `uncertain`，会话阻止后续操作，不自动重试；规则范围、值格式和证据见[受控写入](runtime-discovery.md#受控写入)。既有目录 `modify` 继续遵循下面的原契约。
+描述能力与读取当前值是分开的；`read_node_properties` 不接受省略属性列表来读取全部属性。搜索命中是带观察时间的缓存候选，必须重新描述或读取以核对当前身份。未知代理不返回可用 `node_id`。`modify_node_property` 已开放限定规则族，需传入当前读取的完整 `expected`。描述中的 `write_enabled=true` 表示存在接受的写入实现，实例和新值条件仍在写前校验。写入结果未确认返回 `uncertain`，会话阻止新的写入和保存，但允许只读核对，不自动重试；规则范围、值格式和证据见[受控写入](runtime-discovery.md#受控写入)。既有目录 `modify` 继续遵循下面的原契约。
 
 ## 查找、读取与修改
 
@@ -123,12 +123,15 @@ Core 错误还返回 `recovery`，说明下一步可查询的工具及禁止自�
 |---|---|---|
 | `ok` | 调用完成 | 继续核对 `inspection_complete`、逐属性错误和回读值 |
 | `rejected` | 输入不合法，或执行器确认写入前拒绝 | 根据错误重新读取或修正请求；不把拒绝当作已修改 |
-| `uncertain` | 本次执行结果未确认，或之前的请求仍有未解决结果，可能已写入 | 查询状态与请求日志，不自动重试；必要时显式放弃并重新打开 |
+| `busy` | 请求仍在执行 | 查询 session_status 并等待，不重复提交 |
+| `uncertain` | 写入结果未确认，或新写入因既有未确认请求而被阻止 | 查询状态与 uncertain_request，可只读核对，不自动重试、回滚或保存 |
 | `error` | 其他执行、文件或生命周期错误 | 结合错误和会话状态判断；例如未保存状态导致默认关闭失败 |
 
 未知 MCP 方法或资源、协议结构错误可能由 SDK 直接返回协议错误，不保证包含 Core 封套。属性局部错误保留在成功封套中，通过 `inspection_complete: false` 和逐属性 `status: error` 表示。
 
-会话一次只接受一个 Bridge 请求。未取得会话锁的忙碌请求在执行前返回 `rejected`，不把另一请求的活动标记当成本次未知写入。已停止或结果不确定的会话不会静默启动另一操作。`session_status` 也使用同一把锁，忙碌时可能被拒绝；这不授权自动重试修改。后台会话和请求目录中的 `session.json`、`result.json`、命令及日志是恢复依据。
+会话一次只接受一个 Bridge 请求。未取得锁或客户端仍在执行时返回 `busy`；`session_status` 可同时读取原子状态记录。客户端结束后的只读失败记录为本次错误，不冻结会话；写入结果未确认时保留 `uncertain_request`，只读成功不会清除它。失败请求的结果、命令及日志仍作为恢复依据。
+
+目录与发现修改的 `audit` 默认 false：成功结果给出目标和必要关联项的回读，不强制比较旧 Inspector 全范围。`audit=true` 另附完整快照及 Diff，供用户审查。
 
 ## 同源 JSON CLI
 

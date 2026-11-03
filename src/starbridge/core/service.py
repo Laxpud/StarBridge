@@ -71,14 +71,15 @@ class Service:
                     state = read_json(session_directory(directory) / 'session.json')
                 except (OSError, ValueError):
                     pass
-            if isinstance(error, session_bridge.OperationUncertain) or (
-                    status != 'rejected' and isinstance(state, dict)
-                    and state.get('state') == 'uncertain'):
+            if isinstance(error, session_bridge.OperationBusy):
+                status = 'busy'
+            elif isinstance(error, session_bridge.OperationUncertain):
                 status = 'uncertain'
             result = {'status': status, 'error': {'type': type(error).__name__, 'message': str(error)}}
             if isinstance(state, dict):
                 result['session_state'] = {key: state.get(key) for key in
-                                           ('state', 'active_request', 'last_request', 'last_request_status')}
+                                           ('state', 'active_request', 'last_request', 'last_request_status',
+                                            'uncertain_request')}
             # 失败恢复信息与错误一起返回，客户端不必先翻项目文档；不根据错误猜测是否已执行 setter。
             from .interface_contract import recovery_guidance
             result['recovery'] = recovery_guidance(status, directory, state)
@@ -157,7 +158,7 @@ class Service:
         args = SimpleNamespace(action=action, timeout=_timeout(timeout), **values)
         return session_bridge.operate(args, directory)
 
-    def _catalog(self, session_id, action, request, timeout):
+    def _catalog(self, session_id, action, request, timeout, audit=False):
         """用会话绑定版本准备请求；执行器持锁后再次核对，之后才设置活动标记。"""
         directory = session_directory(session_id)
         _timeout(timeout)
@@ -169,7 +170,7 @@ class Service:
             plan, prepared = prepare_find(*paths, request)
         else:
             plan, prepared = prepare_read_value(*paths, request, action)
-        result = self._operate(session_id, action, timeout, catalog_plan=plan, catalog_request=prepared)
+        result = self._operate(session_id, action, timeout, catalog_plan=plan, catalog_request=prepared, audit=audit)
         if action == 'describe':
             # 将准备阶段生成的新值格式放回同一属性描述；不改动 Java 的条件检查及现有字段。
             entries = plan['properties'][prepared['target']['type']]
@@ -201,9 +202,11 @@ class Service:
         """返回逐属性值和错误，不把部分读取成功报告为完整设置导出。"""
         return self._read(session_id, target, properties, 'read', timeout)
 
-    def modify(self, session_id, request, timeout=180):
+    def modify(self, session_id, request, timeout=180, audit=False):
         """提交一个 schema 2 属性修改或 schema 3 结构操作，保留 expected 核对与回读。"""
-        return self._catalog(session_id, 'modify', request, timeout)
+        if type(audit) is not bool:
+            raise ValueError('audit must be a boolean')
+        return self._catalog(session_id, 'modify', request, timeout, audit=audit)
 
     def browse_tree(self, session_id, node_id=None, cursor=None, offset=0, limit=100,
                     scope='simulation', max_nodes=2000, timeout=180):
@@ -236,12 +239,14 @@ class Service:
         return relocate_node(session_id, locator=locator, timeout=_timeout(timeout),
                              operate=self._operate)
 
-    def modify_node_property(self, session_id, node_id, property_id, expected, value, timeout=180):
-        """按受控规则修改单个发现属性；保留旧状态、完整快照和回读，不自动保存。"""
+    def modify_node_property(self, session_id, node_id, property_id, expected, value, timeout=180, audit=False):
+        """按受控规则修改单个发现属性；核对旧值和回读，audit 可选取完整快照供审查。"""
         from .discovery_write import modify_node_property
+        if type(audit) is not bool:
+            raise ValueError('audit must be a boolean')
         return modify_node_property(session_id, node_id=node_id, property_id=property_id,
                                     expected=expected, value=value, timeout=_timeout(timeout),
-                                    operate=self._operate)
+                                    operate=self._operate, audit=audit)
 
     def search_settings(self, session_id, query, expand=False, max_nodes=100, max_depth=4,
                         scope='simulation', timeout=180, limit=100, cursor=None):
@@ -321,6 +326,7 @@ def contract():
         'statuses': {
             'ok': 'Call completed; inspect property errors and inspection_complete for partial reads.',
             'rejected': 'Invalid input or confirmed rejection before assignment; lifecycle setup may have created files.',
+            'busy': 'A request is still running; query status without repeating the operation.',
             'uncertain': 'A request may have mutated the session. Check status and logs; do not retry.',
             'error': 'Call failed; inspect the error and session state before further actions.',
         },

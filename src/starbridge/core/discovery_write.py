@@ -1,12 +1,13 @@
 """为发现属性组合受控赋值计划；规则证据与运行时元数据分别校验。
 
-本模块不执行 setter。调用方须通过现有修改事务保留完整快照、Diff、
-单次尝试和显式保存；这里返回的 writer 不能用于独立反射调用。
+本模块不执行 setter。调用方通过统一修改事务核对目标和必要关联项，
+只尝试一次并显式保存；这里返回的 writer 不能用于独立反射调用。
 """
 
 from copy import deepcopy
 
 from .catalog import CatalogError
+from .execution import WRITE_IDENTITY_PROPERTIES
 
 
 # 只允许下列完整规则进入单次赋值事务；实例条件仍需每次准备及 setter 前检查。
@@ -61,7 +62,7 @@ def attach_writer(entry, descriptor, contract):
         return result, capability('Structural or unsupported assignment family')
     if not contract.get('evidence') or contract.get('conditions_complete') is not True:
         return result, capability('Assignment conditions lack evidence')
-    if contract.get('impact_scope') != 'target_and_snapshot':
+    if contract.get('impact_scope') != 'target_and_related':
         return result, capability('Assignment impact scope is not established')
     adapter, parameters, arguments = FAMILIES[family]
     if entry.get('adapter') != adapter:
@@ -161,8 +162,8 @@ class AcceptedWriteRules:
             collect(original)
             for name in original['write'].get('preserved_properties', []):
                 collect(entries[name]['read'])
-            for entry in entries.values():
-                if entry['adapter'] not in ('quantity', 'vector'):
+            for name, entry in entries.items():
+                if name in WRITE_IDENTITY_PROPERTIES and entry['adapter'] not in ('quantity', 'vector'):
                     collect(entry['read'])
         return classes
 
@@ -225,8 +226,10 @@ class AcceptedWriteRules:
             copied_writer = translate(writer)
             copied_writer['preserved_properties'] = [prefix + name for name in preserved]
             if self._signature(original['read']) != signature(entry['read']):
-                # alias 保留旧目标的完整只读状态，排除数量的两个等价表示。
+                # alias 保留目标身份和数量上下文，不复制旧目录中的其他属性。
                 for name, original_property in old_entries.items():
+                    if name not in WRITE_IDENTITY_PROPERTIES:
+                        continue
                     if original_property['adapter'] in ('quantity', 'vector') or name in ('definition', 'unit'):
                         # 定义和单位是本次赋值的结果，不能同时声明为保持项。
                         continue
@@ -240,7 +243,7 @@ class AcceptedWriteRules:
                         copied_writer['preserved_properties'].append(prefix + name)
 
             entry.update(writable=True, write=copied_writer,
-                         reason='按完整读取声明复用已接受赋值规则及其条件：' + legacy_type + '.' + legacy_name)
+                         reason='复用已接受赋值规则、目标身份及必要保持项：' + legacy_type + '.' + legacy_name)
 
 
 class GenericWriteRules(AcceptedWriteRules):
@@ -248,7 +251,7 @@ class GenericWriteRules(AcceptedWriteRules):
 
     标量只接受具有实际范围的 BoundedScalarInput，沿原 input 在执行前
     检查范围和单位。向量保留原坐标约定；带未知范围、关联和编辑器的
-    描述符拒绝。两个族都禁止覆盖表达式，并保留同节点其他读取结果。
+    描述符拒绝。两个族都禁止覆盖表达式，核对目标数量身份、单位和必要范围。
     """
 
     def __init__(self, target, descriptors=None):
@@ -316,11 +319,11 @@ class GenericWriteRules(AcceptedWriteRules):
             final['arguments'] = [{'context': name} for name in arguments]
             writer = {'adapter': family, 'constant_only': True,
                       'pipeline': {'root': 'object', 'steps': deepcopy(entry['read']['steps']) + [final]},
-                      'guards': [], 'preserved_properties': [name for name in entries if name != identifier]}
+                      'guards': [], 'preserved_properties': []}
             if family == 'scalar_value':
                 writer['bounds'] = {'root': 'object', 'steps': deepcopy(entry['read']['steps'][:1])}
             entry.update(writable=True, write=writer,
-                         reason='普通常量数量赋值：固定类型 setter、运行时单位/范围检查、完整节点保持和旧快照验证')
+                         reason='普通常量数量赋值：固定类型 setter、目标身份、运行时单位/范围检查及写后回读')
 
 
 def describe_write_support(session_dir, description, state):
@@ -343,7 +346,7 @@ def describe_write_support(session_dir, description, state):
                                    writer_hook=GenericWriteRules(session_target(state), properties))
         entries = prepared['plan']['properties'][prepared['target']['type']]
     except (ValueError, KeyError, CatalogError) as error:
-        # 写入需要完整保持范围；组合计划失败不能用单属性成功冒充可写。
+        # 描述中的支持标志来自编译结果；目标实际写入时单独编译必要范围。
         # 节点和原始描述符仍返回，读取入口可以独立隔离属性编译错误。
         for prop in properties:
             prop.update(capability('Complete write verification plan unavailable: ' + str(error)))
@@ -363,12 +366,12 @@ def describe_write_support(session_dir, description, state):
     return result
 
 
-def modify_node_property(session_dir, node_id, property_id, expected, value, timeout=180, operate=None):
-    """刷新目标并生成完整节点写计划，然后进入保留旧快照的统一修改事务。
+def modify_node_property(session_dir, node_id, property_id, expected, value, timeout=180, operate=None, audit=False):
+    """刷新目标描述符，只为指定属性和规则必要关联项生成写计划。
 
     规划失败发生在 setter 之前，由共享服务返回 rejected。执行器启动后的异常和
-    uncertain 结果原样传播，不自动重试，也不隐式保存。影响范围仅涵盖
-    目标节点全部已支持读取项及旧快照覆盖范围，不宣称覆盖完整物理依赖。
+    uncertain 结果原样传播，不自动重试，也不隐式保存。audit 显式请求完整快照
+    与 Diff 供审查；普通赋值不比较旧 Inspector 的其他设置。
     """
     from .discovery import describe_node, _state
     from .discovery_rules import build_read_plan
@@ -394,7 +397,7 @@ def modify_node_property(session_dir, node_id, property_id, expected, value, tim
             raise CatalogError('Unknown, stale or unsupported property ID')
         state = _state(session_dir)
         prepared = build_read_plan(session_dir, description['node'],
-            [p for p in descriptors if p.get('readable')], state,
+            [selected], state,
             writer_hook=GenericWriteRules(session_target(state), descriptors))
         request = {'schema_version': 2, 'action': 'modify', 'target': prepared['target'],
                    'property': property_id, 'expected': expected, 'value': value}
@@ -403,4 +406,4 @@ def modify_node_property(session_dir, node_id, property_id, expected, value, tim
     except (ValueError, KeyError, CatalogError) as error:
         # 交给统一状态封套，不能把内部 rejected 包装成外层 ok。
         raise ModificationRejected(str(error)) from error
-    return operate(str(session_dir), 'modify', timeout, catalog_plan=plan, catalog_request=request)
+    return operate(str(session_dir), 'modify', timeout, catalog_plan=plan, catalog_request=request, audit=audit)
