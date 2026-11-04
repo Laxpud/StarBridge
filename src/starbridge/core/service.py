@@ -1,13 +1,14 @@
 """为 CLI 与 MCP 提供相同的目录能力、对象读写和显式会话生命周期。
 
 服务只编排现有 Bridge，不接受 Java 代码，也不隐式保存、关闭或重试修改。
-每次调用返回状态封套；局部属性错误仍放在原目录结果中，由调用者逐项处理。
+每次调用返回状态封套；局部属性错误保留在统一属性结果中，由调用者逐项处理。
 """
 
 import inspect
 import math
 from pathlib import Path
 import sys
+import time
 from types import SimpleNamespace
 
 from starbridge.bridge.runner import session_bridge
@@ -16,15 +17,16 @@ from .catalog import read_json
 from .catalog_bundle import BUNDLES, bundle_root, bundle_target, session_target
 from .coverage import coverage
 from .execution import prepare_find, prepare_modification_value, prepare_read_value
+from . import objects
 from .snapshot import prepare_snapshot
 from .session_store import new_session_directory, session_directory, public_session
 
 
 METHODS = (
-    'get_contract', 'discover_installations', 'get_capabilities', 'find_objects', 'describe_object', 'read_properties', 'modify',
+    'get_contract', 'discover_installations', 'get_capabilities',
+    'find_objects', 'browse_tree', 'search_settings', 'relocate_object',
+    'describe_object', 'read_properties', 'modify_property', 'execute_operation',
     'inspect_session', 'open_session', 'session_status', 'save_session', 'close_session',
-    'browse_tree', 'describe_node', 'read_node_properties', 'search_settings',
-    'relocate_node', 'modify_node_property',
 )
 
 
@@ -40,6 +42,11 @@ def _timeout(value):
     if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
         raise ValueError('timeout must be positive and finite')
     return value
+
+
+def source_object(source):
+    """提取引用表原始对象记录，避免把内部能力来源写入对象身份。"""
+    return {key: value for key, value in source.items() if key != 'source'}
 
 
 class Service:
@@ -178,79 +185,169 @@ class Service:
                 description['write_contract'] = entries[identifier].get('write_contract')
         return result
 
-    def find_objects(self, session_id, type_id, name=None, parent=None, offset=0, limit=100, timeout=180):
-        """枚举目录类型，可按精确名称过滤；子类型要求 parent，单页最多 500 项。"""
+    def find_objects(self, session_id, type_id, name=None, parent_id=None, offset=0, limit=100, timeout=180):
+        """按已适配类型查找，返回统一对象引用；子类型的 parent_id 来自父对象查找。"""
         request = {'schema_version': 1, 'action': 'find', 'type': type_id, 'offset': offset, 'limit': limit}
         if name is not None:
             request['name'] = name
-        if parent is not None:
-            request['parent'] = parent
-        return self._catalog(session_id, 'find', request, timeout)
+        if parent_id is not None:
+            request['parent'] = objects.catalog_target(session_id, parent_id)
+        outcome = self._catalog(session_id, 'find', request, timeout)
+        result = {key: value for key, value in outcome['catalog'].items()
+                  if key not in ('schema_version', 'catalog_id', 'action')}
+        result['objects'] = [objects.catalog_object(session_id, item) for item in result['objects']]
+        result.update({key: value for key, value in outcome.items() if key != 'catalog'})
+        return {**result, 'schema_version': 2, 'schema_id': 'starbridge.objects'}
 
     def _read(self, session_id, target, properties, action, timeout):
-        """保留调用者选择的属性；省略表示该类型全部已映射属性。"""
+        """把统一属性选择交给目录编译器；这里不建立第二套对外读取契约。"""
         request = {'schema_version': 1, 'action': action, 'target': target}
         if properties is not None:
             request['properties'] = properties
         return self._catalog(session_id, action, request, timeout)
 
-    def describe_object(self, session_id, target, properties=None, timeout=180):
-        """描述属性、结构操作及当前已声明条件；不会预判尚未给出的新值。"""
-        return self._read(session_id, target, properties, 'describe', timeout)
+    def describe_object(self, session_id, object_id=None, property_ids=None, cursor=None,
+                        limit=100, scope='simulation', timeout=180):
+        """描述对象的属性与结构操作；目录和运行时结果共用 properties[id]。
 
-    def read_properties(self, session_id, target, properties=None, timeout=180):
-        """返回逐属性值和错误，不把部分读取成功报告为完整设置导出。"""
-        return self._read(session_id, target, properties, 'read', timeout)
+        首次调用观察对象，翻页沿用同一次描述。只读值不会缓存为写入前提；
+        后续读取和修改仍由实际执行器刷新对象身份及属性状态。
+        """
+        from . import discovery
+        discovery._budget(limit, 'limit', 500)
+        if scope not in ('simulation', 'all'):
+            raise ValueError('Unsupported discovery scope')
+        if property_ids is not None:
+            objects.selection(property_ids)
+        _timeout(timeout)
+        # 1. 引用表决定能力来源；调用者不需要切换两套描述方法。
+        source = objects.resolve(session_id, object_id) if object_id is not None else {'source': 'runtime'}
+        if source['source'] == 'runtime':
+            result = discovery.describe_page(session_id, node_id=object_id, scope=scope,
+                property_ids=property_ids, cursor=cursor, limit=limit, timeout=timeout, operate=self._operate)
+            return objects.runtime_result(result)
+        # 2. 目录描述同样按一次观察分页，不为后续页面重新访问 STAR。
+        state = discovery.reference_state(session_id)
+        if cursor is None:
+            outcome = self._read(session_id, objects.catalog_target(session_id, object_id),
+                                 property_ids, 'describe', timeout)
+            description = objects.catalog_result(outcome, objects.catalog_object(session_id, source_object(source)))
+            saved = {'kind': 'catalog_cursor', 'object_id': object_id, 'scope': scope,
+                     'selection': property_ids, 'description': description, 'expires_at': time.time() + 300,
+                     'property_order': list(description['properties']), 'offset': 0}
+        else:
+            saved = discovery._decode(cursor, state, 'catalog_cursor')
+            if (saved['object_id'] != object_id or saved['scope'] != scope
+                    or (property_ids is not None and property_ids != saved['selection'])):
+                raise ValueError('Description cursor belongs to another object, scope or selection')
+            if saved['expires_at'] < time.time():
+                raise ValueError('Description snapshot expired; describe again')
+            description = saved['description']
+        # 3. 游标绑定原对象与选择；完整性沿用原观察，不由页面大小推断。
+        # 引用表按键排序序列化 JSON；单独记录顺序，防止翻页后属性重新排序。
+        entries = [(identifier, description['properties'][identifier]) for identifier in saved['property_order']]
+        offset = saved['offset']
+        end = offset + limit
+        next_offset = end if end < len(entries) else None
+        next_cursor = None if next_offset is None else discovery._remember_reference(
+            {**saved, 'offset': next_offset}, state)
+        return {**description, 'properties': dict(entries[offset:end]), 'offset': offset,
+                'total_count': len(entries), 'next_offset': next_offset, 'next_cursor': next_cursor,
+                'value_source': 'descriptor_snapshot'}
 
-    def modify(self, session_id, request, timeout=180, audit=False):
-        """提交一个 schema 2 属性修改或 schema 3 结构操作，保留 expected 核对与回读。"""
+    def read_properties(self, session_id, object_id, property_ids, timeout=180):
+        """显式读取一组属性；两种来源均返回 properties[id] 的状态与原始 value。"""
+        objects.selection(property_ids)
+        source = objects.resolve(session_id, object_id)
+        if source['source'] == 'runtime':
+            from .discovery import read_node_properties
+            return objects.runtime_result(read_node_properties(session_id, object_id, property_ids,
+                timeout=_timeout(timeout), operate=self._operate))
+        result = self._read(session_id, objects.catalog_target(session_id, object_id),
+                            property_ids, 'read', timeout)
+        return objects.catalog_result(result, objects.catalog_object(session_id, source_object(source)))
+
+    def modify_property(self, session_id, object_id, property_id, expected, value, timeout=180, audit=False):
+        """按当前完整旧值修改一个属性；版本规则、条件和回读仍由原执行器核验。"""
         if type(audit) is not bool:
             raise ValueError('audit must be a boolean')
-        return self._catalog(session_id, 'modify', request, timeout, audit=audit)
+        objects.selection([property_id])
+        source = objects.resolve(session_id, object_id)
+        value = objects.assignment_value(session_id, value)
+        if source['source'] == 'runtime':
+            from .discovery_write import modify_node_property
+            # 在写入前准备返回所需的静态定位，避免写入后再依赖引用表读取。
+            path = objects.discovery._decode(object_id, objects.discovery.reference_state(session_id), 'node')['path']
+            obj = {'object_id': object_id, 'name': path[-1]['name'], 'java_class': path[-1]['java_class'],
+                   'kind': 'object',
+                   'locator': {'source': 'runtime', 'path': [
+                       {'name': item['name'], 'java_class': item['java_class']} for item in path]}}
+            result = modify_node_property(session_id, object_id, property_id, expected, value,
+                timeout=_timeout(timeout), operate=self._operate, audit=audit)
+        else:
+            request = {'schema_version': 2, 'action': 'modify',
+                       'target': objects.catalog_target(session_id, object_id), 'property': property_id,
+                       'expected': expected, 'value': value}
+            obj = objects.catalog_object(session_id, source_object(source))
+            result = self._catalog(session_id, 'modify', request, timeout, audit=audit)
+        return objects.catalog_result(result, obj)
 
-    def browse_tree(self, session_id, node_id=None, cursor=None, offset=0, limit=100,
+    def execute_operation(self, session_id, object_id, operation_id, expected, arguments,
+                          timeout=180, audit=False):
+        """执行已描述的结构操作，保留独立于普通赋值的参数与影响范围。"""
+        if type(audit) is not bool:
+            raise ValueError('audit must be a boolean')
+        source = objects.resolve(session_id, object_id)
+        target = objects.catalog_target(session_id, object_id)
+        request = {'schema_version': 3, 'action': 'modify', 'target': target,
+                   'operation': operation_id, 'expected': expected, 'arguments': arguments}
+        obj = objects.catalog_object(session_id, source_object(source))
+        result = self._catalog(session_id, 'modify', request, timeout, audit=audit)
+        return objects.catalog_result(result, obj)
+
+    def browse_tree(self, session_id, object_id=None, cursor=None, offset=0, limit=100,
                     scope='simulation', max_nodes=2000, timeout=180):
-        """从根或已发现节点读取一层对象；游标绑定本次关系集合，不递归扫描。"""
+        """展开实际对象树的一层，返回与类型查找相同的 object_id 字段。"""
+        if object_id is not None and objects.resolve(session_id, object_id)['source'] != 'runtime':
+            raise ValueError('Tree browsing requires an object returned by browse_tree or search_settings')
         from .discovery import browse_tree
-        return browse_tree(session_id, node_id=node_id, cursor=cursor, offset=offset,
-                           limit=limit, scope=scope, max_nodes=max_nodes,
-                           timeout=_timeout(timeout), operate=self._operate)
+        return objects.runtime_result(browse_tree(session_id, node_id=object_id, cursor=cursor, offset=offset,
+            limit=limit, scope=scope, max_nodes=max_nodes, timeout=_timeout(timeout), operate=self._operate))
 
-    def describe_node(self, session_id, node_id=None, scope='simulation', timeout=180,
-                      property_ids=None, cursor=None, limit=100):
-        """描述当前节点的属性及规则支持状态；不会隐式读取全部属性值。"""
-        from .discovery import describe_page
-        return describe_page(session_id, node_id=node_id, scope=scope, timeout=_timeout(timeout),
-                             operate=self._operate, property_ids=property_ids, cursor=cursor, limit=limit)
-
-    def read_node_properties(self, session_id, node_id, property_ids, timeout=180):
-        """重新核对引用和实际描述符，再执行明确选择的属性读取计划。"""
-        from .discovery import read_node_properties
-        return read_node_properties(session_id, node_id=node_id, property_ids=property_ids,
-                                    timeout=_timeout(timeout), operate=self._operate)
-
-    def relocate_node(self, session_id, locator, timeout=180):
-        """在新加载中按结构化路径唯一定位对象，返回当前会话的新引用。"""
-        from .discovery import relocate_node
-        return relocate_node(session_id, locator=locator, timeout=_timeout(timeout),
-                             operate=self._operate)
-
-    def modify_node_property(self, session_id, node_id, property_id, expected, value, timeout=180, audit=False):
-        """按受控规则修改单个发现属性；核对旧值和回读，audit 可选取完整快照供审查。"""
-        from .discovery_write import modify_node_property
-        if type(audit) is not bool:
-            raise ValueError('audit must be a boolean')
-        return modify_node_property(session_id, node_id=node_id, property_id=property_id,
-                                    expected=expected, value=value, timeout=_timeout(timeout),
-                                    operate=self._operate, audit=audit)
+    def relocate_object(self, session_id, locator, timeout=180):
+        """重载后按返回的 locator 唯一查找；不继承旧世代引用或猜测同名对象。"""
+        if not isinstance(locator, dict):
+            raise ValueError('locator must be an object returned by an object lookup')
+        if locator.get('source') == 'runtime' and set(locator) == {'source', 'path'}:
+            from .discovery import relocate_node
+            return objects.runtime_result(relocate_node(session_id, locator['path'],
+                timeout=_timeout(timeout), operate=self._operate))
+        if locator.get('source') != 'catalog' or set(locator) != {'source', 'target'}:
+            raise ValueError('Invalid object locator')
+        # 名称定位只接受不含 reference 的完整路径；本次读取生成新的实际引用。
+        target = locator['target']
+        current = target
+        depth = 0
+        while isinstance(current, dict):
+            if not {'type', 'name'} <= current.keys() or set(current) - {'type', 'name', 'parent'}:
+                raise ValueError('Catalog locator must contain only type, name and optional parent')
+            depth += 1
+            if depth > 16:
+                raise ValueError('Catalog locator is too deep')
+            current = current.get('parent')
+        if current is not None or depth == 0:
+            raise ValueError('Invalid catalog locator parent')
+        result = self._read(session_id, target, None, 'describe', timeout)
+        return {'schema_version': 2, 'schema_id': 'starbridge.objects',
+                'object': objects.catalog_object(session_id, result['catalog']['target'])}
 
     def search_settings(self, session_id, query, expand=False, max_nodes=100, max_depth=4,
                         scope='simulation', timeout=180, limit=100, cursor=None):
-        """搜索已有发现范围；只有显式 expand 才按节点、深度和耗时预算继续发现。"""
+        """搜索元数据并返回统一对象引用；命中值仍须显式重新读取。"""
         from .discovery import search_settings
-        return search_settings(session_id, query=query, expand=expand, max_nodes=max_nodes,
-                               max_depth=max_depth, scope=scope, timeout=_timeout(timeout),
-                               operate=self._operate, limit=limit, cursor=cursor)
+        return objects.runtime_result(search_settings(session_id, query=query, expand=expand,
+            max_nodes=max_nodes, max_depth=max_depth, scope=scope, timeout=_timeout(timeout),
+            limit=limit, cursor=cursor, operate=self._operate))
 
     def inspect_session(self, session_id, timeout=180):
         """读取既有 Inspector 快照范围；与按需属性读取共用目录，不表示全配置导出。"""
@@ -318,7 +415,7 @@ def contract():
     from .interface_contract import usage_contract
     from .discovery_policy import TARGET
     return {
-        'schema_version': 1, 'methods': list(METHODS), 'transport': 'local',
+        'schema_version': 2, 'methods': list(METHODS), 'transport': 'local',
         'statuses': {
             'ok': 'Call completed; inspect property errors and inspection_complete for partial reads.',
             'rejected': 'Invalid input or confirmed rejection before assignment; lifecycle setup may have created files.',
@@ -329,13 +426,12 @@ def contract():
         'session_lifetime': 'Explicit open/save/close; client exit does not close a session.',
         'identity': 'Object references belong to one session token; use full locators after reload.',
         'paths': 'Simulation, project and output paths must be absolute; session_id is returned by open_session.',
-        'request_schemas': {'read': 1, 'property_modification': 2, 'structural_operation': 3,
-                            'discovery': 1},
+        'object_schema': 'starbridge.objects/2',
         'runtime_discovery': {
             'versions': [dict(TARGET)],
             'navigation': 'Browse one level, describe, then read explicit property_ids.',
             'search': 'Cached scope by default; expand uses explicit node, depth and time budgets.',
-            'references': 'Opaque node_id and property_id; re-describe after identity or rule changes.',
+            'references': 'Opaque object_id and property_id; re-describe after identity or rule changes.',
         },
         'usage': usage_contract(),
     }

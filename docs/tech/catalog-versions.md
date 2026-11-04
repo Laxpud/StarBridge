@@ -6,7 +6,7 @@ StarBridge 按精确的产品版本和 Build 选择目录。当前随附 `2602 /
 
 ## 文件与会话入口
 
-文件 `inspect`、兼容 schema 1 `modify` 和 `set-scalar` 默认使用 2602。操作 2510 文件时，同时选择匹配的启动器和目录版本，例如：
+文件 `inspect` 默认使用 2602；修改从显式目录取得版本，schema 1 修改和 `set-scalar` 已删除。操作 2510 文件时，同时选择匹配的启动器和目录版本，例如：
 
 ```bash
 python3 bridge/runner/file_bridge.py inspect example-2510.sim \
@@ -24,7 +24,7 @@ python3 bridge/runner/session_bridge.py start example-2510.sim \
   --catalog-release 2510 --port 49001
 ```
 
-新会话把目标保存为 `session.json.catalog_target`。后续 `inspect`、兼容修改、保存和普通关闭使用该绑定，不再从新的默认值选择目录；显式目录请求必须与会话绑定一致。旧会话没有此字段时，沿用此前固定 2602 的契约。显式字段损坏、未知版本或 Build 不符时拒绝，不能按旧会话处理。
+新会话把目标保存为 `session.json.catalog_target`。后续 `inspect`、属性修改、保存和普通关闭使用该绑定，不再从新的默认值选择目录；显式目录请求必须与会话绑定一致。旧会话没有此字段时，沿用此前固定 2602 的契约。显式字段损坏、未知版本或 Build 不符时拒绝，不能按旧会话处理。
 
 本地计划错配在输出目录或会话活动标记写入前拒绝，现有会话保持原状态。Java 还会在实际调用前核对正在运行的 server，选择正确目录不能代替 server 检查。`status` 与 `stop --discard` 不依赖目录加载，使目录不可用时仍能查询和清理本工具创建的服务。目录选择不会转换 `.sim` 文件格式，也不保证较旧 STAR 能打开较新版本保存的文件。
 

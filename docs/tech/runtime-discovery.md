@@ -14,12 +14,12 @@ MCP 工具使用 `starbridge.` 前缀，JSON CLI 使用下表原名。所有调�
 
 | 方法 | 参数与默认值 | 作用 |
 |---|---|---|
-| `browse_tree` | `node_id=null`、`cursor=null`、`offset=0`、`limit=100`、`scope="simulation"`、`max_nodes=2000` | 从根或指定节点展开一层；不读取属性值 |
-| `describe_node` | `node_id=null`、`scope="simulation"`、`property_ids=null`、`cursor=null`、`limit=100` | 刷新属性描述符并检查规则支持，省略节点表示根 |
-| `read_node_properties` | 必填 `node_id`、非空且不重复的 `property_ids` | 重新定位和描述后，只读取显式选择的属性 |
+| `browse_tree` | `object_id=null`、`cursor=null`、`offset=0`、`limit=100`、`scope="simulation"`、`max_nodes=2000` | 从根或指定节点展开一层；不读取属性值 |
+| `describe_object` | `object_id=null`、`scope="simulation"`、`property_ids=null`、`cursor=null`、`limit=100` | 刷新属性描述符并检查规则支持，省略节点表示根 |
+| `read_properties` | 必填 `object_id`、非空且不重复的 `property_ids` | 重新定位和描述后，只读取显式选择的属性 |
 | `search_settings` | 必填 `query`；`expand=false`、`max_nodes=100`、`max_depth=4`、`scope="simulation"`、`limit=100`、`cursor=null` | 搜索已有索引；显式扩展时按预算发现更多节点 |
-| `relocate_node` | 必填 `locator` | 保存重载或新会话中按结构化路径重建引用 |
-| `modify_node_property` | 必填 `node_id`、`property_id`、`expected`、`value`；`audit=false` | 按已接受规则赋值一次并回读目标及必要关联项；可选快照审查，保存单独执行 |
+| `relocate_object` | 必填 `locator` | 保存重载或新会话中按结构化路径重建引用 |
+| `modify_property` | 必填 `object_id`、`property_id`、`expected`、`value`；`audit=false` | 按已接受规则赋值一次并回读目标及必要关联项；可选快照审查，保存单独执行 |
 
 `limit` 范围为 1–500，`max_nodes` 为 1–10000；搜索 `max_depth` 为 1–32，根深度为 0。浏览 `max_nodes` 限制单层运行时观察规模，搜索 `max_nodes` 限制扩展访问的节点数；返回页大小由 `limit` 单独限制。每次 Java 发现请求的内部时间预算最多 30 秒；Python 还用剩余时间限制多页描述和搜索扩展。STAR 客户端启动、编译和进程清理可能占用额外时间，不能把预算解释为硬实时截止。
 
@@ -33,20 +33,20 @@ MCP 工具使用 `starbridge.` 前缀，JSON CLI 使用下表原名。所有调�
 {"session_id": "<returned session_id>", "limit": 100}
 ```
 
-Core 返回 `{"status":"ok","result":...}`。读取 `result.children`，按返回的名称和上下文选择目标，把它的 `node_id` 原样传入下一次 `browse_tree`。需要下一页时传入 `result.next_cursor`，保留相同 `scope`；游标已经绑定父节点，允许省略 `node_id`。列表指纹变化会使旧游标失效，此时重新展开，不拼接前后两个树状态的页面。
+Core 返回 `{"status":"ok","result":...}`。读取 `result.objects`，按返回的名称和上下文选择目标，把它的 `object_id` 原样传入下一次 `browse_tree`。需要下一页时传入 `result.next_cursor`，保留相同 `scope`；游标已经绑定父节点，允许省略 `object_id`。列表指纹变化会使旧游标失效，此时重新展开，不拼接前后两个树状态的页面。
 
-到达所需设置节点后，先调用 `describe_node`：
+到达所需设置节点后，先调用 `describe_object`：
 
 ```json
-{"session_id": "<returned session_id>", "node_id": "<returned node_id>"}
+{"session_id": "<returned session_id>", "object_id": "<returned object_id>"}
 ```
 
-按属性名称、说明、类型和支持状态选择一项，再调用 `read_node_properties`：
+从 `result.properties[id]` 按属性名称、说明、类型和支持状态选择一项，再调用 `read_properties`：
 
 ```json
 {
   "session_id": "<returned session_id>",
-  "node_id": "<returned node_id>",
+  "object_id": "<returned object_id>",
   "property_ids": ["<returned property_id>"]
 }
 ```
@@ -57,13 +57,13 @@ Core 返回 `{"status":"ok","result":...}`。读取 `result.children`，按返�
 
 ```bash
 python3 starbridge.py browse_tree --arguments /absolute/browse.json
-python3 starbridge.py describe_node --arguments /absolute/describe.json
-python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
+python3 starbridge.py describe_object --arguments /absolute/describe.json
+python3 starbridge.py read_properties --arguments /absolute/read-node.json
 ```
 
-`describe_node` 不读取全部当前属性值。首次描述以最多 500 项为一页汇集运行时描述符，在预算内形成一次观察，再按 `property_ids` 和 `limit` 返回所选页面。显式选择接受 1–500 个不重复的 ID，并按选择顺序返回；未知或过时 ID 拒绝。只为当前页准备写入能力说明，不调用 setter。
+`describe_object` 不读取全部当前属性值。首次描述以最多 500 项为一页汇集运行时描述符，在预算内形成一次观察，再按 `property_ids` 和 `limit` 返回所选页面。显式选择接受 1–500 个不重复的 ID，并按选择顺序返回；未知或过时 ID 拒绝。只为当前页准备写入能力说明，不调用 setter。
 
-描述结果默认每页 100 项，返回 `offset`、所选集合的 `total_count`、完整观察集合的 `descriptor_total_count` 和 `next_cursor`。下一页保留同一 `node_id` 和 `scope`，传回游标；省略 `property_ids` 时沿用原选择。后续页使用同一次描述快照，过期需重新描述；读写时仍刷新运行时对象与描述符。有效期及缓存位置见[身份、重定位和缓存](#身份重定位和缓存)。分页不会把 `partial` 观察变为 `complete`，`descriptor_next_offset` 非空表示内部描述仍有未汇集部分。
+描述结果默认每页 100 项，返回 `offset`、所选集合的 `total_count`、完整观察集合的 `descriptor_total_count` 和 `next_cursor`。下一页保留同一 `object_id` 和 `scope`，传回游标；省略 `property_ids` 时沿用原选择。后续页使用同一次描述快照，过期需重新描述；读写时仍刷新运行时对象与描述符。有效期及缓存位置见[身份、重定位和缓存](#身份重定位和缓存)。分页不会把 `partial` 观察变为 `complete`，`descriptor_next_offset` 非空表示内部描述仍有未汇集部分。
 
 ## 搜索后确认上下文
 
@@ -95,11 +95,11 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 ## schema 与完整性
 
-发现结果使用独立 `schema_version: 1`。它与旧 Inspector schema、目录请求 schema 分开，不把新节点引用当作旧目录 `target`。
+公开结果统一使用 `schema_version: 2`、`schema_id: starbridge.objects`，与目录对象共用描述和属性读写入口。内部发现提供器仍使用自己的数据格式，不作为第二套公开 API。
 
 | 对象 | 关键字段及含义 |
 |---|---|
-| 节点 | `node_id` 是不透明会话引用；`key`、`name`、`java_class` 是观察信息；`path`、`breadcrumbs`、`locator` 保留上下文 |
+| 节点 | `object_id` 是不透明会话引用；`name`、`java_class` 是观察信息；`breadcrumbs` 与带 `source` 的 `locator` 保留上下文，内部 key/path 不作为调用参数 |
 | 节点状态 | `children_state`、`property_state` 区分未加载和不支持；未展开不表示没有子对象 |
 | 关系 | `relations` 保留运行时已有归属或引用信息；树的展示父节点不一定等于对象的真实 `getParent()` |
 | 属性 | `property_id` 绑定实际 getter、setter 和属性上下文；保留 `name`、`display_name`、`description`、`property_type`、隐藏标记及来源 |
@@ -113,17 +113,17 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 ## 身份、重定位和缓存
 
-`node_id` 和分页游标是会话内短 ID，服务从 `references.sqlite3` 查找已发现的路径或分页状态，并检查引用种类和会话世代。没有 HMAC 或专用密钥；运行时仍逐层核对 key、名称、类型及实际父身份。旧签名引用需重新浏览取得短 ID，旧搜索索引不跨引用格式复用。调用方应原样保存和传递引用，不解析或构造其内容。名称相同不证明是同一实例；重命名、删除重建、关系变化或换会话都可能使旧引用失效。
+`object_id` 和分页游标是会话内短 ID，服务从 `references.sqlite3` 查找已发现的路径或分页状态，并检查引用种类和会话世代。没有 HMAC 或专用密钥；运行时仍逐层核对 key、名称、类型及实际父身份。旧签名引用需重新浏览取得短 ID，旧搜索索引不跨引用格式复用。调用方应原样保存和传递引用，不解析或构造其内容。名称相同不证明是同一实例；重命名、删除重建、关系变化或换会话都可能使旧引用失效。
 
-跨加载使用此前返回的 `locator`，调用 `relocate_node`：
+跨加载使用此前返回的 `locator`，调用 `relocate_object`：
 
 ```json
 {
   "session_id": "<newly returned session_id>",
-  "locator": [
+  "locator": {"source": "runtime", "path": [
     {"name": "<previous root name>", "java_class": "<returned root class>"},
     {"name": "<child name>", "java_class": "<returned child class>"}
-  ]
+  ]}
 }
 ```
 
@@ -143,11 +143,11 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 普通有界标量 input 使用已核验的范围适配器。动态范围仅登记 `star.resurfacer.PartsResurfacerAnisotropicSizing.ratioRange()`；其他 `rangeMethod` 注解保留为元数据，不能据方法名自行执行。单位和范围仅按提供器实际结果返回，不推断缺失单位。
 
-非 CSO 代理没有已核验的通用提供器时，返回 `kind="proxy"`、不支持原因和 `node_id=null`，不会把父节点引用冒充代理身份。GUI 分组、插件节点、未知复杂值和未登记版本可能因此仅有部分覆盖。
+非 CSO 代理没有已核验的通用提供器时，返回 `kind="proxy"`、不支持原因和 `object_id=null`，不会把父节点引用冒充代理身份。GUI 分组、插件节点、未知复杂值和未登记版本可能因此仅有部分覆盖。
 
 ## 受控写入
 
-`modify_node_property` 当前开放已接受的普通赋值规则。禁止规则、资源范围限制和特殊语义优先；特殊规则缺少上下文或存在歧义时不退回通用规则。既有目录 `modify` 继续按其[原契约](catalog-modifier.md)使用。
+`modify_property` 当前开放已接受的普通赋值规则。禁止规则、资源范围限制和特殊语义优先；特殊规则缺少上下文或存在歧义时不退回通用规则。目录对象也使用 `modify_property`，内部沿用已有[目录适配](catalog-modifier.md)。
 
 当前规则族及限制：
 
@@ -160,22 +160,22 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 ```json
 {
   "session_id": "<returned session_id>",
-  "node_id": "<returned node_id>",
+  "object_id": "<returned object_id>",
   "property_id": "<returned property_id>",
   "expected": {"definition": "0.0", "unit": "m", "si_unit": "m", "raw_value": 0.0, "si_value": 0.0},
   "value": {"value": 0.001, "unit": "m"}
 }
 ```
 
-向量新值格式为 `{"components":[0,0,0.125],"unit":"m"}`；其他已接受类型按其 writer 的契约提供新值。通过 JSON CLI 执行 `python3 starbridge.py modify_node_property --arguments /absolute/write-node.json`，或使用相同参数调用 `starbridge.modify_node_property`。`write_enabled=true` 只证明发布范围和规则支持；`target_conditions`、`value_conditions` 在描述时仍为 `not_checked`。
+向量新值格式为 `{"components":[0,0,0.125],"unit":"m"}`；其他已接受类型按其 writer 的契约提供新值。通过 JSON CLI 执行 `python3 starbridge.py modify_property --arguments /absolute/write-node.json`，或使用相同参数调用 `starbridge.modify_property`。`write_enabled=true` 只证明发布范围和规则支持；`target_conditions`、`value_conditions` 在描述时仍为 `not_checked`。
 
 修改刷新节点描述，只为目标属性和已接受规则要求的关联项生成写计划，在会话锁内核对版本、引用、`expected`、单位、范围及声明条件，临近 setter 再核对必要状态。通用常量赋值不再读取并保持同节点所有其他属性，也不要求旧 Inspector 全范围保持不变。
 
-成功结果保留目标的 `catalog_before`、`catalog` 和 `setter_attempts: 1`。显式传入 `audit: true` 时附带完整 Inspector 前后快照、`snapshot_diff` 和 `catalog_diff`，供审查；审查结果不作为全范围不变的强制赋值条件。也可按需调用 `inspect_session` 取得快照。旧 `snapshot_scope` 不再作为普通写入结果返回。
+成功结果返回 `before[id]`、`properties[id]`、`change` 和 `setter_attempts: 1`。显式传入 `audit: true` 时附带完整 Inspector 前后快照、`snapshot_diff` 和 `property_diff`，供审查；审查结果不作为全范围不变的强制赋值条件。也可按需调用 `inspect_session` 取得快照。旧 `snapshot_scope` 不再作为普通写入结果返回。
 
 写前明确拒绝返回 `rejected`，不会执行 setter。请求仍在执行时返回 `busy`；状态查询可在执行中读取记录。只读失败在客户端结束后记录为本次错误，不冻结会话。写入结果未确认时保留 `uncertain_request`，允许状态查询和只读核对，阻止新的修改与保存；成功读取不会自动清除未确认写入，也不自动重试、回滚或保存。重连同一未确认外部会话仍沿用其限制。
 
-成功修改仍须显式调用 `save_session`，省略 output 写回当前文件，指定新路径则另存为。重载后重新定位、描述和读取；旧 `node_id` 不能跨加载使用。锁和回读不提供跨客户端原子事务或 CFD 合理性保证。
+成功修改仍须显式调用 `save_session`，省略 output 写回当前文件，指定新路径则另存为。重载后重新定位、描述和读取；旧 `object_id` 不能跨加载使用。锁和回读不提供跨客户端原子事务或 CFD 合理性保证。
 
 ## 验证范围
 

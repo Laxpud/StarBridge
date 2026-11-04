@@ -27,33 +27,11 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' \
 
 ## 按预期旧状态修改
 
-表达式和标签修改使用 `modify --request`，请求格式、预检查、全部已覆盖字段的 Diff 和重载核对见 [Modifier 单项修改](modifier.md)。兼容 `modify` 和以下 `set-scalar` 自动使用仓库随附目录及统一修改器，无需自行生成目录；按所选目录精确匹配 release/Build，版本不符在写入前拒绝。`set-scalar` 保留直接设置常量的行为，没有调用者提供的 `expected`，不保护陈旧请求。新 schema 2 用法见[目录修改](catalog-modifier.md)。
+文件 `modify` 必须提供 `--catalog`、`--execution`、`--request` 与 `--output`，使用已有目录的 schema 2 属性或 schema 3 结构操作。请求格式见[目录修改](catalog-modifier.md)，旧 `set-scalar` 与 schema 1 请求已删除，能力对应见[迁移说明](modifier.md)。
 
-## 修改已有标量并另存
+输出必须是新的 `.sim` 文件，父目录已存在。文件 Runner 加载输入后按目录执行修改并回读，另存输出，再独立加载输出核对目标目录属性和 Inspector 快照；最后确认输入 SHA256 未变。结果包含 `catalog_before/catalog`、快照与 Diff，以及 `reopened_catalog_match/reopened_snapshot_match`；不再返回旧 `parameter_diff` 投影。
 
-以下示例把俯仰幅值设为 `6 deg`：
-
-```bash
-python3 bridge/runner/file_bridge.py set-scalar 'Base.sim~' \
-  --work-dir outputs/change-pitch \
-  --output outputs/Base_pitch6_example.sim \
-  --name _AirfoilPitchAmplitude --value 6 --unit deg
-```
-
-输出文件的父目录必须已存在，目标必须是新的 `.sim` 文件，不能覆盖输入或其他已有文件。单位使用 STAR 单位对象的名称；宏检查与原参数单位的量纲兼容性。
-
-此操作把参数设置为**数值常量**，会替换该参数原有表达式；原表达式保存在修改前快照中。表达式修改使用 [modify](modifier.md)；当前这些入口不创建或删除参数。
-
-执行步骤：
-
-1. 加载输入文件，精确核对当前 server 版本，读取完整旧快照与目标目录属性。
-2. 核对两种读取的对应字段，检查单位，通过共享修改器设置数值并回读。
-3. 另存目标文件，读取保存后的旧快照。
-4. 启动第二次 STAR 批处理，重新加载目标文件，同时读取旧快照与目录属性。
-5. 比较完整旧快照和目标已配目录属性，核对请求数值与单位，返回参数 Diff 和目录 Diff。
-6. 核对原文件 SHA256 未变化。
-
-`summary.json` 中的 `parameter_diff` 会包含所有已覆盖参数的变化；其他参数的求值结果可能因依赖关系变化，需要结合其表达式解释。保留原 `parameter_diff`、`reopened_parameters_match` 字段，新增 `catalog_before`、`catalog`、`catalog_diff`、`reopened_catalog_match` 和 `reopened_snapshot_match`。后两项同时确认目标目录内容及完整旧快照的重载一致。Diff 仍不覆盖整个 STAR 对象树，不能证明所有未读取设置均未变化。
+这些重载与输入保护步骤属于独立文件流程；会话普通赋值不自动保存或重载。数值常量、表达式和标签均按对应属性契约提供新值及实际读取的 `expected`，不从名称或示例猜测旧值。
 
 ## 运行产物与失败处理
 

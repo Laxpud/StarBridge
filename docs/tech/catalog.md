@@ -6,7 +6,7 @@
 
 ## 生成与查看
 
-仓库随附 [`src/starbridge/catalogs/2602/generated/catalog.json`](../../src/starbridge/catalogs/2602/generated/catalog.json)，供 `inspect`、`save`、兼容 `modify` 和 `set-scalar` 自动加载，也可显式传给目录 `describe/read/modify`。它保留生成器标识、安装相对来源路径和 SHA256，人工语义、执行映射和快照布局独立维护；使用现有命令无需自行生成。
+仓库随附 [`src/starbridge/catalogs/2602/generated/catalog.json`](../../src/starbridge/catalogs/2602/generated/catalog.json)，供 `inspect`、`save` 和统一对象接口自动加载，也可显式传给目录 `describe/read/modify`。它保留生成器标识、安装相对来源路径和 SHA256，人工语义、执行映射和快照布局独立维护；使用现有命令无需自行生成。
 
 需要重新生成或检查来源时，使用 Python 3.11+，无需第三方 Python 依赖。在仓库根目录执行，`--install` 指向包含 `star/` 和 `doc/` 的安装根目录：
 
@@ -128,11 +128,11 @@ python3 tools/catalog/catalog.py coverage \
 | 字段 | 所需结果 |
 |---|---|
 | `observed_read` | 同一 `catalog_id` 和精确 server 版本的属性读取结果，属性 `status: ok` 且包含 `value`；局部错误单列，不计成功 |
-| `observed_write` | 成功的 schema 2 目录修改结果，带原请求及同一目标的完整前后读取；指定属性必须具备写入实现 |
+| `observed_write` | 成功的统一属性修改或底层 schema 2 结果，同一目标前后读取包含目标、身份字段和声明保持项；指定属性必须具备写入实现 |
 | `observed_execute` | 成功的 schema 3 结构操作结果，带已映射的操作 ID、合法方法参数、同一目标的前后读取；读取字段必须恰好覆盖该操作的 `read_properties` |
 | `file_reload` | 对应属性修改或结构操作的文件 Runner 汇总同时确认 `reopened_catalog_match`、`reopened_snapshot_match` 和 `input_unchanged`，且输出与输入不同 |
 
-结构操作回读中的成功属性仍计入 `observed_read`，但不会增加普通 `observed_write`。方法切换可能让旧分量不再适用，因此结构操作按自己的 `read_properties` 核对完整性；覆盖统计器接受 schema 2 写入证据时，仍要求该目标类型的全部映射属性。这个旧证据要求不等于当前执行器的赋值前提：普通赋值已裁剪为目标、身份字段及必要保持项，因此其成功结果可能被统计器列为 `not_accepted`。统计器还只识别原有宏／文件／会话封套；新的精简结果不能直接视为兼容。接口与结果迁移见[实施计划](../plans/plan-2026-11-03-14-23.md#接口与执行)。证据记录中的 `file_reload` 保留属性 ID，`operation_file_reload` 单独保留操作 ID，避免同名混算。成功操作证据还保留所请求的方法参数；`observed_methods` 只表示有该方法的成功样例，不表示该方法的全部输入组合已经验证。
+结构操作回读中的成功属性仍计入 `observed_read`，但不会增加普通 `observed_write`。方法切换可能让旧分量不再适用，因此结构操作按自己的 `read_properties` 核对完整性；普通赋值的证据范围与执行裁剪共用同一规则：前后成功属性集合相同，且包含目标、身份字段和声明保持项；历史全属性结果仍可接受。统计器识别宏、文件、会话及统一 Core 成功封套；统一结果须带当前 `catalog_id/runtime`、目录对象 locator 和完整属性状态，写入还须带 `change` 与一次 setter 记录。运行时规则结果不冒充静态目录证据，描述和简短操作日志也不计入读取成功。证据记录中的 `file_reload` 保留属性 ID，`operation_file_reload` 单独保留操作 ID，避免同名混算。成功操作证据还保留所请求的方法参数；`observed_methods` 只表示有该方法的成功样例，不表示该方法的全部输入组合已经验证。
 
 `describe` 输出、旧兼容请求、未经绑定的材料和人工 `status` 不作为写入实测依据。执行映射变更后，旧 `catalog_id` 的结果列为 `stale`；不能据同名属性继续沿用。版本不符、属性缺失或矛盾结果列为 `not_accepted` 并给出原因。拒绝或失败结果列为 `rejected/error`，不增加成功数；没有当前目录身份的拒绝结果也不能证明某个运行条件已经验证。损坏 JSON、重复键、缺失文件会使命令失败。
 

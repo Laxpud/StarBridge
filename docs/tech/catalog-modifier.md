@@ -4,6 +4,8 @@
 
 文件与后台会话的 `modify` 使用候选目录和人工执行映射修改已有属性，或执行目录声明的结构操作。属性映射包含标量与向量表达式或常量、用户场函数定义及布尔/枚举选项、重力向量、用户标签关联，体积平均报告的场函数引用和对象选择，边界当前常量标量/向量 Profile、有向自动源网格的有界标量尺寸，以及区域中已有二维或三维张量 Profile 的常量分量、方向轴向量和材料物性当前多系数方法的常量系数。结构操作支持已有二维或三维张量 Profile 的[方法切换](#张量-profile-方法切换)，以及已有材料物性的[常量与导热方法切换](#材料物性方法切换)。每次请求选择一个属性或一个操作，先核对条件与旧状态，再执行、回读并返回差异。实际验证状态见[验证范围](#验证范围与迁移边界)；创建、删除、重命名、模型切换和其他结构操作尚未实现。
 
+本页描述内部目录请求及独立文件／会话 Runner 用法。MCP 与共享 JSON CLI 使用 `modify_property` 或 `execute_operation`，对象引用和结果字段见[统一契约](mcp.md)。
+
 ## 使用方式
 
 需要 Python 3.11+、匹配所选目录的 STAR 安装及许可证；默认 2602，其他随附版本见[版本选择](catalog-versions.md)。可直接使用随仓库分发的 `src/starbridge/catalogs/2602/generated/catalog.json` 和独立维护的 `src/starbridge/catalogs/2602/execution.json`，不需要先生成目录。自行重建和核对来源的方法见[离线目录工具](catalog.md#生成与查看)。schema 2 属性修改与 schema 3 结构操作均要求显式传入两个路径。
@@ -418,7 +420,7 @@ Base Size 的实测范围为严格大于零。未适配的 input、无法预览�
 
 ## 兼容入口与格式版本
 
-不带 `--catalog/--execution` 的修改遵循[兼容 schema 1 契约](modifier.md)，文件与会话的版本选择见[版本说明](catalog-versions.md)。属性请求为 schema 2，结构操作请求为 schema 3；执行映射格式及旧版兼容规则统一见[人工执行映射](catalog-runtime.md#人工执行映射)。
+schema 1 修改与 `set-scalar` 已删除，原能力对应见[迁移说明](modifier.md)。底层 Runner 的修改必须提供 `--catalog/--execution`；MCP 使用[统一对象入口](mcp.md)。文件与会话版本选择见[版本说明](catalog-versions.md)。属性请求为 schema 2，结构操作请求为 schema 3；执行映射格式及旧版兼容规则统一见[人工执行映射](catalog-runtime.md#人工执行映射)。
 
 ## 验证范围与迁移边界
 

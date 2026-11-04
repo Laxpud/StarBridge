@@ -2,7 +2,7 @@
 
 [返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [目录描述与读取](catalog-runtime.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
-Inspector 通过共享目录读取算例对象清单、关键属性和归属关系，保留原有 schema 1 输出。文件 `inspect` 的 `summary.json.snapshot` 与后台会话 `inspect` 的 `snapshot` 使用相同格式，修改与保存的 `before`、`after` 也使用此格式。[Modifier](modifier.md) 记录全部已覆盖字段的 Diff，文件修改独立重载后同时核对完整快照和目标目录属性；`set-scalar` 仍保留原 `parameter_diff`，但其重载核对也覆盖完整快照和目标目录内容。
+Inspector 通过共享目录读取算例对象清单、关键属性和归属关系，保留 schema 1 快照格式。文件与会话 `inspect` 使用相同格式；会话赋值仅在 `audit=true` 时附带完整快照和 Diff。独立文件修改仍另存、重载并核对快照及目标属性。旧修改请求与 `set-scalar` 已删除，见[迁移说明](modifier.md)。
 
 `inspect` 的集合布局由 `snapshot.json` 描述，与按需 `describe/read` 共用候选 API、成员映射和类型适配器。后者的独立 `catalog` 结果包含当前 server 版本、会话引用和逐属性状态，详见[目录描述与读取](catalog-runtime.md)。两种输出保留不同用途：`snapshot` 兼容既有对象清单和 Diff，`catalog` 按请求返回所选属性；两种 `inspection_complete` 各自只说明声明的读取范围。
 

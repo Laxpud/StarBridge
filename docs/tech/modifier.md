@@ -1,104 +1,20 @@
-# Modifier 单项修改
+# 旧修改入口迁移
 
-[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [Inspector 快照](inspector.md) · [目录修改](catalog-modifier.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
+[技术入口](index.md) · [统一 MCP 契约](mcp.md) · [目录修改](catalog-modifier.md)
 
-`modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。本页描述不带目录参数的兼容 schema 1 契约。它与 `set-scalar` 自动加载所选版本的随附目录并复用同一修改器，原 CLI、请求和旧结果字段继续保留。带 `--catalog` 和 `--execution` 的 `modify` 使用[目录 schema 2 契约](catalog-modifier.md)，无需把旧请求改成新格式。
+旧 `set-scalar` 和 schema 1 `modify` 已移除，不再接受 `kind/operation` 请求或把目录结果转换为旧 Inspector 修改结果。已有能力通过统一 `modify_property` 调用；旧请求的 `expected` 不能直接搬到新属性上，应重新查找、描述并读取。
 
-更广的属性和结构操作见[目录修改](catalog-modifier.md)，接口迁移进度见 [TODO](../../TODO.md)。
-
-## 使用方式
-
-这些兼容写入口默认选择 STAR-CCM+ 2602 Build 21.02.007，也可按[版本说明](catalog-versions.md)选择 2510；运行版本不匹配在写入前返回 `rejected`。默认目录位于 `src/starbridge/catalogs/2602/generated/catalog.json`，人工调用映射为 `src/starbridge/catalogs/2602/execution.json`，用户不必额外生成目录或增加命令参数。
-
-先运行 `inspect`，从目标对象快照提取名称、类型和预期旧属性，再保存请求，例如 `change.json`：
-
-```json
-{
-  "schema_version": 1,
-  "operation": "set-definition",
-  "target": {"kind": "parameter", "name": "_AirfoilPitchAmplitude"},
-  "expected": {
-    "object_type": "ScalarGlobalParameter",
-    "definition": "5.0",
-    "unit": "deg"
-  },
-  "value": {"definition": "3 * <1 deg> + 3 * <1 deg>", "unit": "radian"}
-}
-```
-
-这里的旧表达式和单位来自本项目的示例算例，使用时必须换成当前目标的实际快照。新表达式使用 STAR 的语法；量纲值应明确写单位，如 `<1 deg>`，不能把任意无单位表达式的数值都理解为显示单位下的值。STAR 会把非常量参数表达式的单位切换为 SI，因此请求必须明确写出结果单位：本例原单位为 `deg`，结果单位对象名为 `radian`，实际值为 π/30 rad，即 6 deg。请从 Inspector 的 `si_unit` 取得 SI 单位对象名，不要假设物理单位缩写就是对象名。`value.unit` 不兼容量纲或非常量表达式声明非 SI 结果单位时，在写入前拒绝。纯数值定义可以指定兼容单位，STAR 可能将文本 `6` 规范化为 `6.0`，回读核对会接受这种数值等价。
-
-文件操作：
-
-```bash
-python3 bridge/runner/file_bridge.py modify 'Base.sim~' \
-  --request change.json \
-  --output outputs/Base_modified.sim \
-  --work-dir outputs/modify-parameter
-```
-
-`--output` 必须是不存在的 `.sim` 文件，父目录必须存在；工作目录也必须全新。执行顺序为核对当前 server 版本、读取并检查旧状态和目录投影、统一修改与回读、另存、重新加载、比较所有已覆盖旧快照字段与目标已配目录属性、核对源文件 SHA256。任一环节失败都不生成成功摘要；如果失败发生在另存之后，输出文件可能已存在，应保留排查。
-
-后台会话需要先用 `session_bridge.py start` 启动，再执行：
-
-```bash
-python3 bridge/runner/session_bridge.py modify \
-  --session-id SESSION_ID --request change.json
-
-python3 bridge/runner/session_bridge.py save \
-  --session-id SESSION_ID --output outputs/Base_session_modified.sim
-```
-
-会话 `modify` 只改变内存；`save` 显式保存。会话保存本身不重新加载文件，独立磁盘核对仍使用文件 `inspect`。每次修改请求保持文件锁串行，不能把它当作与外部 Java 客户端或用户 GUI 之间的事务锁；会话可以连接外部服务或启动自有服务，生命周期见[会话说明](bridge-session.md)。
-
-## 请求契约
-
-请求顶层必须且只能有 `schema_version`、`operation`、`target`、`expected`、`value` 五个字段。每份请求只修改一项属性，不接受批量事务、任意 Java 代码、创建、删除或重命名操作。
-
-`target.kind` 可为 `parameter`、`field_function`、`region`、`boundary`。`name` 是 Inspector 中的显示名称，必须精确、唯一匹配；边界还必须有所属区域的 `region` 字段。场函数的显示名称与表达式引用名称 `function_name` 可能不同。
-
-| 操作 | 目标 | 必需的 `expected` 字段 | `value` |
+| 原能力 | 查找类型 | 属性 ID | 新值格式 |
 |---|---|---|---|
-| `set-definition` | `parameter`，仅 `ScalarGlobalParameter` | `object_type`、`definition`、`unit` | 含非空 `definition` 和结果 `unit` 的对象 |
-| `set-definition` | `field_function`，仅 `UserFieldFunction` | `object_type`、`definition`、`function_name`、`value_type`、`dimensions` | 非空表达式字符串 |
-| `set-tags` | 上述四种目标类别 | `object_type`、`tags` | 已存在的用户标签名称数组 |
+| `set-scalar` 常量 | `scalar_parameter` | `quantity_value` | `{value, unit}` |
+| 标量参数表达式 | `scalar_parameter` | `quantity` | `{definition, unit}` |
+| 用户场函数表达式 | `user_field_function` | `definition` | 字符串 |
+| 参数标签 | `global_parameter` | `tags` | 已有用户标签名称数组 |
+| 场函数标签 | `field_function` | `tags` | 已有用户标签名称数组 |
+| 区域／边界标签 | `region`／`boundary` | `tags` | 已有用户标签名称数组 |
 
-可以直接将目标对象的整个 Inspector 条目作为 `expected`。每个提供的字段都参与旧状态比较；只提供必需字段时，其他属性变化不构成冲突。数量参数的求值可能受其他参数影响，把 `raw_value`、`si_value` 一并放入 `expected` 会使这些变化也触发拒绝。此检查是值比较，不能识别“曾改变后又恢复原值”的历史，也不代表跨会话永久对象身份。
+先用 `find_objects` 取得对象 ID，再通过 `describe_object` 确认实际写入契约，并用 `read_properties` 读取完整旧值。`modify_property` 要求显式 `expected`，包括过去没有该前提的常量赋值。标签新数组替换整个集合；数值常量会替换原表达式，单位须量纲兼容。
 
-表达式修改保留目标名称、类型、场函数引用名称、值类型和量纲；标量参数的结果单位按 `value.unit` 核对，其他操作保持原单位。回读验证确认的是 STAR 中实际保存的表达式及这些属性，不证明表达式在所有网格、时间或空间位置均可计算，也不验证 CFD 物理意义。读取到错误时不会继续另存；没有读取错误不等于完成了场函数求值。
+会话修改不自动保存；普通赋值只核对目标与必要关联项，完整快照和 Diff 由 `audit=true` 按需取得。独立文件流程仍可用 `modify --catalog ... --execution ... --request ... --output ...`，其 schema 2/3 请求与重载检查见[目录修改](catalog-modifier.md)。
 
-标签操作**替换完整标签集合**。保留旧标签时必须把它们一并放入 `value`；空数组表示清除全部用户标签关联。名称不存在、不是 `UserTag`，或目标原有关联包含系统标签时，会在写入前拒绝。重复标签名称也会被拒绝，合法数组按名称排序后比较。它不创建或删除标签对象。
-
-例如给某个区域内的边界关联两个已存在标签：
-
-```json
-{
-  "schema_version": 1,
-  "operation": "set-tags",
-  "target": {
-    "kind": "boundary",
-    "region": "Background",
-    "name": "BackgroundBlock.Inlet"
-  },
-  "expected": {"object_type": "Boundary", "tags": []},
-  "value": ["Export", "Flow"]
-}
-```
-
-## 拒绝、失败与结果
-
-请求格式错误、默认目录缺失或映射指纹失效在启动客户端或标记会话活动请求之前返回。宏在同一次调用内先精确核对快照计划与写入计划的 server 版本，读取当前快照并比较用户提供的全部 `expected` 字段；然后将请求桥接为内部目录修改，核对目录读取与旧快照的对应字段一致，交给统一准备与写入流程。所需标签也在写入前全部解析；不会只取 schema 2 的最小旧值而跳过旧请求中的额外预期字段。
-
-- `status: rejected`：宏确认尚未调用写入 API，预检查已经拒绝请求。`result.json` 保留错误原因和未写入的前后状态；版本检查在快照字段读取前拒绝时仅含最小会话元数据，不能当作完整快照。CLI 以非零退出码返回；后台会话保持 `ready`，`last_request_status` 为 `rejected`，可以重新读取后构造新请求。
-- `status: ok`：宏已完成写入和回读；文件入口还需通过重新加载核对后才生成成功摘要。
-- 超时、客户端异常、写入或回读失败：会话记录写入结果未确认或保留仍在执行的请求标记，按[后台会话失败处理](bridge-session.md#身份和失败处理)处理。当前不自动重试、不承诺回滚。
-
-`modify` 要求修改前后旧 Inspector 已覆盖字段和目标类型全部已配目录属性读取成功。它不能在部分快照上声称已确认操作结果。`set-scalar` 也通过目录的 `quantity_value` 写入常量，但没有新增调用者提供的 `expected`。内部读取当前值用于同次操作准备与回读，不构成陈旧请求保护；需要保护此前读取状态时使用 `modify`。
-
-文件 `summary.json` 与会话修改结果包含 `modification`、`snapshot` 和 `snapshot_diff`。另增 `catalog_before`、`catalog`、`catalog_diff`；文件结果还有 `reopened_snapshot_match` 和 `reopened_catalog_match`，分别确认旧快照与目录内容的独立重载一致。文件入口默认保留宏、命令、日志和 `result.json`，后者保存宏结果；规范化请求与计划直接传入执行器，仅内部调试模式另存 `request.json` 和 `legacy-plan.json`。会话成功请求默认只留简短操作记录，调试和失败诊断按[运行数据规则](bridge-session.md#运行数据与项目产物)保留。
-
-`snapshot_diff` 记录已覆盖字段的所有变化，包括参数依赖导致的求值变化。每项包含 `path`、`before`、`after`，其中 `path` 是相对于快照根的 JSON Pointer；对象数组按 Inspector 的稳定排序使用下标，标签等标量数组整体记录。比较排除 `simulation_name`、`session_path` 和 `modified` 三个加载元数据字段。Diff 不覆盖完整 STAR 对象树，不能证明所有未读取设置都未变化。新增 `catalog_diff` 的同会话引用与跨加载规范化规则见[目录结果与差异](catalog-modifier.md#结果与差异)。
-
-## 已确认的范围
-
-既有验证结果与复现材料见[验证记录](../evidence/modifier.md)。当前会话与执行改造的实测缺口统一见[会话验证边界](bridge-session.md#验证边界)。
+历史 schema 1 验证仅保留作证据，见[原 Modifier 验证记录](../evidence/modifier.md)，不表示已删除入口仍受支持。

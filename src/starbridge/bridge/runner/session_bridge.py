@@ -20,9 +20,9 @@ import uuid
 
 
 from starbridge.bridge.runner.file_bridge import (catalog_content, catalog_diff, execute,
-                         prepare_catalog_modification, prepare_catalog_read, prepare_legacy,
+                         prepare_catalog_modification, prepare_catalog_read,
                          prepare_snapshot)
-from starbridge.bridge.runner.modifier import ModificationRejected, load_request, snapshot_diff, verify_modification
+from starbridge.bridge.runner.modifier import ModificationRejected, snapshot_diff
 from starbridge.core.catalog_bundle import check_plan_targets, session_target
 from starbridge.core.session_store import session_directory, runtime_root, public_session
 
@@ -190,20 +190,20 @@ def terminate_owned(state):
     raise RuntimeError('Managed server processes did not terminate')
 
 
-def request(directory, state, action, timeout, *, output=None, name='', value=0.0, unit='',
-            modification=None, catalog_plan=None, catalog_request=None, legacy_plan=None,
+def request(directory, state, action, timeout, *, output=None,
+            catalog_plan=None, catalog_request=None,
             snapshot_plan=None, discovery_request=None):
     """核对进程和加载对象身份后执行请求；不检查磁盘原文件摘要或自动保存。"""
     if not alive(state):
         raise RuntimeError('Managed server is not running; refusing to connect to its old port')
-    check_plan_targets(catalog_plan, legacy_plan, snapshot_plan, target=session_target(state))
+    check_plan_targets(catalog_plan, snapshot_plan, target=session_target(state))
     # 旧管理会话升级时在持锁请求中只补一次世代标识；对象 key 必须与该 token 配对。
     if not state.get('session_token'):
         state['session_token'] = uuid.uuid4().hex
         write_json(directory / 'session.json', state)
     identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
     run = directory / 'requests' / identifier
-    mutating = action in ('save', 'modify', 'set-scalar', 'catalog-modify')
+    mutating = action in ('save', 'modify', 'catalog-modify')
     state.update(active_request=identifier, active_action=action, active_mutating=mutating,
                  request_owner=process_identity(os.getpid()), state='running')
     write_json(directory / 'session.json', state)
@@ -214,12 +214,12 @@ def request(directory, state, action, timeout, *, output=None, name='', value=0.
         write_json(directory / 'session.json', state)
 
     try:
-        data = execute(state['star'], None, run, output, name, value, unit,
+        data = execute(state['star'], None, run, output,
                        action=action, host=state['host'], port=state['port'],
                        expected_session=state['current_file'] or '', timeout=timeout,
-                       client_userdir=directory / 'client-settings', modification=modification,
+                       client_userdir=directory / 'client-settings',
                        catalog_plan=catalog_plan, catalog_request=catalog_request,
-                       session_token=state['session_token'], legacy_plan=legacy_plan, snapshot_plan=snapshot_plan,
+                       session_token=state['session_token'], snapshot_plan=snapshot_plan,
                        discovery_request=discovery_request,
                        expected_simulation_key=state.get('simulation_key', ''), on_client_start=record_client,
                        debug=state.get('debug', False))
@@ -502,7 +502,7 @@ def operate(args, directory):
             raise RuntimeError('Managed server is not running')
         if state.get('active_request'):
             raise OperationBusy('Request is still running; query session_status')
-        if (state.get('uncertain_request') and args.action in ('save', 'modify', 'set-scalar', 'stop')
+        if (state.get('uncertain_request') and args.action in ('save', 'modify', 'stop')
                 and not (args.action == 'stop' and args.discard)):
             raise OperationUncertain('Write outcome is unconfirmed; status and read-only requests remain available')
         # 持锁后从会话绑定选择版本。所有本地计划校验都在请求活动标记与 uncertain
@@ -511,13 +511,11 @@ def operate(args, directory):
             target = session_target(state)
             catalog_plan = getattr(args, 'catalog_plan', None)
             check_plan_targets(catalog_plan, target=target)
-            if args.action == 'set-scalar' or (args.action == 'modify' and catalog_plan is None):
-                args.legacy_plan = prepare_legacy(getattr(args, 'modification', None), target=target)
-            if (args.action in ('inspect', 'save', 'set-scalar', 'stop')
-                    or (args.action == 'modify' and (catalog_plan is None or getattr(args, 'audit', False)))):
+            if args.action == 'modify' and catalog_plan is None:
+                raise ValueError('Modification requires a catalog plan; schema 1 and set-scalar were removed')
+            if args.action in ('inspect', 'save', 'stop') or (args.action == 'modify' and getattr(args, 'audit', False)):
                 args.snapshot_plan = prepare_snapshot(target)
-            check_plan_targets(catalog_plan, getattr(args, 'legacy_plan', None),
-                               getattr(args, 'snapshot_plan', None), target=target)
+            check_plan_targets(catalog_plan, getattr(args, 'snapshot_plan', None), target=target)
         if args.action == 'stop':
             # 先读取 STAR 的修改标志；本机另存后仍可能为真，不擅自清除此标志。
             # 失败或仍有修改时，只有显式 discard 才允许放弃剩余内存状态。
@@ -554,33 +552,18 @@ def operate(args, directory):
             catalog_call = getattr(args, 'catalog_plan', None) is not None
             action = 'catalog-' + args.action if catalog_call else args.action
             data, run = request(directory, state, action, args.timeout, output=output,
-                                name=getattr(args, 'name', ''), value=getattr(args, 'value', 0.0),
-                                unit=getattr(args, 'unit', ''), modification=getattr(args, 'modification', None),
                                 catalog_plan=getattr(args, 'catalog_plan', None),
                                 catalog_request=getattr(args, 'catalog_request', None),
-                                legacy_plan=getattr(args, 'legacy_plan', None),
                                 snapshot_plan=getattr(args, 'snapshot_plan', None),
                                 discovery_request=getattr(args, 'discovery_request', None))
             if data['status'] == 'rejected':
                 raise ModificationRejected(f'{data["error"]}; see {run / "result.json"}')
             if data['status'] == 'uncertain':
                 raise OperationUncertain(f'{data.get("error", "Write verification failed")}; see {run / "result.json"}')
-            if args.action == 'modify' and not catalog_call:
-                verify_modification(args.modification, data['before'], data['after'])
             if args.action == 'modify' and catalog_call:
                 # 目录回读已由 Java 验证；此处仍要求完整结果，避免成功封套掩盖缺失字段。
                 catalog_content(data['catalog_before'], args.catalog_plan)
                 catalog_content(data['catalog'], args.catalog_plan)
-            legacy_plan = getattr(args, 'legacy_plan', None)
-            if legacy_plan is not None:
-                catalog_content(data['catalog_before'], legacy_plan)
-                catalog_content(data['catalog'], legacy_plan)
-            if args.action == 'set-scalar':
-                target = next(p for p in data['after']['parameters'] if p['name'] == args.name)
-                actual = target.get('raw_value')
-                if (target.get('unit') != args.unit or not isinstance(actual, (int, float))
-                        or not math.isclose(actual, args.value, rel_tol=1e-12, abs_tol=1e-12)):
-                    raise RuntimeError('Readback does not match requested scalar value/unit')
             if output:
                 if not output.is_file() or Path(data['after']['session_path']).resolve() != output:
                     raise RuntimeError('Saved file/path was not confirmed')
@@ -598,13 +581,9 @@ def operate(args, directory):
                 result['catalog'] = data['catalog']
             else:
                 result['snapshot'] = data['after']
-            if legacy_plan is not None:
-                # 旧结果字段继续保留；目录结果补充说明统一修改器实际核对的内容。
-                result.update(catalog_before=data['catalog_before'], catalog=data['catalog'],
-                              catalog_diff=catalog_diff(data['catalog_before'], data['catalog'], legacy_plan))
             if args.action == 'modify':
-                result['modification'] = args.catalog_request if catalog_call else args.modification
-                if not catalog_call or data.get('snapshot_audit'):
+                result['modification'] = args.catalog_request
+                if data.get('snapshot_audit'):
                     result.update(snapshot=data['after'], snapshot_diff=snapshot_diff(data['before'], data['after']))
                 if 'setter_attempts' in data:
                     result['setter_attempts'] = data['setter_attempts']
@@ -621,7 +600,7 @@ def operate(args, directory):
             raise
         except BaseException as error:
             # 请求执行器已经区分传输失败；这里只处理成功返回后发现的写入回读或保存核对失败。
-            if args.action in ('save', 'modify', 'set-scalar') and state.get('last_request_status') == 'ok':
+            if args.action in ('save', 'modify') and state.get('last_request_status') == 'ok':
                 finish_request(directory, state, 'uncertain', uncertain=True)
                 if isinstance(error, Exception):
                     raise OperationUncertain(str(error)) from error
@@ -634,7 +613,7 @@ def main():
         raise RuntimeError('Session prototype currently supports Linux only')
     parser = argparse.ArgumentParser(description='Manage a persistent local STAR simulation server.')
     commands = parser.add_subparsers(dest='action', required=True)
-    for action in ['start', 'status', 'inspect', 'describe', 'read', 'set-scalar', 'modify', 'save', 'stop']:
+    for action in ['start', 'status', 'inspect', 'describe', 'read', 'modify', 'save', 'stop']:
         command = commands.add_parser(action)
         if action != 'start':
             command.add_argument('--session-id', required=True)
@@ -647,17 +626,13 @@ def main():
             command.add_argument('--port', type=int)
             command.add_argument('--project-dir', type=Path)
             command.add_argument('--debug', action='store_true')
-        elif action == 'set-scalar':
-            command.add_argument('--name', required=True)
-            command.add_argument('--value', type=float, required=True)
-            command.add_argument('--unit', required=True)
         elif action == 'save':
             command.add_argument('--output', type=Path)
         elif action == 'modify':
             command.add_argument('--request', type=Path, required=True)
             command.add_argument('--audit', action='store_true')
-            command.add_argument('--catalog', type=Path)
-            command.add_argument('--execution', type=Path)
+            command.add_argument('--catalog', type=Path, required=True)
+            command.add_argument('--execution', type=Path, required=True)
         elif action in ('describe', 'read'):
             command.add_argument('--catalog', type=Path, required=True)
             command.add_argument('--execution', type=Path, required=True)
@@ -669,17 +644,10 @@ def main():
         parser.error('--timeout must be positive and finite')
     if args.action == 'start' and args.port is not None and not 1024 <= args.port <= 65535:
         parser.error('--port must be between 1024 and 65535')
-    if args.action == 'set-scalar' and not math.isfinite(args.value):
-        parser.error('--value must be finite')
     if args.action == 'modify':
-        # 请求格式在写入活动标记前完成校验，格式错误不影响已有会话。
-        if args.catalog is not None or args.execution is not None:
-            if args.catalog is None or args.execution is None:
-                parser.error('Catalog modify requires both --catalog and --execution')
-            args.catalog_plan, args.catalog_request = prepare_catalog_modification(
-                args.catalog, args.execution, args.request)
-        else:
-            args.modification = load_request(args.request)
+        # 请求校验在活动标记前完成；这里只接受共享目录属性或结构操作。
+        args.catalog_plan, args.catalog_request = prepare_catalog_modification(
+            args.catalog, args.execution, args.request)
     elif args.action in ('describe', 'read'):
         # 目录、成员指纹与请求校验在获取会话活动标记之前完成；无效输入不会污染会话。
         args.catalog_plan, args.catalog_request = prepare_catalog_read(

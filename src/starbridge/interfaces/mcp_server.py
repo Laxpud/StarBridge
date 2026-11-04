@@ -6,6 +6,7 @@ SDK 在线程中执行，避免长时间 STAR 调用阻塞协议循环；同一�
 """
 
 import json
+from typing import Any
 
 from mcp import types
 from mcp.server import MCPServer
@@ -33,14 +34,6 @@ async def validate_arguments(context, call_next):
                 schema = tool_input_schema(tool.name.removeprefix('starbridge.'), tool.input_schema)
                 error = next(Draft202012Validator(schema).iter_errors(params.get('arguments', {})), None)
                 if error is not None:
-                    # 修改请求按显式版本选择错误分支，避免把 schema 2 的字段缺失误报为“需要 schema 3”。
-                    if error.validator == 'oneOf' and isinstance(error.instance, dict):
-                        version = error.instance.get('schema_version')
-                        for index, branch in enumerate(error.validator_value):
-                            if branch.get('properties', {}).get('schema_version', {}).get('const') == version:
-                                error = next((child for child in error.context
-                                              if child.schema_path[0] == index), error)
-                                break
                     return tool_result({'status': 'rejected', 'error': {
                         'type': 'ArgumentValidationError', 'message': error.message,
                         'argument_path': list(error.absolute_path)},
@@ -79,10 +72,10 @@ def call(method, arguments):
 def get_contract() -> types.CallToolResult:
     """按需获取当前服务的完整调用契约；无需会话，不启动 STAR，也不是每次调用的前置步骤。
 
-    result.usage 包含发现/目录两种流程、嵌套 target/request schema、结果字段位置、
+    result.usage 包含统一对象流程、locator schema、结果字段位置、
     分页、保存重载及失败恢复规则；defaults 与 contract_scope 区分可覆盖默认值、当前上限和能力范围。
     与 starbridge://contract 资源内容相同，供只支持工具
-    调用的客户端使用；属性的新值格式由 describe_node/describe_object 的 write_contract 提供。
+    调用的客户端使用；属性的新值格式由 describe_object 的 write_contract 提供。
     """
     return call('get_contract', {})
 
@@ -118,106 +111,88 @@ def discover_installations(star: StrictStr | None = None, search_roots: list[Str
 
 @server.tool(name='starbridge.find_objects', annotations=READ)
 def find_objects(session_id: StrictStr, type_id: StrictStr, name: StrictStr | None = None,
-                 parent: dict | None = None, offset: StrictInt = 0, limit: StrictInt = 100,
-                 timeout: StrictFloat = 180) -> types.CallToolResult:
-    """按已适配目录类型枚举当前实例；未知对象类型在发现能力可用时先沿对象树导航。
+                 parent_id: StrictStr | None = None, offset: StrictInt = 0,
+                 limit: StrictInt = 100, timeout: StrictFloat = 180) -> types.CallToolResult:
+    """按目录类型查找真实对象；返回 result.objects[] 的 object_id 与稳定 locator。
 
-    从 get_capabilities 选择 type_id；子类型必须传完整 parent，name 为精确匹配。
-    result.catalog.objects[] 返回 locator/reference/locator_unique；将 locator 加上 reference
-    作为后续 target。非空 catalog.next_offset 继续翻页；名称歧义不得任取一项。
-    需要属性契约时 describe_object，需要当前值时 read_properties；可复用有效描述，列表不提供当前属性值。
+    子类型用父对象查找结果的 parent_id。名称精确匹配，分页用 next_offset。
+    引用用于统一 describe_object/read_properties/modify_property；跨会话须 relocate_object。
     """
     return call('find_objects', locals())
 
 
 @server.tool(name='starbridge.describe_object', annotations=READ)
-def describe_object(session_id: StrictStr, target: dict, properties: list[StrictStr] | None = None,
+def describe_object(session_id: StrictStr, object_id: StrictStr | None = None,
+                    property_ids: list[StrictStr] | None = None, cursor: StrictStr | None = None,
+                    limit: StrictInt = 100, scope: StrictStr = 'simulation',
                     timeout: StrictFloat = 180) -> types.CallToolResult:
-    """描述已定位目录对象的属性、写入格式和结构操作；不读取全部当前值。
+    """描述查找或浏览所得对象，统一返回 result.properties[id]，不读取全部当前值。
 
-    result.catalog.properties[id].write_contract 提供新值 schema 和约束；adapter 是读取格式，
-    不可据它猜测写入格式。检查 target_condition_status、guard_checks 和 inspection_complete；
-    writable 只代表实现。operations[id] 含 state_property、method_choices 及影响范围。
-    需要当前值时 read_properties：属性修改取该属性 value；结构操作取 state_property 的完整 value。
+    属性给出 write_enabled/write_contract；operations[id] 给出已适配结构操作。
+    支持标志不证明实例或新值可写；写前读取完整 value 用作 expected。
+    省略 object_id 只表示运行时树根。翻页保持 object_id/scope；property_ids 可省略沿用。
+    检查 inspection_complete、state、errors 和 next_cursor；描述分页不消除底层缺口。
     """
     return call('describe_object', locals())
 
 
 @server.tool(name='starbridge.read_properties', annotations=READ)
-def read_properties(session_id: StrictStr, target: dict, properties: list[StrictStr] | None = None,
+def read_properties(session_id: StrictStr, object_id: StrictStr, property_ids: list[StrictStr],
                     timeout: StrictFloat = 180) -> types.CallToolResult:
-    """读取目录属性的当前值；properties 省略表示该类型全部已映射属性，不代表全算例。
+    """读取显式选择的属性，目录对象和树节点使用相同参数与 result.properties[id]。
 
-    result.catalog.properties[id] 为 {status,value} 或错误；只有 status=ok 才消费 value，
-    同时检查 catalog.inspection_complete。修改前把该完整 value 原样作为 expected，
-    不含 status 外壳，也不删除单位、定义或关联字段。新值格式从 describe_object 取得。
+    只消费 status=ok 的 value；检查 inspection_complete 和逐属性错误。
+    relation/range 各有独立状态；不支持范围读取不代表没有限制。
+    expected 必须原样复制完整 value；已有有效引用与属性契约可直接复用。
     """
     return call('read_properties', locals())
 
 
-@server.tool(name='starbridge.modify', annotations=WRITE)
-def modify(session_id: StrictStr, request: dict, timeout: StrictFloat = 180, audit: StrictBool = False) -> types.CallToolResult:
-    """修改一个已描述的目录属性或执行一个已发布的结构操作，只改变内存。
+@server.tool(name='starbridge.modify_property', annotations=WRITE)
+def modify_property(session_id: StrictStr, object_id: StrictStr, property_id: StrictStr,
+                    expected: Any, value: Any, timeout: StrictFloat = 180,
+                    audit: StrictBool = False) -> types.CallToolResult:
+    """按当前 write_contract 修改单个属性，只改变内存，不自动保存或重试。
 
-    属性 request={schema_version:2,action:'modify',target,property,expected,value}；
-    结构操作 request={schema_version:3,action:'modify',target,operation,expected,arguments:{method}}。
-    expected 取当前读取 value；属性 value 遵循 write_contract，method 取可用 method_choices.id。
-    result.catalog 是目标回读；audit=true 时另返回完整快照和 Diff。成功后按任务显式 save_session。
-    uncertain 时查询 session_status，可只读核对，不重试、不回滚、不保存。详细格式见 get_contract。
+    expected 使用 read_properties 的完整 value；value 可为契约允许的标量、数组或对象。
+    新关联使用 find_objects 返回的 {object_id: ...}，不构造 Java 引用或目录 target。
+    result.before/properties 为前后属性结果，setter_attempts 记录尝试；audit=true 附快照与 Diff。
+    uncertain 时查询状态并只读核对，不重试、回滚或保存。
     """
-    return call('modify', locals())
+    return call('modify_property', locals())
+
+
+@server.tool(name='starbridge.execute_operation', annotations=WRITE)
+def execute_operation(session_id: StrictStr, object_id: StrictStr, operation_id: StrictStr,
+                      expected: Any, arguments: dict, timeout: StrictFloat = 180,
+                      audit: StrictBool = False) -> types.CallToolResult:
+    """执行 describe_object.operations 中已适配的结构操作，不把方法切换当成普通赋值。
+
+    expected 从 state_property 指定的属性读取；arguments.method 取可用的 method_choices.id。
+    result.before/properties 返回前后属性结果；实例和关联条件由执行器重新核对。
+    仅适用于 find_objects 返回的目录对象；不会自动保存或重试。
+    """
+    return call('execute_operation', locals())
 
 
 @server.tool(name='starbridge.inspect_session', annotations=READ)
 def inspect_session(session_id: StrictStr, timeout: StrictFloat = 180) -> types.CallToolResult:
-    """获取已有 Inspector 布局的概览，result.snapshot 含参数、场函数、区域、边界等。
-
-    快照仅覆盖已有布局，缺少字段不表示 STAR 没有此设置，也不是完整依赖检查。
-    需要快照外的值或写入契约时按需通过发现或目录接口定位、描述和读取目标；request_result 指向请求记录。
-    """
+    """按需读取已适配 Inspector 快照范围；不是全算例导出，也不是普通赋值前提。"""
     return call('inspect_session', locals())
 
 
 @server.tool(name='starbridge.browse_tree', annotations=READ)
-def browse_tree(session_id: StrictStr, node_id: StrictStr | None = None,
+def browse_tree(session_id: StrictStr, object_id: StrictStr | None = None,
                 cursor: StrictStr | None = None, offset: StrictInt = 0, limit: StrictInt = 100,
                 scope: StrictStr = 'simulation', max_nodes: StrictInt = 2000,
                 timeout: StrictFloat = 180) -> types.CallToolResult:
-    """发现能力可用时，展开根或 node_id 的一层实际对象，不隐式读取属性或扫描全树。
+    """展开实际树的一层，返回 result.object 与 objects[]，不读取属性值。
 
-    result.children[] 的 node_id 可用于继续浏览或 describe_node；kind=proxy 且 node_id=null
-    的项不可当作可调用节点。检查 state/errors/truncations；next_cursor 非空时传回并保持 scope。
-    complete 仅指本次层级观察，未展开不表示没有子对象。保存 locator 供新会话重定位。
-    limit、max_nodes、scope 和 timeout 可按任务调整；当前允许范围见参数 schema。
+    仅在 runtime_discovery.supported=true 时可用；省略 object_id 从根开始。
+    后续展开沿用树结果的 object_id，目录查找不提供树关系。代理 object_id 为空。
+    翻页用 next_cursor，检查 errors/truncations，不将一次展开当成全树覆盖。
     """
     return call('browse_tree', locals())
-
-
-@server.tool(name='starbridge.describe_node', annotations=READ)
-def describe_node(session_id: StrictStr, node_id: StrictStr | None = None,
-                  scope: StrictStr = 'simulation', timeout: StrictFloat = 180,
-                  property_ids: list[StrictStr] | None = None, cursor: StrictStr | None = None,
-                  limit: StrictInt = 100) -> types.CallToolResult:
-    """发现能力可用时，描述实际节点属性和已接受的写入格式，不返回全部当前属性值。
-
-    result.properties[] 含 property_id、名称/说明、read_support、write_enabled、write_contract。
-    可读候选仍须 read_node_properties 核验；write_enabled 不代表实例或新值条件已通过。
-    property_ids 省略描述全部已观察属性；next_cursor 翻页保持 node_id/scope，可省略选择以沿用。
-    检查 state/errors/descriptor_next_offset，分页完成不消除底层 partial 状态。
-    """
-    return call('describe_node', locals())
-
-
-@server.tool(name='starbridge.read_node_properties', annotations=READ)
-def read_node_properties(session_id: StrictStr, node_id: StrictStr, property_ids: list[StrictStr],
-                         timeout: StrictFloat = 180) -> types.CallToolResult:
-    """发现能力可用时，用返回的节点和属性 ID 读取明确选择的当前值，必须传非空 property_ids。
-
-    result.properties[id] 的 status=ok 才能消费 value；整体检查 inspection_complete/errors。
-    relation/range 各有独立 status；range 不支持不表示没有上下限。
-    修改时把完整 value 原样用作 expected，新值按 describe_node.write_contract；不推测旧状态。
-    """
-    return call('read_node_properties', locals())
 
 
 @server.tool(name='starbridge.search_settings', annotations=READ)
@@ -225,42 +200,24 @@ def search_settings(session_id: StrictStr, query: StrictStr, expand: StrictBool 
                     max_nodes: StrictInt = 100, max_depth: StrictInt = 4,
                     scope: StrictStr = 'simulation', timeout: StrictFloat = 180,
                     limit: StrictInt = 100, cursor: StrictStr | None = None) -> types.CallToolResult:
-    """发现能力可用时，搜索名称、说明、程序标识与中英文术语，返回缓存候选，不返回当前属性值。
+    """搜索缓存元数据；result.matches[].object/property 用于统一描述和读取。
 
-    默认 expand=false 只搜已有索引，新会话可能零命中；需要新发现时设 expand=true 并调整预算。
-    当前扩展每次从根开始，不保证断点续扫或全树穷尽；扩大预算也须核对覆盖结果。
-    result.matches[] 的 node/property 用于 describe_node 和 read_node_properties 重新核验。
-    必须检查 coverage 的 errors/truncations/unexpanded_nodes；空命中不能证明全算例不存在目标。
-    翻页保持 query/scope 并设 expand=false；缓存变化会使 next_cursor 失效。
+    需要新发现才显式 expand=true；覆盖受节点、深度和时间预算限制。
+    空命中不证明目标不存在。检查 coverage、errors/truncations 和分页。
+    翻页保持 query/scope 并设 expand=false；缓存变化可使游标失效。
     """
     return call('search_settings', locals())
 
 
-@server.tool(name='starbridge.relocate_node', annotations=READ)
-def relocate_node(session_id: StrictStr, locator: list[dict],
-                  timeout: StrictFloat = 180) -> types.CallToolResult:
-    """发现能力可用时，在保存重载或新会话后，按之前节点的 locator 名称/类型路径重新定位。
+@server.tool(name='starbridge.relocate_object', annotations=READ)
+def relocate_object(session_id: StrictStr, locator: dict,
+                    timeout: StrictFloat = 180) -> types.CallToolResult:
+    """按对象结果的 locator 在当前会话重新定位，返回 result.object.object_id。
 
-    返回 result.node.node_id 作为新引用；检查 state/errors，再 describe_node/read_node_properties。
-    locator 是数组，不是目录 target；不携带旧 key/token。同名歧义拒绝，不宣称仍为原 Java 实例。
+    locator 原样传入，内部按来源使用目录路径或树路径；不接受旧引用代替定位。
+    同名歧义拒绝；重定位不证明仍是原 Java 实例，须重新描述读取。
     """
-    return call('relocate_node', locals())
-
-
-@server.tool(name='starbridge.modify_node_property', annotations=WRITE)
-def modify_node_property(session_id: StrictStr, node_id: StrictStr, property_id: StrictStr,
-                         expected: dict | StrictStr | StrictBool | StrictInt | StrictFloat,
-                         value: dict | StrictStr | StrictBool | StrictInt | StrictFloat,
-                         timeout: StrictFloat = 180, audit: StrictBool = False) -> types.CallToolResult:
-    """发现写入能力可用时，按当前描述的 write_contract 修改一个支持的发现属性，只改变内存。
-
-    使用当前有效 describe_node 契约，并从 read_node_properties 取得完整 value 用作 expected。
-    常量标量新值如 {value:0.001,unit:'m'}，向量如 {components:[0,0,0.125],unit:'m'}，
-    仅在该属性契约允许时适用；不要照抄示例单位或假设任意 setter 都可执行。
-    result 含目标 catalog 回读与 setter_attempts；audit=true 时另返回完整快照和 Diff。
-    任务要求持久化时另行 save_session；uncertain 时查询 session_status，可只读核对，不重试、不回滚、不保存。
-    """
-    return call('modify_node_property', locals())
+    return call('relocate_object', locals())
 
 
 @server.tool(name='starbridge.open_session', annotations=WRITE)

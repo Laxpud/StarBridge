@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from .catalog import CatalogError, _constant, _object, _require, load
-from .execution import _operation_request, _target, load_execution
+from .execution import _operation_request, _target, load_execution, modification_properties
 
 
 def _locator(value):
@@ -15,7 +15,7 @@ def _locator(value):
             for key, item in value.items() if key != 'reference'}
 
 
-def _read_result(value, plan):
+def _read_result(value, plan, *, before=False):
     """核对读取结果的目录、版本和属性身份，返回成功与错误的逐项观察。
 
     此处只认 status=ok 且存在 value 的读取结果，describe 的适配器描述
@@ -27,14 +27,23 @@ def _read_result(value, plan):
     _require(isinstance(runtime, dict) and
              {k: runtime.get(k) for k in ('release', 'build')} == plan['target'],
              'Runtime version does not match the execution catalog')
-    target = value.get('target')
+    unified = value.get('schema_id') == 'starbridge.objects' and value.get('schema_version') == 2
+    if unified:
+        obj = value.get('object', {})
+        _require(isinstance(obj, dict), 'Missing unified object descriptor')
+        locator = obj.get('locator', {})
+        _require(isinstance(locator, dict), 'Missing unified object locator')
+        _require(locator.get('source') == 'catalog', 'Runtime rules are not static catalog evidence')
+        target = {'type': obj.get('type_id'), 'name': obj.get('name'), 'locator': locator.get('target')}
+    else:
+        target = value.get('target')
     _require(isinstance(target, dict) and isinstance(target.get('locator'), dict),
              'Read result is missing its target locator')
     locator = target['locator']
     _target(plan, locator)
     _require(target.get('type') == locator['type'] and target.get('name') == locator['name'],
              'Read result target and locator do not agree')
-    entries = value.get('properties')
+    entries = value.get('before' if before else 'properties')
     _require(isinstance(entries, dict) and bool(entries), 'Read result has no properties')
     _require(entries.keys() <= plan['properties'][locator['type']].keys(),
              'Read result contains unknown mapped properties')
@@ -47,8 +56,9 @@ def _read_result(value, plan):
             successful.append(name)
         else:
             errors.append({'property': name, 'error': entry.get('error')})
-    _require(type(value.get('inspection_complete')) is bool and
-             value['inspection_complete'] == (not errors), 'Read completeness contradicts property results')
+    complete = value.get('before_complete' if before else 'inspection_complete')
+    _require(type(complete) is bool and
+             complete == (not errors), 'Read completeness contradicts property results')
     return locator, successful, errors
 
 
@@ -73,7 +83,7 @@ def _evidence(path, plan):
 
     支持宏 result.json、文件 Runner summary.json 和会话命令响应。只把
     成功的 schema 2 修改视为属性写入观察，schema 3 修改另计结构操作执行。
-    旧 schema 的兼容结果不猜测属性映射。
+    统一接口 schema 2 使用 object、before/properties 与 change；历史 Runner 材料仍按原格式读取。
     结果来自调用方提供的本地文件，摘要保证可追溯，不构成来源真实性认证。
     """
     path = Path(path)
@@ -81,43 +91,64 @@ def _evidence(path, plan):
     record = {'path': str(path), 'sha256': hashlib.sha256(raw).hexdigest()}
     data = json.loads(raw, object_pairs_hook=_object, parse_constant=_constant)
     _require(isinstance(data, dict), 'Evidence must be a result object')
-    if data.get('status') in ('rejected', 'error'):
-        return {**record, 'status': data['status'], 'reason': data.get('error'),
-                **_no_observations()}
-    catalog = data.get('catalog')
+    # Core 封套只解开一层；失败结果不包含可接受的读取或写入观察。
+    envelope_status = data.get('status')
+    if envelope_status not in (None, 'ok'):
+        return {**record, 'status': envelope_status, 'reason': data.get('error'), **_no_observations()}
+    if envelope_status == 'ok' and isinstance(data.get('result'), dict):
+        data = data['result']
+    unified = data.get('schema_id') == 'starbridge.objects' and data.get('schema_version') == 2
+    catalog = data if unified else data.get('catalog')
     if isinstance(catalog, dict) and catalog.get('catalog_id') != plan['catalog_id']:
         return {**record, 'status': 'stale', 'reason': 'Execution catalog_id differs',
-                'catalog_id': catalog.get('catalog_id'),
-                **_no_observations()}
+                'catalog_id': catalog.get('catalog_id'), **_no_observations()}
     try:
         # 1. 限定为当前 Runner 的成功封套；裸 catalog 或任意描述不能冒充执行结果。
         _require('status' not in data or data['status'] == 'ok', 'Result status is not successful')
         macro = data.get('status') == 'ok'
         file_result = data.get('action') in ('read', 'modify') and data.get('input_unchanged') is True
-        session_result = isinstance(data.get('request_result'), str) and isinstance(data.get('session'), str)
-        _require(macro or file_result or session_result, 'Unsupported or unsuccessful result envelope')
+        session_result = isinstance(data.get('session_id'), str) or (isinstance(data.get('request_result'), str) and isinstance(data.get('session'), str))
+        _require(macro or file_result or session_result or (unified and envelope_status == 'ok'), 'Unsupported or unsuccessful result envelope')
         locator, reads, errors = _read_result(catalog, plan)
         type_id = locator['type']
         writes, reloads = [], []
         executes, operation_reloads = [], []
         operation_observation = {}
         request = data.get('catalog_request', data.get('modification'))
+        if unified and data.get('change'):
+            change = data['change']
+            _require(isinstance(change, dict), 'Invalid unified change descriptor')
+            _require(type(data.get('setter_attempts')) is int and data['setter_attempts'] == 1,
+                     'Unified write evidence requires one setter attempt')
+            kind = change.get('kind')
+            _require(kind in ('property', 'operation'), 'Unknown change kind')
+            # 统计只需要实际执行标识；新接口不重复回传整份请求或伪造用户 expected。
+            request = {'schema_version': 2 if kind == 'property' else 3, 'action': 'modify',
+                       'target': locator}
+            if kind == 'property':
+                request.update(property=change['property_id'])
+            else:
+                request.update(operation=change['operation_id'], arguments=change['arguments'])
+
         # 2. 写入必须在同一成功结果中带有请求及完整前后读取，不能从值变化推断 setter 成功。
         if (isinstance(request, dict) and type(request.get('schema_version')) is int
                 and request['schema_version'] == 2 and request.get('action') == 'modify'):
-            _require(request.keys() == {'schema_version', 'action', 'target', 'property', 'expected', 'value'},
-                     'Invalid modification evidence request')
+            if not unified:
+                _require(request.keys() == {'schema_version', 'action', 'target', 'property', 'expected', 'value'},
+                         'Invalid modification evidence request')
             _target(plan, request['target'])
             _require(_locator(request['target']) == _locator(locator), 'Modification target differs from read target')
-            before_locator, before_reads, before_errors = _read_result(data.get('catalog_before'), plan)
+            before_locator, before_reads, before_errors = (_read_result(data, plan, before=True) if unified else
+                                                            _read_result(data.get('catalog_before'), plan))
             _require(_locator(before_locator) == _locator(locator), 'Modification before/after targets differ')
             name = request['property']
             _require(isinstance(name, str) and name in reads and name in before_reads,
                      'Modified property is missing from successful readback')
             _require(plan['properties'][type_id][name]['writable'], 'Modified property has no writer')
             _require(not errors and not before_errors, 'Modification readback is incomplete')
-            _require(set(reads) == set(before_reads) == plan['properties'][type_id].keys(),
-                     'Modification readback omits mapped properties')
+            _require(set(reads) == set(before_reads) and
+                     modification_properties(plan, type_id, name) <= set(reads),
+                     'Modification readback omits required target, identity or preserved properties')
             writes.append(name)
             if _file_reload(data, file_result):
                 reloads.append(name)
@@ -126,12 +157,18 @@ def _evidence(path, plan):
         elif (isinstance(request, dict) and type(request.get('schema_version')) is int
               and request['schema_version'] == 3 and request.get('action') == 'modify'):
             # 复用实际请求入口的旧状态、方法参数及目标契约，避免报告另造较宽松的格式。
+            if unified:
+                identifier = request['operation']
+                _require(identifier in plan.get('operations', {}).get(type_id, {}), 'Unknown operation')
+                state_property = plan['operations'][type_id][identifier]['state_property']
+                request['expected'] = data['before'][state_property]['value']
             request = _operation_request(plan, request)
             _require(_locator(request['target']) == _locator(locator), 'Operation target differs from read target')
             identifier = request['operation']
             operation = plan['operations'][type_id][identifier]
             _require(isinstance(operation.get('write'), dict), 'Operation has no execution implementation')
-            before_locator, before_reads, before_errors = _read_result(data.get('catalog_before'), plan)
+            before_locator, before_reads, before_errors = (_read_result(data, plan, before=True) if unified else
+                                                            _read_result(data.get('catalog_before'), plan))
             _require(_locator(before_locator) == _locator(locator), 'Operation before/after targets differ')
             _require(not errors and not before_errors, 'Operation readback is incomplete')
             _require(set(reads) == set(before_reads) == set(operation['read_properties']),

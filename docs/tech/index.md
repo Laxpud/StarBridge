@@ -29,9 +29,9 @@
 |---|---|
 | [文件 Bridge](bridge-file.md) | 独立文件加载、另存与重载核对 |
 | [Inspector 快照](inspector.md) | schema 1 对象快照、字段及覆盖范围 |
-| [Modifier 兼容契约](modifier.md) | schema 1 修改和旧调用入口 |
+| [旧修改入口迁移](modifier.md) | 已移除入口到统一属性调用的对应关系 |
 
-这些入口仍有各自契约，接口迁移进度只在 [TODO](../../TODO.md#当前里程碑三端插件会话接入与运行简化)维护。
+文件工作流和快照格式继续保留；已删除修改入口仅提供迁移说明，当前工作见 [TODO](../../TODO.md)。
 
 ## 分发维护
 
@@ -43,4 +43,4 @@
 - [ADR 0002](../adr/0002-plugins-sessions-and-storage.md)：三端插件、会话复用、存储和运行简化。
 - [参考项目](references.md)：设计来源、可借鉴内容及适用边界。
 
-用户安装和客户端接入见[分发说明](../distribution.md)；需求与实施安排分别见[规格](../specs/spec-2026-11-03-14-23.md)和[计划](../plans/plan-2026-11-03-14-23.md)。
+用户安装和客户端接入见[分发说明](../distribution.md)；需求与实施安排分别见[规格](../archive/spec-2026-11-03-14-23.md)和[计划](../archive/plan-2026-11-03-14-23.md)。

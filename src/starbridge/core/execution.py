@@ -945,44 +945,15 @@ def prepare_modification_plan(plan, request):
         while current is not None:
             required[current] = plan['types'][current]
             current = plan['types'][current]['parent_type']
-    selected = {request['property'], *prop['write'].get('preserved_properties', [])}
-    selected.update(WRITE_IDENTITY_PROPERTIES & properties.keys())
+    selected = modification_properties(plan, identifier, request['property'])
     clipped = {name: {key: item for key, item in value.items()
                       if key != 'write' or name == request['property']}
                for name, value in properties.items() if name in selected}
     return ({**plan, 'types': required, 'properties': {identifier: clipped}, 'operations': {}}, request)
 
 
-def prepare_legacy(modification=None, *, target=None):
-    """为旧修改入口加载所选精确版本目录，保留原请求与结果契约。
-
-    调用方应先用旧请求校验器检查 modification；None 表示 set-scalar。
-    这里只选择调用能力，不读取算例或合成预期状态。Java 在同一次宏中读取
-    目录与旧快照，核对旧 expected 及两种读取的一致性，再交给统一修改器。
-    旧数值入口仍无外部 expected。
-    省略 target 保留原 2602 默认；实际 server 必须通过精确版本检查。
-    """
-    from .catalog_bundle import bundle_root
-    root = bundle_root(target)
-    plan = load_execution(root / 'generated' / 'catalog.json', root / 'execution.json')
-    if modification is None:
-        identifier, property_name = 'scalar_parameter', 'quantity_value'
-    elif modification['operation'] == 'set-definition':
-        identifier, property_name = {
-            'parameter': ('scalar_parameter', 'quantity'),
-            'field_function': ('user_field_function', 'definition'),
-        }[modification['target']['kind']]
-    else:
-        identifier = {'parameter': 'global_parameter', 'field_function': 'field_function',
-                      'region': 'region', 'boundary': 'boundary'}[modification['target']['kind']]
-        property_name = 'tags'
-    required = {}
-    current = identifier
-    while current is not None:
-        required[current] = plan['types'][current]
-        current = plan['types'][current]['parent_type']
-    # 只把本次需要的 setter 留给兼容层，其余属性用于完整回读和身份核对。
-    properties = {name: {key: value for key, value in entry.items()
-                         if key != 'write' or name == property_name}
-                  for name, entry in plan['properties'][identifier].items()}
-    return {**plan, 'types': required, 'properties': {identifier: properties}, 'operations': {}}
+def modification_properties(plan, type_id, property_id):
+    """返回普通赋值实际要求的回读集合，供执行裁剪与覆盖证据核对共用。"""
+    properties = plan['properties'][type_id]
+    return ({property_id, *properties[property_id]['write'].get('preserved_properties', [])}
+            | (WRITE_IDENTITY_PROPERTIES & properties.keys()))

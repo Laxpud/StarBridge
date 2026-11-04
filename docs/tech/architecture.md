@@ -29,7 +29,7 @@ flowchart TD
     python -->|读写状态与缓存| runtime[("用户目录 ~/.starbridge")]
 ```
 
-Agent 宿主加载插件 Skill，并通过 stdio 启动 StarBridge MCP 进程。MCP 和共享 JSON CLI 把请求交给同一 Core Service；Core 准备发现或目录计划，调用会话 Runner。Runner 连接已有 STAR 服务，或启动自有后台服务，再通过临时 Java 批处理客户端执行请求。客户端退出后 STAR 会话继续存在。
+Agent 宿主加载插件 Skill，并通过 stdio 启动 StarBridge MCP 进程。MCP 和共享 JSON CLI 把请求交给同一 Core Service；Core 解析统一对象引用并准备发现或目录计划，调用会话 Runner。Runner 连接已有 STAR 服务，或启动自有后台服务，再通过临时 Java 批处理客户端执行请求。客户端退出后 STAR 会话继续存在。
 
 Java 代码在目标 STAR 会话中定位对象、检查必要条件、执行读取或修改并返回结构化结果。Python 侧负责会话身份、请求状态和结果整理。Linux 进程检查、会话文件锁和对象引用用于确定本次操作的对象；它们不阻止用户在 GUI 中同时修改算例，也不提供跨客户端事务。
 
@@ -44,8 +44,8 @@ Java 代码在目标 STAR 会话中定位对象、检查必要条件、执行读
 ```mermaid
 flowchart TD
     entry["MCP 与 JSON CLI"] -->|调用公开方法| service["Core Service"]
-    service -->|对象树与属性请求| discovery["运行时发现与规则"]
-    service -->|目录读写请求| execution["目录执行计划与类型适配"]
+    service -->|统一对象引用分派到运行时规则| discovery["运行时发现与规则"]
+    service -->|统一对象引用分派到目录适配| execution["目录执行计划与类型适配"]
     discovery -->|编译读写计划| execution
     service -->|会话与目录操作| runner["会话 Runner"]
     discovery -->|请求执行：Service 回调| runner
@@ -60,23 +60,23 @@ Service 校验公开方法和参数并形成状态封套；发现模块维护会
 
 | 入口 | 当前契约 | 阅读方式 |
 |---|---|---|
-| 运行时发现 | `node_id`、`property_id`、按规则生成的计划 | 以运行时发现页说明对象导航、分页和受控写入；不要混用目录引用。 |
-| 目录读写 | 类型、属性、操作标识及 `target` | 以目录读写页说明已映射值类型、领域条件和结构操作。 |
-| 兼容入口 | Inspector schema 1、旧 `modify` 和 `set-scalar` | 保留既有快照与结果投影；以各兼容页为准。 |
+| MCP／JSON CLI | `object_id`、`property_id` 和统一属性结果 | 查找与树导航共用描述、读取及修改入口，结构操作独立；见 MCP 契约。 |
+| 底层目录 Runner | 类型、属性、操作标识及内部 `target` | 文件工作流与执行适配使用；不再发布另一套 MCP 读写方法。 |
+| 按需审查 | Inspector schema 1 快照 | 保留快照与 Diff；旧 schema 1 修改、`set-scalar` 及结果投影已删除。 |
 | 文件 Runner | 独立加载、另存和重载检查 | 文件流程的原文件摘要与重载检查不等于普通会话赋值的要求。 |
 
-统一接口及旧入口移除的剩余工作见 [TODO](../../TODO.md#当前里程碑三端插件会话接入与运行简化)。各专题中的历史实测记录保留原版本和场景，不代表最新会话、缓存或写入改造已经通过真实 STAR 验证。候选方案放在目标设计与路线图，接口说明只描述已有实现。
+当前任务状态见 [TODO](../../TODO.md)。各专题中的历史实测记录保留原版本和场景，不代表最新会话、缓存或写入改造已经通过真实 STAR 验证。候选方案放在目标设计与路线图，接口说明只描述已有实现。
 
 ## 源码对应关系
 
 | 文件或分组 | 职责 |
 |---|---|
 | [`cli.py`](../../src/starbridge/cli.py)、`__main__.py`、`mcp.py`、[`interfaces/mcp_server.py`](../../src/starbridge/interfaces/mcp_server.py) | 共享 JSON CLI、Python 模块和 MCP 入口；MCP 适配工具与资源。包内 `__init__.py` 组织命名空间及版本。 |
-| [`core/service.py`](../../src/starbridge/core/service.py)、[`core/interface_contract.py`](../../src/starbridge/core/interface_contract.py) | 编排公开方法、状态封套和可供 Agent 获取的调用契约。 |
+| [`core/service.py`](../../src/starbridge/core/service.py)、`core/objects.py`、[`core/interface_contract.py`](../../src/starbridge/core/interface_contract.py) | 编排公开方法、状态封套和可供 Agent 获取的调用契约。 |
 | [`core/environment.py`](../../src/starbridge/core/environment.py)、`catalog_bundle.py`、`session_store.py` | 探测实际安装、选择已登记版本、解析会话与产物位置。 |
 | [`core/discovery.py`](../../src/starbridge/core/discovery.py)、`discovery_rules.py`、`discovery_policy.py`、`discovery_write.py` | 运行时对象引用、分页与索引，版本规则、读计划和受控写计划。 |
 | [`core/catalog.py`](../../src/starbridge/core/catalog.py)、`execution.py`、`snapshot.py`、`coverage.py` | 目录校验、执行计划、兼容快照布局和覆盖统计。 |
-| [`bridge/runner/session_bridge.py`](../../src/starbridge/bridge/runner/session_bridge.py)、`file_bridge.py`、`modifier.py`、`java_runtime.py` | 会话与独立文件执行、兼容修改检查，以及 Java 源码和编译缓存。 |
+| [`bridge/runner/session_bridge.py`](../../src/starbridge/bridge/runner/session_bridge.py)、`file_bridge.py`、`modifier.py`、`java_runtime.py` | 会话与独立文件执行、通用结果比较，以及 Java 源码和编译缓存。 |
 | [`bridge/java/BridgeFileMacro.java`](../../src/starbridge/bridge/java/BridgeFileMacro.java)、`CatalogRuntime.java`、`DiscoveryRuntime.java` | STAR 宏入口、目录执行器与对象树发现执行器。 |
 | [`tools/catalog/catalog.py`](../../src/starbridge/tools/catalog/catalog.py)、`javadoc.py` | 离线目录命令及运行时共用的 Javadoc 解析。 |
 | [`catalogs/`](../../src/starbridge/catalogs/) | 按 STAR 版本保存生成候选、人工执行映射、规则与快照布局；生成数据不是当前算例状态。 |

@@ -8,7 +8,7 @@
 
 本文维护项目定位、目标架构和候选方向，不作为当前功能或进度清单。当前实现与源码关系见[技术入口](docs/tech/index.md)，任务状态见 [TODO](TODO.md)，未来候选见[路线图](docs/roadmap.md)。
 
-运行时发现方向采用 [ADR 0001](docs/adr/0001-runtime-discovery.md)。会话接入、三端插件、保存和简化后的写入行为以 [ADR 0002](docs/adr/0002-plugins-sessions-and-storage.md)及其[规格](docs/specs/spec-2026-11-03-14-23.md)为准：不再强制副本或全快照不变检查；新实现的运行验证边界见[会话说明](docs/tech/bridge-session.md#验证边界)。
+运行时发现方向采用 [ADR 0001](docs/adr/0001-runtime-discovery.md)。会话接入、三端插件、保存和简化后的写入行为以 [ADR 0002](docs/adr/0002-plugins-sessions-and-storage.md)及其[规格](docs/archive/spec-2026-11-03-14-23.md)为准：不再强制副本或全快照不变检查；新实现的运行验证边界见[会话说明](docs/tech/bridge-session.md#验证边界)。
 
 这里的“验证”限定为检查操作是否成功、设置是否按预期改变，以及是否产生非预期修改。验证 CFD 结果可信性不属于当前定位；Agent 可以结合知识储备、技术文本和工作记忆判断物理合理性与网格质量，当前暂不考虑收敛性判断。
 
@@ -70,7 +70,7 @@ flowchart TD
 
 ### 目录描述什么
 
-版本资料描述 API 类型与规则依据，不保存某个算例的对象实例或当前参数值；运行时发现负责实例、属性及关系。下表描述版本材料需要表达的信息；运行时发现的既定要求见[发现规格](docs/archive/spec-2026-10-30-12-24.md)，当前简化要求见[现行规格](docs/specs/spec-2026-11-03-14-23.md)。
+版本资料描述 API 类型与规则依据，不保存某个算例的对象实例或当前参数值；运行时发现负责实例、属性及关系。下表描述版本材料需要表达的信息；运行时发现的既定要求见[发现规格](docs/archive/spec-2026-10-30-12-24.md)，当前简化要求见[现行规格](docs/archive/spec-2026-11-03-14-23.md)。
 
 | 内容 | 需要描述的信息 |
 |---|---|
@@ -113,7 +113,7 @@ GUI 对算例的修改所对应的 Java 宏是建立和核对映射的重要依�
 
 已有目录的类型适配、领域条件和验证记录是迁移依据。按 [ADR 0002](docs/adr/0002-plugins-sessions-and-storage.md)，先把有效能力迁入统一对象与属性接口，再移除旧入口及结果投影，不长期维护并行原型格式。
 
-当前发现接口、目录接口和兼容 schema 1 入口的区分见[技术入口](docs/tech/architecture.md#接口与文档边界)，具体请求和迁移边界见[目录修改](docs/tech/catalog-modifier.md#验证范围与迁移边界)。原文件保护、完整快照和 Diff 的适用范围分别由[文件入口](docs/tech/bridge-file.md)与[会话契约](docs/tech/bridge-session.md)说明，不能把旧文件流程当成所有会话赋值的要求。
+当前统一对象接口、内部目录执行和按需快照的区分见[技术入口](docs/tech/architecture.md#接口与文档边界)，具体请求和迁移边界见[目录修改](docs/tech/catalog-modifier.md#验证范围与迁移边界)。原文件保护、完整快照和 Diff 的适用范围分别由[文件入口](docs/tech/bridge-file.md)与[会话契约](docs/tech/bridge-session.md)说明，不能把旧文件流程当成所有会话赋值的要求。
 
 ---
 
@@ -257,7 +257,7 @@ Bridge 连接或启动目标算例会话，取得 `Simulation`，按匹配版本
 | 修改请求 | 版本关联、目标、属性或操作、预期旧状态、新值与选项 |
 | 执行结果 | 拒绝或执行状态、回读、已覆盖字段的变化，以及该流程实际执行的保存或重载核对 |
 
-目录格式、请求与快照格式分别版本化。Java 映射由 Bridge 使用，Agent 使用公开描述构造请求；类型信息、实例身份和当前值不能混用。发现引用、目录 `target` 和兼容快照目前仍有不同契约，统一迁移的安排见[实施计划](docs/plans/plan-2026-11-03-14-23.md#接口与执行)。
+目录格式、请求与快照格式分别版本化。Java 映射由 Bridge 使用，Agent 使用公开描述构造请求；类型信息、实例身份和当前值不能混用。公开对象与属性接口已统一，目录 `target` 仅用于底层执行；Inspector 快照作为按需审查格式保留，调用与迁移边界见[统一接口](docs/tech/mcp.md#迁移与兼容边界)。
 
 当前工具参数和 JSON CLI 用法见[MCP 与 Core API](docs/tech/mcp.md)，值编码见[目录读取](docs/tech/catalog-runtime.md)，修改和失败契约见[目录修改](docs/tech/catalog-modifier.md)。网格、求解和记忆接口的未来设计不改变会话生命周期与配置修改各自的语义。
 

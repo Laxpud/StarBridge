@@ -52,7 +52,7 @@ bundle 插入自己的 `starbridge` 配置行，不替换 profile 的工具或 S
 
 ### 确认安装可用
 
-重新连接 MCP 后，应能取得 `starbridge.get_contract` 的 schema 1 契约，并在宿主中找到 `starbridge-case-audit`。工具展示名可能由宿主改写，应按服务及描述辨认。MCP 连接与 Skill 加载是两项检查；它们不证明已经完成真实算例审查。
+更新到当前源码对应版本并重新连接 MCP 后，应能取得 `starbridge.get_contract` 的 schema 2 契约，并在宿主中找到 `starbridge-case-audit`。本轮 schema 2 迁移尚未发布，已安装旧版本仍可能返回 schema 1。工具展示名可能由宿主改写，应按服务及描述辨认。MCP 连接与 Skill 加载是两项检查；它们不证明已经完成真实算例审查。
 
 安装不自动打开 STAR。算例连接、读取和显式保存的参数见[MCP 契约](tech/mcp.md)；已做过的客户端检查及限制见[安装证据](evidence/distribution.md#本地安装验证2026-11-03)。
 
@@ -154,7 +154,7 @@ DSH 会清理传给子进程的部分环境变量，必须通过模板 `env` 显
 
 ### 安装与维护 Skill
 
-当前交付 [starbridge-case-audit](../skills/starbridge-case-audit/SKILL.md)，用于按实际对象和值只读检查算例。它要求契约 schema 1 及当前发现／描述／读取能力；发现接口的版本范围由服务查询结果决定。没有 MCP、契约不兼容或缺少能力时应报告缺口，不能假装完成。审查不会自动修改、保存、运行网格或求解。
+当前交付 [starbridge-case-audit](../skills/starbridge-case-audit/SKILL.md)，用于按实际对象和值只读检查算例。它要求契约 schema 2 及当前发现／描述／读取能力；发现接口的版本范围由服务查询结果决定。没有 MCP、契约不兼容或缺少能力时应报告缺口，不能假装完成。审查不会自动修改、保存、运行网格或求解。
 
 当前可从本地仓库安装：
 
@@ -165,7 +165,7 @@ npx skills@1.7.4 add /absolute/path/to/StarBridge \
 
 同样可只选所需目标；DSH 项目使用 `universal`。默认项目作用域，Codex 与 Claude Code 可按需要加 `--global`；DSH 全局目录另按上节处理。
 
-正式发布后使用不可变提交或已发布 tag 定位来源，例如 `https://github.com/Laxpud/StarBridge/tree/v0.1.0/skills/starbridge-case-audit`；**当前 tag 尚不存在**。初期 Python `0.1.0` 与同次发布的 Skill 配套，Skill 的最低契约为 schema 1，依赖的方法记录在 frontmatter `metadata`。锁文件记录来源不等于发布验收；不要用浮动主分支代替已验收组合。
+正式发布后使用不可变提交或已发布 tag 定位来源，例如 `https://github.com/Laxpud/StarBridge/tree/v0.1.0/skills/starbridge-case-audit`；**当前 tag 尚不存在**。初期 Python `0.1.0` 与同次发布的 Skill 配套，Skill 的契约版本为 schema 2，依赖的方法记录在 frontmatter `metadata`。锁文件记录来源不等于发布验收；不要用浮动主分支代替已验收组合。
 
 更新程序时安装新版本到新的固定环境，再用相同 `--name starbridge` 和相同作用域重新执行 `add-mcp`，检查差异只涉及该服务。回退时重新指向保留的旧版本环境。Skill 更新或回退用明确 tag／提交来源重新执行 `skills add`；`skills update` 会跟随来源更新，不适合作为固定发布组合的默认升级动作。软件回退不会还原已经保存的算例。
 

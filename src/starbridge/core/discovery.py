@@ -23,12 +23,18 @@ ALIASES = {'松弛': ['relaxation'], '压力': ['pressure'], '速度': ['velocit
 
 def _state(session_dir):
     """所有缓存按当前会话 token 隔离；精确版本不支持时在启动客户端前拒绝。"""
+    state = reference_state(session_dir)
+    if session_target(state) != TARGET:
+        raise ValueError('Runtime discovery is unsupported for this exact version')
+    return state
+
+
+def reference_state(session_dir):
+    """加载目录与发现共用的引用世代；版本能力由各自执行器检查。"""
     directory = session_directory(session_dir)
     if not directory.is_absolute():
         raise ValueError('session_dir must be absolute')
     state = read_json(directory / 'session.json')
-    if session_target(state) != TARGET:
-        raise ValueError('Runtime discovery is unsupported for this exact version')
     if not state.get('session_token'):
         raise ValueError('Session has no identity token')
     state['_reference_directory'] = directory
@@ -48,7 +54,8 @@ def _remember_reference(payload, state):
     """给服务已发现的对象或分页状态分配短 ID；相同会话中的同一内容复用 ID。"""
     raw = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
     token, kind = state['session_token'], payload['kind']
-    prefixes = {'node': 'n', 'cursor': 'c', 'description_cursor': 'd', 'search_cursor': 's'}
+    prefixes = {'node': 'n', 'catalog_object': 'o', 'catalog_cursor': 'p',
+                'cursor': 'c', 'description_cursor': 'd', 'search_cursor': 's'}
     with closing(_references(state)) as connection, connection:
         row = connection.execute('SELECT id FROM refs WHERE token=? AND kind=? AND payload=?',
                                  (token, kind, raw)).fetchone()
@@ -543,7 +550,7 @@ def search_settings(session_dir, query, expand=False, max_nodes=100, max_depth=4
                 matches.append({'node': node, 'property': prop, 'matched_by': evidence,
                                 'observed_at': entry.get('properties_observed_at') if prop else entry.get('node_observed_at'),
                                 'validity': 'cached_may_be_stale', 'requires_revalidation': True,
-                                'revalidation': 'describe_node/read_node_properties re-resolve identity and refresh descriptors'})
+                                'revalidation': 'describe_object/read_properties re-resolve identity and refresh descriptors'})
     fingerprint = digest(matches)
     offset = 0
     if cursor is not None:

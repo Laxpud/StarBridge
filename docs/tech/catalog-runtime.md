@@ -2,7 +2,9 @@
 
 [返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [离线目录工具](catalog.md) · [目录修改](catalog-modifier.md) · [Inspector 快照](inspector.md) · [当前任务](../../TODO.md)
 
-文件和后台会话 Runner 的 `describe`、`read` 已通过同一份候选目录、人工调用映射和类型适配器访问当前算例。执行前精确核对正在运行的 STAR server 版本，再按类型、名称及父对象定位目标。[属性修改与张量方法切换](catalog-modifier.md)也复用这些定位与读取管线；兼容 schema 1 `modify` 和 `set-scalar` 也使用同一目录修改器；兼容 `inspect` 快照也通过独立布局复用相同候选声明、成员映射和读取适配器，见 [Inspector](inspector.md#快照布局与共享调用)。
+文件和后台会话 Runner 的 `describe`、`read` 已通过同一份候选目录、人工调用映射和类型适配器访问当前算例。执行前精确核对正在运行的 STAR server 版本，再按类型、名称及父对象定位目标。[属性修改与张量方法切换](catalog-modifier.md)也复用这些定位与读取管线；统一 `modify_property` 使用同一目录修改器；兼容 `inspect` 快照也通过独立布局复用相同候选声明、成员映射和读取适配器，见 [Inspector](inspector.md#快照布局与共享调用)。
+
+本页 JSON 是文件／会话 Runner 的底层目录请求；MCP 与共享 JSON CLI 使用[统一对象接口](mcp.md)，不直接传入这里的 target/request。
 
 ## 使用方式
 

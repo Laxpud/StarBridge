@@ -2,10 +2,10 @@
 name: starbridge-case-audit
 description: 通过 StarBridge 只读审查 STAR-CCM+ 算例设置，按用户给定工况核对参数、模型与边界的关联，说明证据和未覆盖范围。适用于算例检查与配置疑点排查。
 metadata:
-  compatibility: 需要已连接的本机 StarBridge MCP、可用 STAR 安装与许可证。使用 schema_version 为 1 的调用契约及发现、描述、读取能力；不包含网格生成、求解或自动修复。
-  starbridge-contract-schema: "1"
+  compatibility: 需要已连接的本机 StarBridge MCP、可用 STAR 安装与许可证。使用 schema_version 为 2 的调用契约及发现、描述、读取能力；不包含网格生成、求解或自动修复。
+  starbridge-contract-schema: "2"
   starbridge-distribution: starbridge-cfd
-  required-methods: get_contract,session_status,browse_tree,describe_node,read_node_properties
+  required-methods: get_contract,session_status,find_objects,describe_object,read_properties
 ---
 
 # STAR-CCM+ 算例审查
@@ -17,7 +17,7 @@ metadata:
 1. 从当前工具列表识别 StarBridge 服务及其发现／读取能力。宿主可能改写工具展示名称，按服务与工具说明对应方法，不拼接固定前缀。工具未连接时指出缺少 MCP 接入；仅安装本 Skill 不会安装或启动服务。
 2. 对不熟悉的契约调用 `get_contract`，核对 `schema_version` 和本次所需方法。已有当前契约与有效定位可复用；缺少能力时报告具体缺口，不编造参数或自动改用任意 Java 宏。
 3. 用户给出会话时先确认其状态；只给文件时，按用户指定或实际探测的安装优先连接匹配的已有 STAR 会话，没有可用会话时直接加载原算例，并沿用返回的 session_id。未指定且不同算例或安装选择会改变审查结果时再澄清。选择与路径格式以工具契约为准，不固定 STAR release、端口或某台机器的目录。
-4. 根据任务定位实际对象：已有路径从对应节点继续导航；已知类型和名称且目录接口支持时，先用 `find_objects` 定位，再描述和读取。需要运行时发现时，优先逐层浏览相关分支；只在无法缩小目标时使用有界扩展搜索，不能为了读取一个已知参数而默认遍历全树。先确认对象的父级、类型和物理角色，再描述并读取相关属性；同名对象不能只凭名称视为同一目标。只有明确的属性读取结果能作为当前值依据，描述中的默认值、可写标记和缓存搜索结果都不能替代它。
+4. 根据任务定位实际对象：已有路径从对应节点继续导航；已知类型和名称且目录接口支持时，先用 `find_objects` 定位。类型查找和树导航均返回 `object_id`，统一使用 `describe_object` 和 `read_properties` 描述、读取；属性选择使用实际 `property_id`。需要运行时发现时，优先逐层浏览相关分支；只在无法缩小目标时使用有界扩展搜索，不能为了读取一个已知参数而默认遍历全树。先确认对象的父级、类型和物理角色，再描述并读取相关属性；同名对象不能只凭名称视为同一目标。只有明确的属性读取结果能作为当前值依据，描述中的默认值、可写标记和缓存搜索结果都不能替代它。
 
 ## 如何判断
 

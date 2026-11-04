@@ -60,7 +60,7 @@ python3 bridge/runner/session_bridge.py save --session-id SESSION_ID \
 
 写入结果未确认时记录 `uncertain_request`，允许读取和状态查询，阻止新的修改、保存及默认停止；成功读取不会自动解除写入限制。不得自动重试或回滚。外部会话可以断开，但重连同一加载对象仍保留未确认记录；自有服务只有明确 `discard` 才能放弃内存状态。
 
-目录／发现修改默认只核对目标与必要关联项。需要审查完整前后快照和 Diff 时，MCP／Core 传 `audit=true`，目录修改 CLI 添加 `--audit`。旧兼容 `set-scalar` 和 schema 1 修改入口仍使用原投影和快照流程，迁移安排见[实施计划](../plans/plan-2026-11-03-14-23.md#接口与执行)。
+目录／发现修改默认只核对目标与必要关联项。需要审查完整前后快照和 Diff 时，MCP／Core 传 `audit=true`，目录修改 CLI 添加 `--audit`。`set-scalar`、schema 1 修改及其结果投影已移除，已有能力使用[统一属性入口](mcp.md#迁移与兼容边界)。
 
 ## 运行数据与项目产物
 
@@ -80,3 +80,5 @@ python3 bridge/runner/session_bridge.py save --session-id SESSION_ID \
 ## 验证边界
 
 三端插件、会话接入与运行简化里程碑中的会话与执行层改造已做静态编译与适用的既有契约检查；辅助类缓存的实际 STAR 宏加载尚未实测。真实 GUI 接入、保存、失败恢复和收窄后的写入链路尚未实测。历史后台副本验证不替代这些行为的运行证据。
+
+接口 schema 2 迁移通过 Python 静态编译、2602／2510 库下入口宏编译、16 个 MCP 工具的 schema 校验及实际 stdio 握手；既有 Java 发现 6 项和快照比较 15 项检查通过。Core 发现检查 9 项通过，另 1 项仍依赖已删除的 HMAC 私钥，在本轮改动前后均失败；未新增或改写测试。旧 `discovery_acceptance.py` 仍使用原接口与产物格式，不能直接用于当前版本验收。离线转换已有运行材料只核对了新对象引用和结果格式，不是新的 STAR 运行证据。
