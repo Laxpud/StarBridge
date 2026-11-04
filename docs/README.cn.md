@@ -6,48 +6,45 @@
 
 <div align="center">
 <h1>StarBridge</h1>
-<p><strong>面向 AI Agent 的 STAR-CCM+ 桥接层，计划支持读取、修改、运行算例并验证操作结果。</strong></p>
+<p><strong>帮助 AI Agent 读取 STAR-CCM+ 算例并执行受控修改的桥接层。</strong></p>
 </div>
 
 ## 适合做什么
 
-StarBridge 目前处于早期开发阶段。Inspector 已支持通过文件和后台会话入口读取算例对象、关键属性与归属关系。Modifier 已支持修改已有标量参数与用户场函数表达式、替换现有用户标签关联，并检查预期旧状态及回读值。文件修改另存后重新加载核对；会话修改保留在内存中，由显式保存命令落盘。后台会话原型也已支持复用同一个 STAR 服务连续操作，每次请求启动临时 Java 客户端；常驻 Java 适配器、GUI 接入和工作记忆仍为后续目标。本机 stdio [MCP 与共享 JSON CLI](mcp.md) 已提供目录能力查询、对象查找、描述、读取、修改和显式会话生命周期。
+StarBridge 让 AI Agent 通过本机 [MCP 或共享 JSON CLI](tech/mcp.md) 检查 STAR-CCM+ 算例，并修改已适配的设置。项目目前处于早期开发阶段。
 
-目录驱动的 `describe/read` 已可核对当前 server 版本、定位对象，并通过经审阅的映射和共享类型适配器读取选定属性。结果独立返回会话引用及逐属性状态。目录 `modify` 提供旧状态检查、回读及目录与快照两层 Diff；当前映射还新增布尔/枚举选项、向量表达式与分量，以及检查 GravityModel 存在性的重力写入，新增路径的代表性写入、拒绝和保存重载已通过真实 STAR 2602 检查。报告场函数引用及静态/查询对象选择也已通过代表性写入、拒绝和保存重载检查。区域张量 Profile 已支持二维和三维已适配方法的分量子对象读写，在保持当前方法与方向的条件下修改单个常量分量；各向异性、正交、各向同性和横观各向同性多孔阻力已通过代表性分量读写。主方向和轴对称方法直接拥有的方向轴已接入共享向量读写，分别保留每轴坐标关联，二维和三维都保留三个原始向量分量。材料物性已提供命名系数子对象的标量读写，保持当前方法和系数组织；此路径不切换材料方法，也不检查方向设置。固体导热系数已通过代表性写入、拒绝和保存重载检查，对称源导数张量已通过二维/三维读写与持久化检查；其他材料、方法及更广的配置覆盖仍未完成。具体验证范围见[修改说明](catalog-modifier.md)。
+- **读取设置**：浏览算例对象、查找属性，读取当前值和关联关系。覆盖范围与值格式见[运行时发现](tech/runtime-discovery.md)和[目录读取](tech/catalog-runtime.md)。
+- **受控修改**：写入前核对目标、预期旧值及必要约束，写入后回读结果。已适配属性、方法切换及验证记录见[修改说明](tech/catalog-modifier.md)。
+- **显式保存**：会话修改保留在内存中，收到保存指令后才写回当前文件或另存为；独立文件流程则另存新文件并重新加载核对。具体操作见[会话说明](tech/bridge-session.md)和[文件 Bridge](tech/bridge-file.md)。
 
-兼容 schema 1 `modify` 和 `set-scalar` 已自动使用同一目录修改器，保留原参数及既有结果字段；随附目录要求运行中 server 精确匹配所选目录的 release/Build，版本选择见[说明](catalog-versions.md)，`set-scalar` 仍没有调用者提供的预期旧状态。
-
-Inspector 快照也已通过独立布局使用共享目录，保留 schema 1 字段；`inspect` 和 `save` 同样精确核对 server 版本。[分项覆盖报告](catalog.md#分项覆盖报告)已区分发现、实现与实际运行证据，`describe` 可检查已声明的目标条件。张量 Profile 与材料物性方法结构操作已提供描述、影响范围、旧状态检查及回读；材料操作按映射类查找既有常量、正交及各向异性导热方法；其他写适配器、更多结构操作与更广的模型状态检查仍未完成。
-
-拟议系统结合结构化算例访问、工作流 Skills、持久化工作记忆，以及后台或 GUI 常驻算例会话。具体定位与边界见[设计文档](../StarBridge.md)。
-
-[运行时发现](runtime-discovery.md)已接入共享 CLI 与 MCP，提供真实对象树导航、属性描述、显式属性读取、有预算的文本搜索及跨加载重定位。当前针对 2602 Build `21.02.007`，按通用规则和本机 Javadoc 声明生成读取计划；未知值和代理保留元数据与限制。会话引用和缓存不能替代实时身份检查。`modify_node_property` 已按接受规则开放受控赋值：复用特殊写入语义，并生成普通有界标量及无未知坐标／模型上下文的向量常量计划。写入保留旧值、单位、范围、身份、保持项及原快照验证，只尝试一次 setter，保存仍须显式调用。真实副本已通过四项代表性写入、七项写前拒绝、保存重载及依赖变化导致 `uncertain` 的验收。实现不代表全算例覆盖，设计及验收要求见 [ADR](adr/0001-runtime-discovery.md)、[Plan](archive/plan-2026-10-30-12-24.md) 和 [Spec](archive/spec-2026-10-30-12-24.md)。
+支持范围取决于精确的 [STAR release／Build](tech/catalog-versions.md)及已适配的属性或操作，尚未覆盖全部算例设置。本机 GUI／服务器连接已有实现，但真实 GUI 接入、保存、失败恢复及调整后的写入链路尚未经过 STAR 实测，见[验证边界](tech/bridge-session.md#验证边界)。网格生成、求解执行和持久化工作记忆仍为后续方向，见[设计文档](../StarBridge.md)和[路线图](roadmap.md)。
 
 ## 快速开始
 
-先按[分发与 Harness 接入](distribution.md)构建并安装 `starbridge-cfd`，再通过 `add-mcp` 接入 `starbridge-mcp`，并单独安装需要的 Skill。程序已可在源码目录外运行；当前 `0.1.0` 尚未发布到 PyPI，三个 Harness 的验收状态与缺口分别记录在安装说明中。
+Codex、Claude Code 和 DeepSeek Harness（DSH）用户按[插件安装说明](distribution.md#三端插件安装)统一安装程序、MCP 接入和算例审查 Skill。启动器需要 PATH 中的 `python3` 与 `uv`，并准备 Python 3.11+ 环境。算例操作需要 Linux、兼容的 STAR-CCM+ 安装及许可证；运行时发现还需要该安装的本机 Javadoc。
 
-需要 Python 3.11+。算例操作还需要 Linux、兼容的 STAR-CCM+ 安装及许可证；运行时发现另需对应安装的本机 Javadoc。源码脚本入口仍保留。具体操作见[文件 Bridge](bridge-file.md)、[后台会话](bridge-session.md)和 [MCP 工具契约](mcp.md)。
+源码或通用 stdio 接入见[独立安装说明](distribution.md#源码与通用接入)。`starbridge-cfd` 可在源码目录外运行，当前 `0.1.0` 尚未发布到 PyPI；各客户端的安装结果和限制也记录在该说明中。安装完成后，按 [MCP 契约](tech/mcp.md)和[会话说明](tech/bridge-session.md)连接算例并读取设置。
 
 ## 更多文档
 
 | 文档 | 职责 |
 |---|---|
-| [分发与 Harness 接入](distribution.md) | 安装程序、接入 MCP 与 Skill、版本关系及实际验收状态 |
-| [运行时对象树与属性发现](runtime-discovery.md) | 按真实层级导航、描述和读取属性，有预算搜索及跨加载重定位 |
-| [MCP 与共享 Core API](mcp.md) | 本机 stdio 工具、版本资源、JSON CLI 与失败恢复 |
-| [目录描述与读取](catalog-runtime.md) | 核对 server 版本、按需读取属性，并返回会话引用和逐属性错误 |
-| [目录单属性修改](catalog-modifier.md) | schema 2 写入、旧状态检查、回读、Diff 与文件重载核对 |
-| [STAR 版本选择](catalog-versions.md) | 选择 2602 或 2510 的精确 Build，核对会话绑定及分版本证据 |
-| [离线目录工具](catalog.md) | 生成版本化候选 API、合并人工语义与比较声明 |
-| [Modifier 单项修改](modifier.md) | 修改请求、旧状态检查、回读与保存契约 |
-| [Inspector 对象快照](inspector.md) | 目录驱动的快照布局、兼容字段、读取错误与验证边界 |
-| [文件 Bridge 使用说明](bridge-file.md) | 文件操作、运行条件与实现边界 |
-| [后台会话使用说明](bridge-session.md) | 常驻 STAR 服务的启动、读取、修改、保存和关闭 |
+| [分发与 Harness 接入](distribution.md) | 插件与独立安装、版本关系及实际验收状态 |
+| [技术文档](tech/index.md) | 当前实现、专题导航及源码职责 |
+| [运行时对象树与属性发现](tech/runtime-discovery.md) | 按真实层级导航、描述和读取属性，有预算搜索及跨加载重定位 |
+| [MCP 与共享 Core API](tech/mcp.md) | 本机 stdio 工具、版本资源、JSON CLI 与失败恢复 |
+| [目录描述与读取](tech/catalog-runtime.md) | 核对 server 版本、按需读取属性，并返回会话引用和逐属性错误 |
+| [目录单属性修改](tech/catalog-modifier.md) | schema 2 写入、旧状态检查、回读、Diff 与文件重载核对 |
+| [STAR 版本选择](tech/catalog-versions.md) | 选择 2602 或 2510 的精确 Build，核对会话绑定及分版本证据 |
+| [离线目录工具](tech/catalog.md) | 生成版本化候选 API、合并人工语义与比较声明 |
+| [Modifier 单项修改](tech/modifier.md) | 修改请求、旧状态检查、回读与保存契约 |
+| [Inspector 对象快照](tech/inspector.md) | 目录驱动的快照布局、兼容字段、读取错误与验证边界 |
+| [文件 Bridge 使用说明](tech/bridge-file.md) | 文件操作、运行条件与实现边界 |
+| [会话使用说明](tech/bridge-session.md) | STAR 会话的连接、读取、修改、保存、断开或停止 |
 | [设计文档](../StarBridge.md) | 项目定位、拟议架构、会话与工作记忆 |
 | [当前工作](../TODO.md) | 当前里程碑、任务与完成条件 |
 | [路线图](roadmap.md) | 后续阶段与预期结果 |
-| [参考项目](references.md) | 来源、可借鉴设计及适用边界 |
+| [参考项目](tech/references.md) | 来源、可借鉴设计及适用边界 |
 
 设计与规划文档使用中文维护，仅项目入口提供英文译文。
 

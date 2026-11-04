@@ -1,6 +1,6 @@
 # 目录驱动的描述与读取
 
-[返回项目入口](README.cn.md) · [离线目录工具](catalog.md) · [目录修改](catalog-modifier.md) · [Inspector 快照](inspector.md) · [当前任务](../TODO.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [离线目录工具](catalog.md) · [目录修改](catalog-modifier.md) · [Inspector 快照](inspector.md) · [当前任务](../../TODO.md)
 
 文件和后台会话 Runner 的 `describe`、`read` 已通过同一份候选目录、人工调用映射和类型适配器访问当前算例。执行前精确核对正在运行的 STAR server 版本，再按类型、名称及父对象定位目标。[属性修改与张量方法切换](catalog-modifier.md)也复用这些定位与读取管线；兼容 schema 1 `modify` 和 `set-scalar` 也使用同一目录修改器；兼容 `inspect` 快照也通过独立布局复用相同候选声明、成员映射和读取适配器，见 [Inspector](inspector.md#快照布局与共享调用)。
 
@@ -129,7 +129,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 `method_choices_checked` 表示相应发现过程是否成功，失败时还有 `method_choices_error` 并令 `inspection_complete` 为 `false`。选项可用且目标条件满足仍不保证请求可执行：描述不比较调用者旧状态，也不预读未活动目标方法的分量设置。即使选定属性中包含当前 `method_state`，修改准备仍会重新完整读取并检查。可用方法 ID、请求与失败语义见[张量方法切换](catalog-modifier.md#张量-profile-方法切换)和[材料方法切换](catalog-modifier.md#材料物性方法切换)。
 
-目录与人工映射不匹配、请求格式错误或未知属性在本地拒绝。当前 server 版本、定位或会话引用不匹配时，宏返回 `status: rejected`，CLI 非零退出；后台会话保持 `ready`，可以重新读取。客户端异常或其他无法确认的失败仍沿用会话 `uncertain` 处理，不自动重试。底层 `result.json` 保存拒绝原因；文件失败时不生成成功 `summary.json`。
+目录与人工映射不匹配、请求格式错误或未知属性在本地拒绝。当前 server 版本、定位或会话引用不匹配时，宏返回 `status: rejected`，CLI 非零退出；后台会话保持 `ready`，可以重新读取。只读失败在客户端结束后记为本次错误，不冻结会话；客户端仍运行时保持忙碌。写入结果未确认的限制见[会话失败处理](bridge-session.md#身份和失败处理)。失败诊断按[运行数据规则](bridge-session.md#运行数据与项目产物)保留；文件失败时不生成成功 `summary.json`。
 
 每次目录请求还会保存 `catalog-plan.json`、`catalog-request.json`、实际宏和日志。发送给 Java 的计划只包含目标、父类型、选定属性及描述所需的操作只读管线，不把整个候选目录嵌入宏。
 
@@ -249,6 +249,8 @@ python3 bridge/runner/session_bridge.py describe \
 
 ### 张量读取格式
 
+2602 本机 API 未提供 `TensorPhysicalQuantity`，张量 Profile 通过当前方法组织标量分量，材料各向异性系数另由名称列表组织。读取当前方法使用无参 `getMethod()` 后判型；`Profile.getMethod(Class)` 在类型不匹配时可能切换方法，不可作为只读访问路径。
+
 `tensor_profile` 从指定父区域的 `getValues().getObjects()` 枚举并筛选 `TensorProfile`，按显示名称唯一定位。`profile_method` 返回当前方法的完整 Java 类名，可用于诊断不支持的方法。选择 `properties: ["name", "profile_method"]` 不要求读取分量；完整 `tensor` 读取失败仍保留其他属性的独立结果。
 
 `tensor` 包含 `java_class`、`method`、`dimensions`、`is_3d`、`shape`、`storage`、`coordinate_system`、`local_orientation` 和 `components`。`dimensions` 保留 STAR 量纲文本，`shape` 当前固定为 `[3,3]`；两种方向字段使用名称、实际 Java 类与会话引用表示，没有对应关联时为 `null`。它们表示原张量的坐标约定，不代表已转换到全局坐标系。
@@ -337,7 +339,7 @@ python3 bridge/runner/session_bridge.py describe \
 
 ## 人工执行映射
 
-[`src/starbridge/catalogs/2602/execution.json`](../src/starbridge/catalogs/2602/execution.json) 是维护者审阅的调用映射，由 [`src/starbridge/core/execution.py`](../src/starbridge/core/execution.py) 与候选目录共同校验；它与仅供离线核对的 `overrides.json` 修改语义分开维护。请求只能选择目标、属性或操作及其参数，不能覆盖映射、方法的 `effect`、Java 类或参数来源。
+[`src/starbridge/catalogs/2602/execution.json`](../../src/starbridge/catalogs/2602/execution.json) 是维护者审阅的调用映射，由 [`src/starbridge/core/execution.py`](../../src/starbridge/core/execution.py) 与候选目录共同校验；它与仅供离线核对的 `overrides.json` 修改语义分开维护。请求只能选择目标、属性或操作及其参数，不能覆盖映射、方法的 `effect`、Java 类或参数来源。
 
 映射格式版本当前为 `8`，加载器兼容仅含读取管线的 schema 1 和原有写入 schema 2/3/4/5/6/7；顶层包含 `target`、`members`、`types`、`properties`、`operations`。旧格式没有结构操作，加载时使用空操作集合。每个 member 锁定候选声明的签名和指纹，并声明反射参数类型及 `effect: read` 或 `effect: write`。定位和读取管线只允许 `read`；写入管线仅最后一步允许 `write`，读取计划会移除写入管线。当前只接收已核对的 public 实例方法，不开放字段、构造器、静态调用或通过 `setAccessible()` 访问非 public 方法。参数类型必须能由候选材料证明，裸泛型变量 `T` 不能冒充可加载类；枚举 setter `EnumeratedOption.setSelected(T)` 仅在候选类声明和官方类型链接证明其首个上界为 `Enum` 时，使用已核对的泛型擦除规则。其他未解析泛型仍拒绝猜测；嵌套类按已核对类型页转换为 JVM 名称。
 
@@ -371,4 +373,4 @@ Javadoc 的 `StarBeanProperty.link` 表示属性变化通知联动，不能作�
 
 `describe` 已在 2602 工作副本验证张量目标条件全部满足、缺失重力模型不满足、受控条件适配错误的逐项隔离，以及无条件属性与未实现写入的区分；错误后会话仍为 `ready`，张量读取值和原输入 SHA256 未变。文件模式的标量描述及原输入保护也已核对。产物位于本地 `outputs/catalog-conditions-20261029/`。
 
-张量 Profile 已在单相多孔区域完成二维和三维四种已映射方法的当前分量子对象读写、状态读取与代表性切换；非常量兄弟分量隔离、旧状态/引用/单位拒绝及文件保存重载已验证，原三维矩阵入口也通过回归检查。材料导热系数的代表性标量写入、方法拒绝及保存重载已通过，常量、正交和各向异性导热方法的结构切换也已通过代表性切换、写前拒绝及文件重载；有限元源导数对称张量已核对二维三项、三维六项、XY/YX 别名及保存后的数值和坐标引用。该夹具的主方向与轴对称方法、方向轴向量读写和五类方法代表性切换也已通过二维/三维验收，包含函数轴拒绝、独立坐标关联以及二维非零第三分量的保存重载。具体转换及未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。分项覆盖报告见[离线目录工具](catalog.md#分项覆盖报告)；已有操作描述覆盖张量 Profile 与材料物性方法切换，其他结构操作、类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../TODO.md)全部完成。
+张量 Profile 已在单相多孔区域完成二维和三维四种已映射方法的当前分量子对象读写、状态读取与代表性切换；非常量兄弟分量隔离、旧状态/引用/单位拒绝及文件保存重载已验证，原三维矩阵入口也通过回归检查。材料导热系数的代表性标量写入、方法拒绝及保存重载已通过，常量、正交和各向异性导热方法的结构切换也已通过代表性切换、写前拒绝及文件重载；有限元源导数对称张量已核对二维三项、三维六项、XY/YX 别名及保存后的数值和坐标引用。该夹具的主方向与轴对称方法、方向轴向量读写和五类方法代表性切换也已通过二维/三维验收，包含函数轴拒绝、独立坐标关联以及二维非零第三分量的保存重载。具体转换及未测分支见[张量修改验证](catalog-modifier.md#验证范围与迁移边界)。新增 `physics_continuum` 属性、布尔/枚举/向量写入及模型条件已完成代表性写入、拒绝和保存重载验收，范围见[修改验证](catalog-modifier.md#验证范围与迁移边界)；报告对象引用、静态选择及复合/标签查询已通过代表性写入、拒绝和保存重载检查；未知谓词、其他 STAR 版本及完整对象覆盖也不能据此认定通过。新增 `quantity_value` 与首批写入的验收见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。`global_parameter` 和 `field_function` 是兼容旧标签目标范围的通用定位类型，不据此承诺参数或场函数的所有其他属性可写。兼容 `inspect` 已通过独立布局生成原 schema 1 快照，其验收单独记录在 [Inspector](inspector.md#验证范围)；schema 1 `modify` 和 `set-scalar` 也通过兼容层复用目录修改器。分项覆盖报告见[离线目录工具](catalog.md#分项覆盖报告)；已有操作描述覆盖张量 Profile 与材料物性方法切换，其他结构操作、类型与模型条件仍待补齐，不能据此宣布[当前里程碑](../../TODO.md)全部完成。

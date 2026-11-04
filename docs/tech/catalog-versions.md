@@ -1,6 +1,6 @@
 # STAR 版本选择与目录维护
 
-[返回项目入口](README.cn.md) · [目录工具](catalog.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [目录工具](catalog.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
 StarBridge 按精确的产品版本和 Build 选择目录。当前随附 `2602 / 21.02.007` 与 `2510 / 20.06.007`；两者分别保存从对应安装生成的候选 API、人工调用映射、兼容快照布局和语义说明。相同 release 的其他 Build、未知版本及混合版本计划均拒绝，不自动回退。
 

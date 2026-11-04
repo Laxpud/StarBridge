@@ -1,14 +1,14 @@
 # MCP 与共享 Core API
 
-[返回项目入口](README.cn.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md)
 
-StarBridge 提供本机 stdio MCP 接口。Agent 可以查询版本目录、查找对象、描述与读取属性、提交单项修改，以及显式打开、保存和关闭后台会话。所有工具调用 [Core Service](../src/starbridge/core/service.py)，与新的 JSON CLI 使用相同参数和结果；已有文件和会话 CLI 继续保留，并复用相同目录、类型适配器与 Bridge 执行器。
+StarBridge 提供本机 stdio MCP 接口。Agent 可以查询版本目录、查找对象、描述与读取属性、提交单项修改，以及显式连接、保存和关闭会话。所有工具调用 [Core Service](../../src/starbridge/core/service.py)，与新的 JSON CLI 使用相同参数和结果；已有文件和会话 CLI 继续保留，并复用相同目录、类型适配器与 Bridge 执行器。
 
-当前支持 Linux 管理会话和随附的精确版本目录：2602 Build `21.02.007`、2510 Build `20.06.007`。两版的实际适配范围见[版本说明](catalog-versions.md)。新增运行时发现仅支持 2602 Build `21.02.007`，与既有目录能力分开计量，见[发现契约](runtime-discovery.md)。网格生成、求解执行、GUI 接入和持久化工作记忆尚未提供工具；后续发现与写入扩展见[路线图](roadmap.md#后续里程碑)，覆盖缺口及版本核验见[覆盖范围与版本验证](roadmap.md#覆盖范围与版本验证)。
+当前支持 Linux 管理会话和随附的精确版本目录：2602 Build `21.02.007`、2510 Build `20.06.007`。两版的实际适配范围见[版本说明](catalog-versions.md)。新增运行时发现仅支持 2602 Build `21.02.007`，与既有目录能力分开计量，见[发现契约](runtime-discovery.md)。已有本机 GUI／服务器连接实现，但真实 GUI 接入尚未实测，见[会话说明](bridge-session.md#验证边界)。网格生成、求解执行和持久化工作记忆尚未提供工具；后续发现与写入扩展见[路线图](../roadmap.md#后续里程碑)，覆盖缺口及版本核验见[覆盖范围与版本验证](../roadmap.md#覆盖范围与版本验证)。
 
 ## 安装与连接
 
-使用 [分发与 Harness 接入](distribution.md) 安装固定版本环境并接入客户端。Core 和普通 CLI 只使用 Python 标准库；MCP 依赖通过 `starbridge-cfd[mcp]` 安装。`starbridge-mcp` 启动本机 stdio 服务，`starbridge-cfd` 是供 Registry 消费者按包名启动的同义入口。当前版本尚未发布到 PyPI，先使用本地构建包。
+Codex、Claude Code 和 DSH 使用[插件安装入口](../distribution.md#三端插件安装)；源码与通用 stdio 接入见[独立安装说明](../distribution.md#源码与通用接入)。Core 和普通 CLI 只使用 Python 标准库；MCP 依赖通过 `starbridge-cfd[mcp]` 安装。`starbridge-mcp` 启动本机 stdio 服务，`starbridge-cfd` 是供 Registry 消费者按包名启动的同义入口。当前 Python 版本尚未发布到 PyPI；独立安装使用本地构建包，插件从其自带源码启动。
 
 安装后无需引用源码仓库路径。源码开发仍可运行 `python3 interfaces/mcp_server.py`，但解释器须已安装 MCP 依赖。无需启动 HTTP 服务；stdout 仅传输协议消息，STAR 输出保留在显式会话／工作目录。所有算例路径均指向 MCP 进程所在机器。
 

@@ -1,8 +1,8 @@
 # 运行时对象树与属性发现
 
-[返回项目入口](README.cn.md) · [MCP 与共享 JSON CLI](mcp.md) · [行为规格](archive/spec-2026-10-30-12-24.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [MCP 与共享 JSON CLI](mcp.md) · [行为规格](../archive/spec-2026-10-30-12-24.md)
 
-发现入口从当前后台算例枚举实际对象和 Bean 属性，再用通用规则、官方 Javadoc 声明及成员指纹生成读取计划。Agent 无需先知道人工目录的 `type_id`；新增同类属性也不必逐项添加手工定位映射。它不复刻 GUI，不执行网格或求解。
+发现入口从当前连接的算例枚举实际对象和 Bean 属性，再用通用规则、官方 Javadoc 声明及成员指纹生成读取计划。Agent 无需先知道人工目录的 `type_id`；新增同类属性也不必逐项添加手工定位映射。它不复刻 GUI，不执行网格或求解。
 
 当前发现规则仅登记 STAR-CCM+ **2602 Build `21.02.007`**，要求 Linux 管理会话以及该安装的本机 Javadoc。2510 的既有目录入口仍可使用，新增发现入口明确拒绝该版本。验证使用真实隔离算例和明确标记的契约模拟；具体范围见下文，不代表全部算例分支。
 
@@ -19,7 +19,7 @@ MCP 工具使用 `starbridge.` 前缀，JSON CLI 使用下表原名。所有调�
 | `read_node_properties` | 必填 `node_id`、非空且不重复的 `property_ids` | 重新定位和描述后，只读取显式选择的属性 |
 | `search_settings` | 必填 `query`；`expand=false`、`max_nodes=100`、`max_depth=4`、`scope="simulation"`、`limit=100`、`cursor=null` | 搜索已有索引；显式扩展时按预算发现更多节点 |
 | `relocate_node` | 必填 `locator` | 保存重载或新会话中按结构化路径重建引用 |
-| `modify_node_property` | 必填 `node_id`、`property_id`、`expected`、`value` | 按已接受规则执行一次赋值，回读并验证快照影响范围；保存单独执行 |
+| `modify_node_property` | 必填 `node_id`、`property_id`、`expected`、`value`；`audit=false` | 按已接受规则赋值一次并回读目标及必要关联项；可选快照审查，保存单独执行 |
 
 `limit` 范围为 1–500，`max_nodes` 为 1–10000；搜索 `max_depth` 为 1–32，根深度为 0。浏览 `max_nodes` 限制单层运行时观察规模，搜索 `max_nodes` 限制扩展访问的节点数；返回页大小由 `limit` 单独限制。每次 Java 发现请求的内部时间预算最多 30 秒；Python 还用剩余时间限制多页描述和搜索扩展。STAR 客户端启动、编译和进程清理可能占用额外时间，不能把预算解释为硬实时截止。
 
@@ -51,7 +51,7 @@ Core 返回 `{"status":"ok","result":...}`。读取 `result.children`，按返�
 }
 ```
 
-读取值在 `result.properties[property_id]` 中；只有该项 `status="ok"` 时才消费 `value`。数量或选项包装器可能另有 `relation`，已支持的范围提供器另有 `range`。二者也有独立状态；没有范围提供器时返回 `not_supported`，不能将其解释为没有上下限。原始执行结果保留在 `result.result`，便于定位请求记录。
+读取值在 `result.properties[property_id]` 中；只有该项 `status="ok"` 时才消费 `value`。数量或选项包装器可能另有 `relation`，已支持的范围提供器另有 `range`。二者也有独立状态；没有范围提供器时返回 `not_supported`，不能将其解释为没有上下限。公开属性结果不再重复附带底层执行封套；请求诊断的保留方式见[会话说明](bridge-session.md#运行数据与项目产物)。
 
 相同参数文件也用于 JSON CLI：
 
@@ -61,9 +61,9 @@ python3 starbridge.py describe_node --arguments /absolute/describe.json
 python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 ```
 
-`describe_node` 不读取全部当前属性值。内部先以最多 500 项为一页汇集当前描述符并检查规则，再对返回结果应用 `property_ids` 选择和分页；不裁剪内部写入保持范围。省略选择表示全部已观察属性，显式选择接受 1–500 个不重复的 ID，并按选择顺序返回；未知或过时 ID 拒绝。
+`describe_node` 不读取全部当前属性值。首次描述以最多 500 项为一页汇集运行时描述符，在预算内形成一次观察，再按 `property_ids` 和 `limit` 返回所选页面。显式选择接受 1–500 个不重复的 ID，并按选择顺序返回；未知或过时 ID 拒绝。只为当前页准备写入能力说明，不调用 setter。
 
-描述结果默认每页 100 项，可用 `limit` 调整，返回 `offset`、所选集合的 `total_count`、完整观察集合的 `descriptor_total_count` 和 `next_cursor`。下一页保留同一 `node_id`，传回游标；省略 `property_ids` 时沿用游标中的选择。游标绑定节点、完整描述指纹和选择集合；描述或能力状态变化时拒绝旧游标，需重新描述。分页只裁剪响应，不把原本 `partial` 的观察改成 `complete`；`descriptor_next_offset` 非空表示内部描述仍有未汇集部分。通用赋值能力说明可能编译相应规则，但不调用 setter。
+描述结果默认每页 100 项，返回 `offset`、所选集合的 `total_count`、完整观察集合的 `descriptor_total_count` 和 `next_cursor`。下一页保留同一 `node_id` 和 `scope`，传回游标；省略 `property_ids` 时沿用原选择。后续页使用同一次描述快照，过期需重新描述；读写时仍刷新运行时对象与描述符。有效期及缓存位置见[身份、重定位和缓存](#身份重定位和缓存)。分页不会把 `partial` 观察变为 `complete`，`descriptor_next_offset` 非空表示内部描述仍有未汇集部分。
 
 ## 搜索后确认上下文
 
@@ -119,7 +119,7 @@ python3 starbridge.py read_node_properties --arguments /absolute/read-node.json
 
 ```json
 {
-  "session_id": "/absolute/reloaded-session",
+  "session_id": "<newly returned session_id>",
   "locator": [
     {"name": "<previous root name>", "java_class": "<returned root class>"},
     {"name": "<child name>", "java_class": "<returned child class>"}

@@ -1,6 +1,6 @@
 # STAR 会话接入
 
-[返回项目入口](README.cn.md) · [文件 Bridge](bridge-file.md) · [MCP 契约](mcp.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [文件 Bridge](bridge-file.md) · [MCP 契约](mcp.md)
 
 StarBridge 优先连接与目标算例匹配的本机 STAR GUI／服务器；没有可用会话时启动自有后台服务，直接加载原算例。连接、读取和修改均不自动保存，也不创建 `working.sim` 或备份副本。每次请求仍通过临时 Java 批处理客户端执行，客户端退出后 STAR 继续运行。
 
@@ -76,5 +76,7 @@ python3 bridge/runner/session_bridge.py save --session-id SESSION_ID \
 正常成功请求只留下简短 `operation.json`；失败请求保留诊断。`open_session(debug=true)` 或会话 CLI `start --debug` 保留宏、计划、日志和完整结果，调用结果还会给出 `request_result` 路径。保存的算例始终位于工程路径或用户指定位置。
 
 新连接时顺便清理超过 30 天、已结束且不需要恢复的新版会话数据；含算例文件的目录不删除。只有所有登记会话均已结束时才清理超过 30 天的 JSON 缓存和未复用的 Java 编译目录；Java 编译与清理共用目录锁。运行中、结果未确认、记录损坏或被其他请求占用的数据保留，不运行额外清理服务。
+
+## 验证边界
 
 本轮会话与执行层改造已做静态编译与适用的既有契约检查；辅助类缓存的实际 STAR 宏加载尚未实测。真实 GUI 接入、保存、失败恢复和收窄后的写入链路尚未实测。历史后台副本验证不替代这些行为的运行证据。

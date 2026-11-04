@@ -8,47 +8,45 @@
 
 <div align="center">
 <h1>StarBridge</h1>
-<p><strong>A planned bridge for AI agents to inspect, modify, and run STAR-CCM+ simulations with verifiable operation results.</strong></p>
+<p><strong>A bridge for AI agents to inspect STAR-CCM+ simulations and make controlled changes.</strong></p>
 </div>
 
 ## What this project is for
 
-StarBridge is in early development. The Inspector reads simulation objects, key properties, and relationships through both file and background-session entry points. The Modifier can update existing scalar-parameter and user-field-function definitions and replace existing user-tag assignments, with expected-state checks and readback. File changes are saved to a new simulation and reloaded for verification; session changes remain in memory until an explicit save. A background-session prototype also reuses one loaded STAR server for successive requests. Each request starts a temporary Java client; a persistent Java adapter, GUI integration, and working memory remain future work. A local stdio [MCP interface and shared JSON CLI](docs/mcp.md) now expose catalog capabilities, object lookup, descriptions, reads, modifications, and explicit session lifecycle operations.
+StarBridge lets AI agents inspect STAR-CCM+ cases and change supported settings through a local [MCP interface or shared JSON CLI](docs/tech/mcp.md). It is in early development.
 
-Catalog-driven `describe` and `read` commands now check the running server version, locate objects, and read selected properties through reviewed mappings and shared type adapters. They return separate catalog results with session-scoped references and per-property status. Catalog-based `modify` provides expected-state checks, readback, and both catalog and snapshot diffs. Its mappings now also include Boolean and enum options, vector expressions and components, and gravity writes guarded by GravityModel presence; representative writes, rejections, and save/reload checks have passed on STAR 2602. Report field-function references and static/query object selections have also passed representative writes, rejections, and save/reload checks. Boundary scalar and vector profiles now reuse quantity writers for their current constant methods, with per-surface-value rejection and explicit checks that preserve method identity and boundary context. Region tensor profiles now expose component objects for supported 2D and 3D methods, with constant-component writes that preserve the current method and orientation. Anisotropic, orthotropic, isotropic, and transverse-isotropic porous-resistance profiles have passed representative component reads and writes. Principal and axisymmetric methods that own direction axes now expose those axes through shared vector reads and writes, preserving each axis’s coordinate association and all three raw vector components in both 2D and 3D. Material properties now expose named coefficient objects with scalar reads and writes that preserve the current methods and coefficient layout; this path does not switch material methods or check orientation settings. Solid thermal-conductivity coefficients have passed representative writes, rejections, and save/reload checks; symmetric source-derivative profiles have passed 2D/3D reads, writes, and persistence checks. Other materials, methods, and broader configuration coverage remain unfinished. Validation remains scoped to the [modification guide](docs/catalog-modifier.md).
+- **Read settings:** browse simulation objects, find properties, and read their current values and relationships. See [runtime discovery](docs/tech/runtime-discovery.md) and [catalog reads](docs/tech/catalog-runtime.md) for coverage and value formats.
+- **Make controlled changes:** check the target, expected old value, and required constraints before applying a change, then read back the result. Supported properties, method changes, and validation evidence are documented in the [modification guide](docs/tech/catalog-modifier.md).
+- **Save explicitly:** session changes remain in memory until a save request writes the current file or saves a new one. The separate file workflow saves to a new file and reloads it for verification. See [session operations](docs/tech/bridge-session.md) and the [file Bridge guide](docs/tech/bridge-file.md).
 
-The existing schema 1 `modify` and `set-scalar` commands now use the same catalog modifier automatically, with their arguments and existing result fields preserved. They use the selected bundled catalog and require an exact release/build match; see [version selection](docs/catalog-versions.md) for 2602 and 2510. `set-scalar` still has no caller-provided expected state.
-
-The existing Inspector snapshot now also uses the shared catalog through a separate snapshot layout while preserving its schema 1 fields; `inspect` and `save` enforce the same exact server version. [Coverage reporting](docs/catalog.md#分项覆盖报告) now separates discovery, implementation, and observed runtime evidence; `describe` evaluates declared target conditions. Tensor profile and material property method operations include descriptions, affected-object scope, expected-state checks, and readback. Material method selection covers mapped constant, orthotropic, and anisotropic thermal-conductivity methods through class-based lookup of existing options. Other write adapters, further structural operations, and broader model-state checks remain unfinished.
-
-The proposed system combines structured simulation access, workflow Skills, persistent working memory, and long-lived background or GUI simulation sessions. See the [design document](StarBridge.md) for scope and boundaries.
-
-[Runtime discovery](docs/runtime-discovery.md) now provides object-tree browsing, property descriptions, explicit property reads, bounded text search, and relocation after reload through the shared CLI and MCP. It generates read plans from versioned rules and local Javadoc declarations for STAR 2602 Build `21.02.007`; unknown values and proxies retain metadata and limitations. Session references and metadata caches do not replace live identity checks. `modify_node_property` now generates controlled assignment plans for accepted special rules, constant bounded scalar inputs, and vectors without unresolved coordinate/model context. Writes check expected state, units, bounds, identity, preserved properties, and the existing snapshot scope; they attempt the setter once and require an explicit save. Four representative writes, seven pre-write rejections, save/reload verification, and a dependent-value change producing `uncertain` passed on the isolated 2602 case. This implementation does not establish complete simulation coverage. Design and acceptance requirements remain in the [ADR](docs/adr/0001-runtime-discovery.md), [plan](docs/archive/plan-2026-10-30-12-24.md), and [specification](docs/archive/spec-2026-10-30-12-24.md) (Chinese).
+Support depends on the exact [STAR release and Build](docs/tech/catalog-versions.md) and the adapted property or operation; it does not cover every simulation setting. Local GUI/server attachment is implemented, but real GUI attachment, saving, failure recovery, and the revised write path have not yet been exercised against STAR; see the [validation limits](docs/tech/bridge-session.md#验证边界). Mesh generation, solver execution, and persistent working memory remain future work in the [design](StarBridge.md) and [roadmap](docs/roadmap.md).
 
 ## Getting started
 
-Build and install the local `starbridge-cfd` wheel with the optional `mcp` extra, then connect the `starbridge-mcp` executable using `add-mcp`. The package includes runtime catalogs and Java templates; it runs outside the source checkout. Version `0.1.0` is not yet published to PyPI. Follow the [distribution and Harness guide](docs/distribution.md) (Chinese) for exact installation commands, the representative case-audit Skill, and the separate validation status of each of the three target clients.
+For Codex, Claude Code, or DeepSeek Harness (DSH), follow the [plugin installation guide](docs/distribution.md#三端插件安装) to install the program, MCP connection, and shared case-audit Skill together. The launcher needs `python3` and `uv` on PATH and prepares a Python 3.11+ environment. Simulation operations require Linux, a compatible STAR-CCM+ installation, and a license; runtime discovery also needs that installation's local Javadoc.
 
-Python 3.11+ is required. Simulation operations additionally require Linux, a compatible STAR-CCM+ installation, and a license; runtime discovery also uses that installation's local Javadoc. Existing repository scripts remain available. See the [file Bridge guide](docs/bridge-file.md), [background sessions](docs/bridge-session.md), and [MCP contract](docs/mcp.md) for operations and limits.
+For source or generic stdio use, follow the [standalone installation instructions](docs/distribution.md#源码与通用接入). The `starbridge-cfd` package can run outside the source checkout; version `0.1.0` has not been published to PyPI. The same guide records each client's installation results and limits. After installation, use the [MCP contract](docs/tech/mcp.md) and [session guide](docs/tech/bridge-session.md) to connect a case and read its settings.
 
 ## More documentation
 
 | Document | Purpose |
 |---|---|
-| [Distribution and Harness integration](docs/distribution.md) | Local package installation, MCP and Skill setup, versions, and validation gaps |
-| [Runtime discovery](docs/runtime-discovery.md) | Browse actual nodes, describe and read discovered properties, search within a budget, and relocate references |
-| [MCP and shared Core API](docs/mcp.md) | Local stdio tools, version resources, JSON CLI, and recovery behavior |
-| [Catalog describe/read](docs/catalog-runtime.md) | Read selected properties with server-version checks, session references, and per-property errors |
-| [Catalog modification](docs/catalog-modifier.md) | Schema 2 property writes, expected state, readback, diffs, and file reload verification |
-| [Offline catalog tools](docs/catalog.md) | Generate versioned API candidates, merge reviewed semantics, and compare declarations |
-| [Modifier guide](docs/modifier.md) | Single-object requests, expected-state checks, readback, and save behavior |
-| [Inspector snapshot](docs/inspector.md) | Catalog-driven snapshot layout, compatible fields, read errors, and validation limits |
-| [File Bridge guide](docs/bridge-file.md) | File operations, requirements, and implementation limits |
-| [Background-session guide](docs/bridge-session.md) | Start, inspect, modify, save, and stop a persistent STAR server |
+| [Distribution and Harness integration](docs/distribution.md) | Plugin and standalone installation, versions, and validation gaps |
+| [Technical documentation](docs/tech/index.md) | Current implementation, topic navigation, and source-code responsibilities |
+| [Runtime discovery](docs/tech/runtime-discovery.md) | Browse actual nodes, describe and read discovered properties, search within a budget, and relocate references |
+| [MCP and shared Core API](docs/tech/mcp.md) | Local stdio tools, version resources, JSON CLI, and recovery behavior |
+| [Catalog describe/read](docs/tech/catalog-runtime.md) | Read selected properties with server-version checks, session references, and per-property errors |
+| [Catalog modification](docs/tech/catalog-modifier.md) | Schema 2 property writes, expected state, readback, diffs, and file reload verification |
+| [STAR version selection](docs/tech/catalog-versions.md) | Exact release/Build matching, session binding, and per-version evidence |
+| [Offline catalog tools](docs/tech/catalog.md) | Generate versioned API candidates, merge reviewed semantics, and compare declarations |
+| [Modifier guide](docs/tech/modifier.md) | Single-object requests, expected-state checks, readback, and save behavior |
+| [Inspector snapshot](docs/tech/inspector.md) | Catalog-driven snapshot layout, compatible fields, read errors, and validation limits |
+| [File Bridge guide](docs/tech/bridge-file.md) | File operations, requirements, and implementation limits |
+| [Session guide](docs/tech/bridge-session.md) | Connect, inspect, modify, save, and disconnect or stop a STAR session |
 | [Design](StarBridge.md) | Product scope, proposed architecture, sessions, and working memory |
 | [Current work](TODO.md) | Current milestone, tasks, and completion criteria |
 | [Roadmap](docs/roadmap.md) | Future stages and expected outcomes |
-| [Reference projects](docs/references.md) | Sources, relevant design ideas, and applicability limits |
+| [Reference projects](docs/tech/references.md) | Sources, relevant design ideas, and applicability limits |
 
 The design and planning documents are maintained in Chinese. Only the project entry page has an English translation.
 

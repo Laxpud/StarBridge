@@ -1,6 +1,6 @@
 # Inspector 对象快照
 
-[返回项目入口](README.cn.md) · [目录描述与读取](catalog-runtime.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [目录描述与读取](catalog-runtime.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
 Inspector 通过共享目录读取算例对象清单、关键属性和归属关系，保留原有 schema 1 输出。文件 `inspect` 的 `summary.json.snapshot` 与后台会话 `inspect` 的 `snapshot` 使用相同格式，修改与保存的 `before`、`after` 也使用此格式。[Modifier](modifier.md) 记录全部已覆盖字段的 Diff，文件修改独立重载后同时核对完整快照和目标目录属性；`set-scalar` 仍保留原 `parameter_diff`，但其重载核对也覆盖完整快照和目标目录内容。
 
@@ -42,9 +42,9 @@ python3 bridge/runner/session_bridge.py inspect \
 
 ## 快照布局与共享调用
 
-[`src/starbridge/catalogs/2602/snapshot.json`](../src/starbridge/catalogs/2602/snapshot.json) 单独维护集合与字段布局，目前包含 16 种节点、11 个根集合和 57 条读取管线。它不复制 Java 成员声明：成员签名、指纹和调用参数继续由 [`execution.json`](../src/starbridge/catalogs/2602/execution.json) 与[候选目录](../src/starbridge/catalogs/2602/generated/catalog.json)共同核对。快照布局版本和输出 `schema_version` 分开维护，目前都为 `1`。
+[`src/starbridge/catalogs/2602/snapshot.json`](../../src/starbridge/catalogs/2602/snapshot.json) 单独维护集合与字段布局，目前包含 16 种节点、11 个根集合和 57 条读取管线。它不复制 Java 成员声明：成员签名、指纹和调用参数继续由 [`execution.json`](../../src/starbridge/catalogs/2602/execution.json) 与[候选目录](../../src/starbridge/catalogs/2602/generated/catalog.json)共同核对。快照布局版本和输出 `schema_version` 分开维护，目前都为 `1`。
 
-[`src/starbridge/core/snapshot.py`](../src/starbridge/core/snapshot.py) 校验版本、节点引用、类型分支、输出字段和只读管线；每个调用必须声明 `effect: read`，请求不能加入任意 Java 调用。编译结果作为 `SNAPSHOT_PLAN` 交给共享 `CatalogRuntime` 遍历，运行目录保存 `snapshot-plan.json`。文件和后台会话的 `inspect`、`save`、修改前后快照及重载核对都使用该布局，Java 不再单独维护各对象的固定快照读取表。
+[`src/starbridge/core/snapshot.py`](../../src/starbridge/core/snapshot.py) 校验版本、节点引用、类型分支、输出字段和只读管线；每个调用必须声明 `effect: read`，请求不能加入任意 Java 调用。编译结果作为 `SNAPSHOT_PLAN` 交给共享 `CatalogRuntime` 遍历，运行目录保存 `snapshot-plan.json`。文件和后台会话的 `inspect`、`save`、修改前后快照及重载核对都使用该布局，Java 不再单独维护各对象的固定快照读取表。
 
 节点自动输出名称和类型，其他字段按布局明确读取；`tags` 通过 `names` 适配器生成，并非所有节点都隐式读取标签。字段有四种形式：
 
@@ -70,7 +70,7 @@ python3 bridge/runner/session_bridge.py inspect \
 
 错误位置使用“集合/对象名称/子集合”的可读路径，名称本身可能含 `/`，因此它不是可供分割解析的 JSON Pointer。`inspect` 对部分读取输出警告并保留结果，退出码仍可为零。宏的 `status: ok` 表示执行和结果写出成功；使用者必须另外检查快照完整性。
 
-布局或成员校验失败在启动客户端、创建工作目录或写入会话活动标记之前拒绝。运行时版本检查先于快照字段读取；版本不符返回 `rejected` 和最小会话元数据，不将其当作完整快照。已有后台会话保持 `ready`；`save` 也在保存前核对版本，修改同时核对快照计划与写入计划。`start` 的首次检查若被拒绝会关闭刚启动的服务；普通 `stop` 的关闭前检查被拒绝则保留原服务。`status` 和 `stop --discard` 不依赖目录，便于查看状态和明确放弃服务。超时或其他无法确认的操作失败仍按[会话失败处理](bridge-session.md#身份隔离与失败处理)处理。
+布局或成员校验失败在启动客户端、创建工作目录或写入会话活动标记之前拒绝。运行时版本检查先于快照字段读取；版本不符返回 `rejected` 和最小会话元数据，不将其当作完整快照。已有后台会话保持 `ready`；`save` 也在保存前核对版本，修改同时核对快照计划与写入计划。`start` 的首次检查若被拒绝会关闭刚启动的服务；普通 `stop` 的关闭前检查被拒绝则保留原服务。`status` 和 `stop --discard` 不依赖目录，便于查看状态和明确放弃服务。超时或其他无法确认的操作失败仍按[会话失败处理](bridge-session.md#身份和失败处理)处理。
 
 Inspector 不调用报告求值、网格生成、求解或工作流执行。当前不读取场数据数组、监视器历史、完整边界条件、网格控制、物性及模型的全部设置；多相子连续体不递归展开。Simulation Operations 输出结构清单，数组位置不代表执行顺序，也不重建条件和循环的控制逻辑。子工作流仅引用，避免引用循环。
 

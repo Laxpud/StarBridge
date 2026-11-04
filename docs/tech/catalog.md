@@ -1,12 +1,12 @@
 # 版本目录工具
 
-[返回项目入口](README.cn.md) · [目录描述与读取](catalog-runtime.md) · [目录修改](catalog-modifier.md) · [设计文档](../StarBridge.md#版本化对象属性与操作目录) · [当前任务](../TODO.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [目录描述与读取](catalog-runtime.md) · [目录修改](catalog-modifier.md) · [设计文档](../../StarBridge.md#版本化对象属性与操作目录) · [当前任务](../../TODO.md)
 
 目录工具从本机 STAR Javadoc 生成候选 API，校验和合并人工语义，比较不同版本的声明变化，并分别统计静态发现、执行实现和已有结果中的成功观察。本页命令只读取安装材料，不需要许可证，不启动 STAR，也不加载或修改算例。候选目录配合人工 `execution.json` 已可执行[当前算例的描述与读取](catalog-runtime.md)及[首批单属性修改](catalog-modifier.md)；兼容修改入口和 [Inspector 快照](inspector.md#快照布局与共享调用)也复用目录，快照集合与字段另由 `snapshot.json` 描述。
 
 ## 生成与查看
 
-仓库随附 [`src/starbridge/catalogs/2602/generated/catalog.json`](../src/starbridge/catalogs/2602/generated/catalog.json)，供 `inspect`、`save`、兼容 `modify` 和 `set-scalar` 自动加载，也可显式传给目录 `describe/read/modify`。它保留生成器标识、安装相对来源路径和 SHA256，人工语义、执行映射和快照布局独立维护；使用现有命令无需自行生成。
+仓库随附 [`src/starbridge/catalogs/2602/generated/catalog.json`](../../src/starbridge/catalogs/2602/generated/catalog.json)，供 `inspect`、`save`、兼容 `modify` 和 `set-scalar` 自动加载，也可显式传给目录 `describe/read/modify`。它保留生成器标识、安装相对来源路径和 SHA256，人工语义、执行映射和快照布局独立维护；使用现有命令无需自行生成。
 
 需要重新生成或检查来源时，使用 Python 3.11+，无需第三方 Python 依赖。在仓库根目录执行，`--install` 指向包含 `star/` 和 `doc/` 的安装根目录：
 
@@ -31,7 +31,7 @@ cmp src/starbridge/catalogs/2602/generated/catalog.json outputs/catalog-2602/gen
 
 ## 人工语义与合并
 
-人工规则维护在 [`src/starbridge/catalogs/2602/overrides.json`](../src/starbridge/catalogs/2602/overrides.json)。当前描述标量表达式、用户场函数表达式和替换用户标签集合三项能力，依据现有宏与使用说明整理；这些是离线语义说明，不是执行计划；对应首批写入管线单独维护在 `execution.json`，范围见[目录修改](catalog-modifier.md)。
+人工规则维护在 [`src/starbridge/catalogs/2602/overrides.json`](../../src/starbridge/catalogs/2602/overrides.json)。当前描述标量表达式、用户场函数表达式和替换用户标签集合三项能力，依据现有宏与使用说明整理；这些是离线语义说明，不是执行计划；对应首批写入管线单独维护在 `execution.json`，范围见[目录修改](catalog-modifier.md)。
 
 ```bash
 python3 tools/catalog/catalog.py merge \
@@ -51,7 +51,7 @@ python3 tools/catalog/catalog.py describe \
 
 ## v1 数据格式
 
-格式由 [`src/starbridge/core/catalog.py`](../src/starbridge/core/catalog.py) 校验，所有列出的字段均必需，未知字段、重复 JSON 键和非标准数值常量会被拒绝。目录格式版本、STAR 产品版本、Build 分开维护；此版本尚不包含算例实例、对象永久 ID 或当前属性值。
+格式由 [`src/starbridge/core/catalog.py`](../../src/starbridge/core/catalog.py) 校验，所有列出的字段均必需，未知字段、重复 JSON 键和非标准数值常量会被拒绝。目录格式版本、STAR 产品版本、Build 分开维护；此版本尚不包含算例实例、对象永久 ID 或当前属性值。
 
 | 顶层字段 | 含义 |
 |---|---|
@@ -144,4 +144,4 @@ python3 tools/catalog/catalog.py coverage \
 
 当前执行映射包含 24 种目标类型、142 个已配读取属性、50 个属性写入入口和 2 个结构操作。这些是实现条目数，实际成功证据仍按目标和请求单独统计。
 
-实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。修改兼容层见 [Modifier](modifier.md)，快照目录和验收见 [Inspector](inspector.md)。其他结构操作、通用模型条件及剩余覆盖仍见 [TODO](../TODO.md)；分项报告的证据输入范围由调用方显式选择，不自动扫描本机历史输出。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。
+实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。修改兼容层见 [Modifier](modifier.md)，快照目录和验收见 [Inspector](inspector.md)。其他结构操作、通用模型条件及剩余覆盖仍见 [TODO](../../TODO.md)；分项报告的证据输入范围由调用方显式选择，不自动扫描本机历史输出。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。

@@ -107,8 +107,8 @@
       },
       "evidence": [
         "bridge/java/BridgeFileMacro.java",
-        "docs/modifier.md",
-        "docs/inspector.md"
+        "docs/tech/modifier.md",
+        "docs/tech/inspector.md"
       ],
       "status": {
         "discovered": true,
@@ -185,8 +185,8 @@
       },
       "evidence": [
         "bridge/java/BridgeFileMacro.java",
-        "docs/modifier.md",
-        "docs/inspector.md"
+        "docs/tech/modifier.md",
+        "docs/tech/inspector.md"
       ],
       "status": {
         "discovered": true,
@@ -282,8 +282,8 @@
       },
       "evidence": [
         "bridge/java/BridgeFileMacro.java",
-        "docs/modifier.md",
-        "docs/inspector.md"
+        "docs/tech/modifier.md",
+        "docs/tech/inspector.md"
       ],
       "status": {
         "discovered": true,

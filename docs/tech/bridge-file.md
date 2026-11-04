@@ -1,8 +1,8 @@
 # 文件 Bridge 原型
 
-[返回项目入口](README.cn.md) · [当前工作](../TODO.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [当前工作](../../TODO.md)
 
-核对基线：2026-10-20，本机 Linux、STAR-CCM+ 2602 Build 21.02.007，以及用户提供的 `Base.sim~`。本页说明每次加载文件的入口；连续操作同一后台会话见[后台会话说明](bridge-session.md)。两者均为原型脚本，尚未封装为正式 `starbridge` CLI。
+核对基线：2026-10-20，本机 Linux、STAR-CCM+ 2602 Build 21.02.007，以及用户提供的 `Base.sim~`。本页说明每次加载文件的入口；连续操作同一后台会话见[后台会话说明](bridge-session.md)。源码脚本保留为兼容入口；发行包另提供 `starbridge-file`、`starbridge-session` 和共享 JSON CLI，见[分发说明](../distribution.md#安装程序)。
 
 ## 读取算例对象与参数
 
@@ -80,8 +80,8 @@ Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常�
 
 | 文件 | 职责 |
 |---|---|
-| [file_bridge.py](../bridge/runner/file_bridge.py) | 校验路径、生成宏、启动 STAR、记录日志、重新加载并核对旧快照、目录内容与输入摘要 |
-| [BridgeFileMacro.java](../src/starbridge/bridge/java/BridgeFileMacro.java) | 调用 STAR Java API 读取对象快照、设置标量、另存文件并序列化结果 |
+| [file_bridge.py](../../bridge/runner/file_bridge.py) | 校验路径、生成宏、启动 STAR、记录日志、重新加载并核对旧快照、目录内容与输入摘要 |
+| [BridgeFileMacro.java](../../src/starbridge/bridge/java/BridgeFileMacro.java) | 调用 STAR Java API 读取对象快照、设置标量、另存文件并序列化结果 |
 
 宏模板中的占位符由 Runner 填入，不能直接作为完整宏执行。输入由 STAR 自身加载，没有解析或修改 `.sim` 二进制格式。
 

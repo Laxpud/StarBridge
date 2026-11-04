@@ -4,6 +4,10 @@
 
 ## 已完成里程碑
 
+<a id="分发与-harness-接入"></a>
+
+- [分发与 Harness 接入（本地交付）](archive/milestone-2026-11-03-18-17-distribution.md)
+
 <a id="运行时对象树与属性发现"></a>
 <a id="通用规则驱动的受控写入迁移"></a>
 
@@ -14,19 +18,9 @@
 - [后台常驻会话与临时客户端](archive/milestone-2026-10-21-10-08-background-session.md)
 - [文件 Bridge 原型](archive/milestone-2026-10-21-10-02-file-bridge.md)
 
-## 已有工作记录
-
-### 分发与 Harness 接入
-
-Python 包、代表性 Skill 和三端项目级安装接入已完成本地交付，外部发布尚未执行。已有工作保留在[原分发计划](plans/plan-2026-11-01-14-42.md)与[分发说明](distribution.md#验收状态)中；分别安装程序、MCP 配置和 Skill 的后续安排已由 [ADR 0002](adr/0002-plugins-sessions-and-storage.md)调整。
-
 ## 当前里程碑
 
-三端插件、会话接入与运行简化方案已确认，尚未实施。后续实施统一按[新 Plan](plans/plan-2026-11-03-14-23.md)推进，目标行为见 [Spec](specs/spec-2026-11-03-14-23.md)，当前入口见 [TODO](../TODO.md)。
-
-本轮包括 Codex、Claude Code 和 DSH 插件、优先连接已有 STAR GUI／服务器、直接加载原算例、`.starbridge` 目录安排，以及状态、读写和执行链路的简化。GUI 接入不再另列未来任务；减少宏生成和客户端启动开销也由新 Plan 管理，不预设常驻 Java 适配器为独立交付项。
-
-继续采用 [ADR 0001](adr/0001-runtime-discovery.md) 的运行时发现方向，版本资料和有效适配继续复用。按 [ADR 0002](adr/0002-plugins-sessions-and-storage.md)迁移已有能力后移除重复接口与结果转换，不长期维持多套原型格式。已实现的能力与限制见[运行时发现](runtime-discovery.md)。
+- [三端插件、会话接入与运行简化](../TODO.md#三端插件会话接入与运行简化)
 
 ## 后续里程碑
 
@@ -59,13 +53,17 @@ Tool 决定 Agent 能做什么，Skill 描述 Agent 如何完成工作。
 | Simulation Operations | 块关系读取、块修改及结构操作 |
 | 其他算例内设置 | 几何、表格、报告、监视器、场景等缺失值类型、查询谓词和操作语义 |
 
-已有能力及限制统一见[运行时发现](runtime-discovery.md)、[目录修改](catalog-modifier.md)和[版本说明](catalog-versions.md)。新增类型和版本按实际缺口安排，当前简化工作不自动扩大支持范围。
+已有能力及限制统一见[运行时发现](tech/runtime-discovery.md)、[目录修改](tech/catalog-modifier.md)和[版本说明](tech/catalog-versions.md)。新增类型和版本按实际缺口安排，当前简化工作不自动扩大支持范围。
 
 ---
 
-设计依据见 [StarBridge 设计](../StarBridge.md)，参考实现与适用边界见[参考项目](references.md)。
+设计依据见 [StarBridge 设计](../StarBridge.md)，参考实现与适用边界见[参考项目](tech/references.md)。
 
 ## Backlog
+
+### Python 包与 Registry 发布
+
+原分发计划的本地交付已结束，PyPI、发布 tag／Git Release 和 MCP Registry 尚未发布。准备情况见[分发说明](distribution.md#发布准备)。后续发布范围与时机另行确认，不因归档旧计划或已有插件 Git 推送而自动执行。
 
 ### 网格与求解执行接口
 

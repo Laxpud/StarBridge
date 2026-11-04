@@ -1,10 +1,10 @@
 # Modifier 单项修改
 
-[返回项目入口](README.cn.md) · [Inspector 快照](inspector.md) · [目录修改](catalog-modifier.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [Inspector 快照](inspector.md) · [目录修改](catalog-modifier.md) · [文件入口](bridge-file.md) · [后台会话](bridge-session.md)
 
 `modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。本页描述不带目录参数的兼容 schema 1 契约。它与 `set-scalar` 自动加载所选版本的随附目录并复用同一修改器，原 CLI、请求和旧结果字段继续保留。带 `--catalog` 和 `--execution` 的 `modify` 使用[目录 schema 2 契约](catalog-modifier.md)，无需把旧请求改成新格式。
 
-版本目录与通用读写基础已交付，网格、边界、物性及操作流程的现有适配范围见[目录修改](catalog-modifier.md)。更多配置的覆盖缺口见[路线图](roadmap.md#覆盖范围与版本验证)；后续按[受控写入迁移](roadmap.md#通用规则驱动的受控写入迁移)扩展，尚未启动实施。
+版本目录与通用读写基础已交付，网格、边界、物性及操作流程的现有适配范围见[目录修改](catalog-modifier.md)。更多配置的覆盖缺口见[路线图](../roadmap.md#覆盖范围与版本验证)；后续按[受控写入迁移](../roadmap.md#通用规则驱动的受控写入迁移)扩展，尚未启动实施。
 
 ## 使用方式
 
@@ -91,11 +91,11 @@ python3 bridge/runner/session_bridge.py save \
 
 - `status: rejected`：宏确认尚未调用写入 API，预检查已经拒绝请求。`result.json` 保留错误原因和未写入的前后状态；版本检查在快照字段读取前拒绝时仅含最小会话元数据，不能当作完整快照。CLI 以非零退出码返回；后台会话保持 `ready`，`last_request_status` 为 `rejected`，可以重新读取后构造新请求。
 - `status: ok`：宏已完成写入和回读；文件入口还需通过重新加载核对后才生成成功摘要。
-- 超时、客户端异常、写入或回读失败：后台会话进入 `uncertain` 或保留活动请求标记，按[后台会话失败处理](bridge-session.md#身份隔离与失败处理)处理。当前不自动重试、不承诺回滚。
+- 超时、客户端异常、写入或回读失败：会话记录写入结果未确认或保留仍在执行的请求标记，按[后台会话失败处理](bridge-session.md#身份和失败处理)处理。当前不自动重试、不承诺回滚。
 
 `modify` 要求修改前后旧 Inspector 已覆盖字段和目标类型全部已配目录属性读取成功。它不能在部分快照上声称已确认操作结果。`set-scalar` 也通过目录的 `quantity_value` 写入常量，但没有新增调用者提供的 `expected`。内部读取当前值用于同次操作准备与回读，不构成陈旧请求保护；需要保护此前读取状态时使用 `modify`。
 
-文件 `summary.json` 与会话修改结果包含 `modification`、`snapshot` 和 `snapshot_diff`。另增 `catalog_before`、`catalog`、`catalog_diff`；文件结果还有 `reopened_snapshot_match` 和 `reopened_catalog_match`，分别确认旧快照与目录内容的独立重载一致。运行目录内的 `request.json` 保存规范化后的兼容请求，`legacy-plan.json` 保存裁剪后的默认目录执行计划；`result.json` 保存宏返回的 `before`、`after` 及执行状态；请求和日志沿用文件及会话各自的目录结构。
+文件 `summary.json` 与会话修改结果包含 `modification`、`snapshot` 和 `snapshot_diff`。另增 `catalog_before`、`catalog`、`catalog_diff`；文件结果还有 `reopened_snapshot_match` 和 `reopened_catalog_match`，分别确认旧快照与目录内容的独立重载一致。文件入口的 `request.json` 保存规范化兼容请求，`legacy-plan.json` 保存默认目录执行计划，`result.json` 保存宏结果。会话成功请求默认只留简短操作记录，调试和失败诊断按[运行数据规则](bridge-session.md#运行数据与项目产物)保留。
 
 `snapshot_diff` 记录已覆盖字段的所有变化，包括参数依赖导致的求值变化。每项包含 `path`、`before`、`after`，其中 `path` 是相对于快照根的 JSON Pointer；对象数组按 Inspector 的稳定排序使用下标，标签等标量数组整体记录。比较排除 `simulation_name`、`session_path` 和 `modified` 三个加载元数据字段。Diff 不覆盖完整 STAR 对象树，不能证明所有未读取设置都未变化。新增 `catalog_diff` 的同会话引用与跨加载规范化规则见[目录结果与差异](catalog-modifier.md#结果与差异)。
 
