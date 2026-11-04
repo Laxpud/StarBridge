@@ -115,7 +115,7 @@ python3 tools/catalog/catalog.py coverage \
   --output outputs/catalog-coverage.json
 ```
 
-要统计已有运行证据，在命令中加入 `--result <运行目录>/apply/result.json` 或 `--result <运行目录>/summary.json`；会话请求的 `result.json` 与命令响应也可使用。结果文件必须由维护者确认来源。报告记录其 SHA256 和实际目标定位，摘要用于追溯所读文件，不认证文件内容的真实性。
+要统计已有运行证据，在命令中加入 `--result <运行目录>/apply/result.json` 或 `--result <运行目录>/summary.json`；会话使用调试或失败诊断中保留的宏 `result.json`；命令响应还需满足下述封套与字段要求，简短 `operation.json` 不是完整证据。结果文件必须由维护者确认来源。报告记录其 SHA256 和实际目标定位，摘要用于追溯所读文件，不认证文件内容的真实性。
 
 报告分别使用以下统计基数：
 
@@ -132,7 +132,7 @@ python3 tools/catalog/catalog.py coverage \
 | `observed_execute` | 成功的 schema 3 结构操作结果，带已映射的操作 ID、合法方法参数、同一目标的前后读取；读取字段必须恰好覆盖该操作的 `read_properties` |
 | `file_reload` | 对应属性修改或结构操作的文件 Runner 汇总同时确认 `reopened_catalog_match`、`reopened_snapshot_match` 和 `input_unchanged`，且输出与输入不同 |
 
-结构操作回读中的成功属性仍计入 `observed_read`，但不会增加普通 `observed_write`。方法切换可能让旧分量不再适用，因此结构操作按自己的 `read_properties` 核对完整性；schema 2 属性修改仍要求该目标类型的全部映射属性。证据记录中的 `file_reload` 保留属性 ID，`operation_file_reload` 单独保留操作 ID，避免同名混算。成功操作证据还保留所请求的方法参数；`observed_methods` 只表示有该方法的成功样例，不表示该方法的全部输入组合已经验证。
+结构操作回读中的成功属性仍计入 `observed_read`，但不会增加普通 `observed_write`。方法切换可能让旧分量不再适用，因此结构操作按自己的 `read_properties` 核对完整性；覆盖统计器接受 schema 2 写入证据时，仍要求该目标类型的全部映射属性。这个旧证据要求不等于当前执行器的赋值前提：普通赋值已裁剪为目标、身份字段及必要保持项，因此其成功结果可能被统计器列为 `not_accepted`。统计器还只识别原有宏／文件／会话封套；新的精简结果不能直接视为兼容。接口与结果迁移见[实施计划](../plans/plan-2026-11-03-14-23.md#接口与执行)。证据记录中的 `file_reload` 保留属性 ID，`operation_file_reload` 单独保留操作 ID，避免同名混算。成功操作证据还保留所请求的方法参数；`observed_methods` 只表示有该方法的成功样例，不表示该方法的全部输入组合已经验证。
 
 `describe` 输出、旧兼容请求、未经绑定的材料和人工 `status` 不作为写入实测依据。执行映射变更后，旧 `catalog_id` 的结果列为 `stale`；不能据同名属性继续沿用。版本不符、属性缺失或矛盾结果列为 `not_accepted` 并给出原因。拒绝或失败结果列为 `rejected/error`，不增加成功数；没有当前目录身份的拒绝结果也不能证明某个运行条件已经验证。损坏 JSON、重复键、缺失文件会使命令失败。
 
@@ -140,8 +140,4 @@ python3 tools/catalog/catalog.py coverage \
 
 ## 当前验证边界
 
-本机 2602 Build 21.02.007 的全部 23,171 个 `star.*` 索引类型已生成并通过目录结构与继承引用校验，包含 154,743 个声明成员和 9,939 个属性候选。当前 140 个根类型及其继承依赖共生成 225 个类型、2,878 个声明成员和 167 个属性候选，覆盖已选的 TensorProfile、标量分量、方向轴方法、材料物性与系数、查询谓词及有向网格尺寸 API；随附候选文件与本轮两次独立生成结果逐字节一致，网格扩展前的 211 个类型记录保持不变。初始选择也已核对重复生成结果，并与 2510 Build 20.06.007 的同范围目录比较；这不代表 2510 算例读写获得支持。安装版本不匹配、人工规则版本不匹配以及成员指纹失效均已确认拒绝。
-
-当前执行映射包含 24 种目标类型、142 个已配读取属性、50 个属性写入入口和 2 个结构操作。这些是实现条目数，实际成功证据仍按目标和请求单独统计。
-
-实际算例的定位与读取适配已接入目录，范围见[运行时验证](catalog-runtime.md#验证范围与剩余工作)；首批目录写入、预检查、回读及文件另存重载见[目录修改验证](catalog-modifier.md#验证范围与迁移边界)。修改兼容层见 [Modifier](modifier.md)，快照目录和验收见 [Inspector](inspector.md)。其他结构操作、通用模型条件及剩余覆盖仍见 [TODO](../../TODO.md)；分项报告的证据输入范围由调用方显式选择，不自动扫描本机历史输出。其他格式的 Javadoc、缺失文档的 API 和供应商元数据语义仍需相应材料与验证。
+既有验证结果与复现材料见[验证记录](../evidence/catalog.md)。当前会话与执行改造的实测缺口统一见[会话验证边界](bridge-session.md#验证边界)。

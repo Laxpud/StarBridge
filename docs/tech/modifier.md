@@ -4,7 +4,7 @@
 
 `modify` 根据一份 JSON 请求修改一个已有对象。当前支持标量参数表达式、用户场函数表达式，以及已有用户标签关联。每次操作先核对旧状态，再写入并回读；文件入口另存为新文件后重新加载核对。本页描述不带目录参数的兼容 schema 1 契约。它与 `set-scalar` 自动加载所选版本的随附目录并复用同一修改器，原 CLI、请求和旧结果字段继续保留。带 `--catalog` 和 `--execution` 的 `modify` 使用[目录 schema 2 契约](catalog-modifier.md)，无需把旧请求改成新格式。
 
-版本目录与通用读写基础已交付，网格、边界、物性及操作流程的现有适配范围见[目录修改](catalog-modifier.md)。更多配置的覆盖缺口见[路线图](../roadmap.md#覆盖范围与版本验证)；后续按[受控写入迁移](../roadmap.md#通用规则驱动的受控写入迁移)扩展，尚未启动实施。
+更广的属性和结构操作见[目录修改](catalog-modifier.md)，接口迁移进度见 [TODO](../../TODO.md)。
 
 ## 使用方式
 
@@ -49,7 +49,7 @@ python3 bridge/runner/session_bridge.py save \
   --session-id SESSION_ID --output outputs/Base_session_modified.sim
 ```
 
-会话 `modify` 只改变内存；`save` 显式保存。会话保存本身不重新加载文件，独立磁盘核对仍使用文件 `inspect`。每次修改请求保持文件锁串行，不能把它当作与外部 Java 客户端或用户 GUI 之间的事务锁；此原型只管理自己启动的后台服务。
+会话 `modify` 只改变内存；`save` 显式保存。会话保存本身不重新加载文件，独立磁盘核对仍使用文件 `inspect`。每次修改请求保持文件锁串行，不能把它当作与外部 Java 客户端或用户 GUI 之间的事务锁；会话可以连接外部服务或启动自有服务，生命周期见[会话说明](bridge-session.md)。
 
 ## 请求契约
 
@@ -95,21 +95,10 @@ python3 bridge/runner/session_bridge.py save \
 
 `modify` 要求修改前后旧 Inspector 已覆盖字段和目标类型全部已配目录属性读取成功。它不能在部分快照上声称已确认操作结果。`set-scalar` 也通过目录的 `quantity_value` 写入常量，但没有新增调用者提供的 `expected`。内部读取当前值用于同次操作准备与回读，不构成陈旧请求保护；需要保护此前读取状态时使用 `modify`。
 
-文件 `summary.json` 与会话修改结果包含 `modification`、`snapshot` 和 `snapshot_diff`。另增 `catalog_before`、`catalog`、`catalog_diff`；文件结果还有 `reopened_snapshot_match` 和 `reopened_catalog_match`，分别确认旧快照与目录内容的独立重载一致。文件入口的 `request.json` 保存规范化兼容请求，`legacy-plan.json` 保存默认目录执行计划，`result.json` 保存宏结果。会话成功请求默认只留简短操作记录，调试和失败诊断按[运行数据规则](bridge-session.md#运行数据与项目产物)保留。
+文件 `summary.json` 与会话修改结果包含 `modification`、`snapshot` 和 `snapshot_diff`。另增 `catalog_before`、`catalog`、`catalog_diff`；文件结果还有 `reopened_snapshot_match` 和 `reopened_catalog_match`，分别确认旧快照与目录内容的独立重载一致。文件入口默认保留宏、命令、日志和 `result.json`，后者保存宏结果；规范化请求与计划直接传入执行器，仅内部调试模式另存 `request.json` 和 `legacy-plan.json`。会话成功请求默认只留简短操作记录，调试和失败诊断按[运行数据规则](bridge-session.md#运行数据与项目产物)保留。
 
 `snapshot_diff` 记录已覆盖字段的所有变化，包括参数依赖导致的求值变化。每项包含 `path`、`before`、`after`，其中 `path` 是相对于快照根的 JSON Pointer；对象数组按 Inspector 的稳定排序使用下标，标签等标量数组整体记录。比较排除 `simulation_name`、`session_path` 和 `modified` 三个加载元数据字段。Diff 不覆盖完整 STAR 对象树，不能证明所有未读取设置都未变化。新增 `catalog_diff` 的同会话引用与跨加载规范化规则见[目录结果与差异](catalog-modifier.md#结果与差异)。
 
-
 ## 已确认的范围
 
-2026-10-28，在本机 Linux、STAR-CCM+ 2602 Build 21.02.007 与 `Base.sim~` 上验证共享目录兼容入口：旧文件 `modify` 将角度参数由 `5 deg` 改为 `6 deg` 表达式，以 `radian` 回读；旧文件 `set-scalar` 写入 `9 deg`。两者均保留原有结果字段，并通过完整旧快照、目录内容的独立重载核对和原输入摘要核对；`set-scalar` 的 `reopened_parameters_match` 也通过。后台旧 schema 1 请求完成用户场函数定义写入 `0`、内置 `Pressure` 场函数和 `BackgroundBlock.Bottom` 边界关联标签 `AirfoilMotion`。该次验收使用的候选目录与当时 35 个根类型重新生成的文件逐字节一致。运行产物位于 `outputs/catalog-legacy-20261028/`。
-
-旧场函数请求重放因定义过时而拒绝；保持当前定义但故意提交过时的 `expected.function_name` 也拒绝，确认其他预期字段仍参与检查。旧 `set-scalar` 使用不兼容量纲的 `m` 被写入前拒绝，随后同会话成功写入 `7 deg` 并继续 `inspect`。向兼容路径的内部计划注入错误 Build `21.02.999` 时，精确版本检查也拒绝请求，会话保持 `ready`。
-
-正常会话显式另存后独立加载，完整旧快照与保存结果一致；标量、用户场函数、内置场函数标签和边界标签四个目标的全部已配目录属性与各自修改结果一致，跨加载引用按目录规则规范化。原始 `Base.sim~` 摘要未变，本轮验证服务均已关闭。
-
-迁移前的原型另已确认：文件入口将角度参数表达式设为 `3 * <1 deg> + 3 * <1 deg>`，以 `radian` 回读得到 `0.1047197551196598`，另存后重新加载的已覆盖对象内容一致。错误的 SI 单位名称在写入前被拒绝。
-
-后台会话完成标量常量 `6` 到 `6.0` 的规范化、用户场函数表达式修改、指定区域内边界的用户标签替换。重放旧场函数请求被拒绝，拒绝前后快照一致，会话保持可读取和可保存；显式另存后独立重载的对象内容一致。原文件和初始工作副本 SHA256 未变化，服务 PID 保持不变、算例只加载一次，验证服务已关闭。
-
-没有执行网格或求解；尚未实测其他 STAR 版本、其他量纲参数、系统标签、向量参数、损坏或异常表达式以及写入中断恢复。场函数仅确认表达式保存与回读，没有计算场数据。Mesh Controls、Boundary Parameters、Selected Physics Settings 和 Simulation Operations 的修改仍未实现。
+既有验证结果与复现材料见[验证记录](../evidence/modifier.md)。当前会话与执行改造的实测缺口统一见[会话验证边界](bridge-session.md#验证边界)。

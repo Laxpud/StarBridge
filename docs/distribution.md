@@ -1,12 +1,14 @@
 # 分发与 Harness 接入
 
-[返回项目入口](README.cn.md) · [工具契约](tech/mcp.md) · [实施计划](plans/plan-2026-11-03-14-23.md)
+[返回项目入口](README.cn.md) · [工具契约](tech/mcp.md) · [维护者分发说明](tech/distribution.md)
 
-StarBridge 可以构建为 `starbridge-cfd` Python 发行包，运行模块与资源统一位于 `starbridge` 命名空间。当前 `0.1.0` 是本地待发布版本，尚未上传 PyPI、创建发布 tag 或登记 MCP Registry。三端插件的本地安装验证已完成，实际版本与边界见[插件安装结果](#本地安装验证2026-11-03)；此前独立安装记录保留在[验收状态](#验收状态)。自 2026-11-02 起，后续只测试这三端的安装接入，不向模型发送信息执行任务，不将 STAR 工作流作为跨 Harness 安装验收条件。
+适用范围：三端插件、会话接入与运行简化里程碑。Codex、Claude Code 和 DeepSeek Harness（DSH）优先使用插件；其他 stdio 宿主或源码用户使用[源码与通用接入](#源码与通用接入)。
+
+插件从自身 Git 源码启动程序。Python 发行包名为 `starbridge-cfd`，当前本地版本 `0.1.0` 尚未发布到 PyPI；安装结果与未覆盖范围集中在[分发验证记录](evidence/distribution.md)。
 
 ## 三端插件安装
 
-当前三端插件和 Vibekits 收录已完成 Git 推送及本地安装验证，DSH 已通过发布后远端安装验证。Python 包、Git tag 和 npm 包不在本轮发布范围；程序直接来自插件 Git 提交。
+三端通过 [Vibekits](https://github.com/Laxpud/my-awesome-vibekits) 分发，程序直接来自插件 Git 提交；不依赖 PyPI、Git tag 或 npm 发行包。
 
 三端共用 `skills/`、`src/starbridge/` 和 `uv.lock`。插件初次启动通过 `uv sync --frozen` 准备 Python 依赖，环境保存在 `~/.starbridge/runtimes/plugin-<锁文件摘要>/`；后续启动复用该环境。程序从已安装插件的源码加载，不再要求用户单独安装 `starbridge-cfd` 或 Skill，也不下载尚未发布的 PyPI 包。只读插件目录不保存虚拟环境或 Python 字节码。
 
@@ -42,25 +44,21 @@ npm pack --ignore-scripts --pack-destination /absolute/path/to/output
 dsh plugin --profile <profile> add /absolute/path/to/output/laxpud-dsh-starbridge-0.1.0.tgz --config.auto-install-peers=false
 ```
 
-包内只有可直接加载的 JavaScript 和共享源码，不需要安装时构建。DSH 的官方 MCP／Skill peer 由宿主提供；使用 `auto-install-peers=false` 避免 pnpm 再安装另一份宿主服务。pnpm 可能提示包内 skills 的审批或未物理安装 peer；本轮检查的是 DSH 自身的加载结果，不要求 pnpm 向其他工具复制技能。
+包内只有可直接加载的 JavaScript 和共享源码，不需要安装时构建。DSH 的官方 MCP／Skill peer 由宿主提供；使用 `auto-install-peers=false` 避免 pnpm 再安装另一份宿主服务。pnpm 可能提示包内 skills 的审批或未物理安装 peer；是否可用应以 DSH 中的 MCP 连接和 Skill 加载结果为准，无需将本插件 Skill 复制到其他宿主。
 
 bundle 插入自己的 `starbridge` 配置行，不替换 profile 的工具或 Skill 服务。适配器通过独立 provider 扫描包内 Skill，并接入 stdio MCP。profile 需提供 DSH 的 `tools` 与 `skills` 服务；常规基础 profile 已具备。可在 profile 的用户 patch 中覆盖该行 `config`，设置 `python`、`env`、`toolCallTimeoutMs`；许可证和必要环境通过 `env` 明确传入，不把密钥写进插件。
 
-可启用实验性的 **Custom plugin indexes**，在 **Discover** 中添加 [Vibekits DSH 索引](https://raw.githubusercontent.com/Laxpud/my-awesome-vibekits/main/dsh/index.json)。市场 catalog 的 DSH `versions` 使用本轮实际插件 commit 和时间；索引通过 GitHub Raw 提供，无需开启 Pages。DSH 更新可从 Discover 选择新版本，或用 `dsh plugin --profile <profile> add <新版本来源>` 替换固定来源；移除使用 `dsh plugin --profile <profile> remove @laxpud/dsh-starbridge`，不另设升级器。
+可启用实验性的 **Custom plugin indexes**，在 **Discover** 中添加 [Vibekits DSH 索引](https://raw.githubusercontent.com/Laxpud/my-awesome-vibekits/main/dsh/index.json)。市场 catalog 的 DSH `versions` 指向实际发布的插件 commit；索引通过 GitHub Raw 提供，无需开启 Pages。DSH 更新可从 Discover 选择新版本，或用 `dsh plugin --profile <profile> add <新版本来源>` 替换固定来源；移除使用 `dsh plugin --profile <profile> remove @laxpud/dsh-starbridge`，不另设升级器。
 
-### 本地安装验证（2026-11-03）
+### 确认安装可用
 
-| 客户端 | 安装方式与实际结果 |
-|---|---|
-| Codex CLI 0.162.1 | 隔离 `CODEX_HOME`，通过本地 marketplace 和 `codex plugin add` 安装；app-server 确认插件 MCP 为 connected、18 个工具，枚举到带插件身份的 `starbridge:starbridge-case-audit` |
-| Claude Code 2.1.316 | 隔离 `CLAUDE_CONFIG_DIR`，通过原生 marketplace／install 安装；控制协议确认插件 MCP connected、18 个工具，并发现插件 Skill |
-| 官方 DSH 0.2.1-rc.2 | 隔离 `DSH_HOME`，原生命令安装本地 tgz；官方 profile 解析器确认 bundle 配置层，加载实际安装适配器后发现 18 个工具、取得 schema 1 契约，官方 Skill provider 加载包内正文 |
+重新连接 MCP 后，应能取得 `starbridge.get_contract` 的 schema 1 契约，并在宿主中找到 `starbridge-case-audit`。工具展示名可能由宿主改写，应按服务及描述辨认。MCP 连接与 Skill 加载是两项检查；它们不证明已经完成真实算例审查。
 
-验证只发送初始化、工具列表、状态和无会话契约请求，没有发送模型消息、打开 STAR 或改动日常插件配置。运行证据保存在本地 `outputs/plugin-install-20261103/`，不进入 Git。执行沙箱内的 stdio 检查曾超时，最终结果来自正常本机环境。Codex／Claude 的本地市场来源指向本轮源码快照；Codex／Claude 的远端原生安装未在本轮重测，四个外部插件的已发布市场来源与包内入口已通过远端检查。DSH 索引已通过官方 format 1 解析器；公开 Raw 索引返回 HTTP 200 且无重定向，原生安装器按索引中的 `c5f878173e0e32a0a807f799874d0c1b823af612` 完成 Git 安装，关键文件与该提交一致。远端安装后再次确认 18 个工具、schema 1 契约和 bundled Skill 正文；证据在本地 `outputs/plugin-remote-20261103/`。未操作 Discover UI。
+安装不自动打开 STAR。算例连接、读取和显式保存的参数见[MCP 契约](tech/mcp.md)；已做过的客户端检查及限制见[安装证据](evidence/distribution.md#本地安装验证2026-11-03)。
 
 ## 源码与通用接入
 
-不使用插件时仍可构建 Python wheel，并将 `starbridge-mcp` 接入任意支持 stdio 的宿主。以下保留此前的独立安装方法及历史验收；三端用户的正式安装与更新入口已改为[三端插件](#三端插件安装)，不再新增其他 Harness 专用适配。
+不使用插件时仍可构建 Python wheel，并将 `starbridge-mcp` 接入任意支持 stdio 的宿主。以下说明独立安装方法；三端用户的正式安装与更新入口已改为[三端插件](#三端插件安装)，不再新增其他 Harness 专用适配。
 
 ### 安装程序
 
@@ -130,7 +128,7 @@ npx add-mcp@2.6.0 "$(command -v uvx)" \
 
 #### Codex 项目配置未加载时
 
-先确认启动目录属于已受信任的项目。此次 `/tmp` 隔离目录中的配置虽然由安装器正确生成，Codex 实际配置层仍以 `disabledReason` 明确拒绝加载，因为该项目未受信任。把相同配置安装到已有受信任的 StarBridge 工作区内后，app-server 正常加载服务和 18 个工具；本次没有修改用户的全局信任设置。
+先确认启动目录属于已受信任的项目，再查看实际配置层是否因 `disabledReason` 被禁用。配置文件已生成不表示 app-server 已加载它；在正确作用域恢复加载后，再确认 MCP 服务状态和工具发现结果。该问题的既有安装记录见[分发验证记录](evidence/distribution.md#配置作用域与环境排查依据)。
 
 `codex mcp get` 未找到服务不能单独证明项目配置错误。诊断时应核对实际运行目录、项目配置层是否被禁用，以及该运行时的 MCP 服务状态。不要通过复制服务到全局配置来掩盖作用域或信任问题。
 
@@ -150,7 +148,7 @@ Codex 如需长调用，可在**安装器已经生成的同一服务表**中补�
 
 profile 应已有 `@deepseek-ai/dsh-system-prompt`、`@deepseek-ai/dsh-tools`，以及该 profile 使用的资源与 Skill 服务；不要重复挂载已有服务。模板采用固定环境可执行文件路径、`serverName: starbridge`、`transport: stdio`、`toolCallTimeoutMs: 600000` 和启动失败显式报错。实际 MCP 工具展示名可能被规范化并追加摘要，不应由 Skill 拼接名称。
 
-DSH 会清理传给子进程的部分环境变量，必须通过模板 `env` 显式补入实际必需项。探测启动与重连不能作为自动恢复写入的依据。本轮已在完整 headless profile 确认显式环境传入与长调用；自动重连和不同 profile 的探测行为仍需分别验收。[官方 MCP client](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/mcp/mcp-client)是插件配置依据。
+DSH 会清理传给子进程的部分环境变量，必须通过模板 `env` 显式补入实际必需项。探测启动与重连不能作为自动恢复写入的依据。显式环境传入与长调用的既有依据，以及自动重连和其他 profile 的限制，见[历史运行证据](evidence/distribution.md#历史运行证据2026-11-01)。[官方 MCP client](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/mcp/mcp-client)是插件配置依据。
 
 项目 Skill 可通过下一节的 `-a universal` 安装到 `.agents/skills/`。用户级 DSH 应把 `starbridge-case-audit/` 直接放入 `~/.dsh/skills/`，或在文件系统 provider 的 `customSkillDirs` 中显式指定目录；`skills --global -a universal` 的 `~/.config/agents/skills/` 不等于 DSH 默认用户扫描目录。参考[官方 Skill provider](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/skill/skill-filesystem)。
 
@@ -180,48 +178,8 @@ npx skills@1.7.4 remove starbridge-case-audit
 
 DSH 只删除对应 profile 的 `mcp-starbridge` 条目及选定目录下的该 Skill，不删除其他插件或整个扫描目录。移除前显式处理仍在运行的会话；配置移除不会结束它们。
 
-## 验收状态
+## 进一步阅读
 
-### 独立安装接入验收（2026-11-02）
-
-2026-11-02 按用户调整后的范围，只检查 Codex、Claude Code 和官方 DSH 的安装配置、MCP 连接／工具发现及 Skill 发现／本机加载。没有发送模型 user 消息、启动模型 turn 或打开 STAR 会话，模型登录不作为前提。P3 在此安装范围内完成，不代表三端模型工作流或全部 STAR 操作均已支持。
-
-本轮使用 Linux 上现有固定环境 `0.1.0-aebd491` 的 `starbridge-mcp`，安装器为 `add-mcp 2.6.0` 与 `skills 1.7.4`。在受信任工作区下创建独立项目，通过安装器安装 Codex／Claude Code 配置及三端 Skill；DSH MCP 使用交付的原生插件片段。证据在本地 `outputs/harness-install-20261102/`，不进入 Git。
-
-| 目标与实际版本 | 安装入口与作用域 | 本机验证结果 |
-|---|---|---|
-| Codex CLI 0.162.1 | `add-mcp -a codex`；项目 `.codex/config.toml`，Skill 位于 `.agents/skills/` | 项目配置层启用；app-server 连接 StarBridge 0.1.0，发现 18 工具，取得 schema 1 契约，实际枚举到 Skill |
-| Claude Code 2.1.316 | `add-mcp -a claude-code`；项目 `.mcp.json`，Skill 位于 `.claude/skills/` | 控制协议确认 connected、18 工具及项目 Skill；只发送 initialize／mcp_status，不调用模型 |
-| 官方 DSH 0.2.1-rc.2 | 原生 MCP 插件片段；`skills -a universal` 安装到项目 `.agents/skills/` | 官方 MCP client 实际 stdio 握手、18 工具及 schema 1 契约；官方 Skill registry／filesystem provider 实际发现并加载 Skill，来源为 project-agents |
-
-三份安装后的 Skill 均与仓库内容一致。相同版本安装器的替换、移除、恢复及保留无关内容的既有证据继续适用。未重复验收所有用户级／项目级组合，也未演练不存在的跨发行版本回退。DSH 本轮直接装载官方本机插件，不启动完整模型 profile；不把桌面封装的行为归于这个结果。
-
-**日常配置与隔离验收不同。** 检查时 Codex 的用户配置已连接 StarBridge；Claude Code 的用户级配置及检查到的 DSH profile 中未发现 StarBridge 条目，三端常用用户／仓库 Skill 根目录中也未发现该 Skill。本轮没有向这些日常配置安装或写入内容。当前 PATH 中的 `dsh` 来自桌面版 shim，返回 0.1.5-rc.3；表中验证的是另一个已安装的官方 npm 0.2.1-rc.2，不能据此宣称默认桌面命令已通过相同检查。
-
-### 历史运行证据（2026-11-01）
-
-以下保留此前的模型、真实 STAR 与异常恢复记录；它们不再构成当前安装验收的完成条件，也不应被改写为本轮执行结果。
-
-2026-11-01 在 Linux、Python 3.14.4、uv 0.11.32 及 Node 24.20.0 环境执行。打包与安装器证据保留在本地 `outputs/distribution-20261101/`，本轮三个宿主的证据位于 `outputs/harness-p3-20261101/`；运行产物不进入 Git。以下状态只适用于本次记录，不能互相替代：
-
-| 对象 | 已确认 | 尚未覆盖／受阻 |
-|---|---|---|
-| Python wheel／源码包 | 仓库外固定环境启动 CLI；Core 无 MCP 依赖；两版目录可读；Java 资源完整；缺少 STAR 可查询契约并返回诊断 | 其他 Python 版本、操作系统和离线 wheelhouse 部署 |
-| MCP + 真实 STAR | Python MCP SDK 注册 18 工具；STAR 2602 Build `21.02.007` 隔离副本读、旧 expected 拒绝、赋值、回读、另存与新会话重载通过；输入摘要未变，会话已关闭 | 该结果不计为三个 Harness 的各自验收；2510 包安装后的真实运行未覆盖 |
-| Codex CLI 0.162.1 | 已定位并解决未受信任项目导致的配置忽略；app-server 实际连接发现 18 工具、取得契约及 Skill 元数据；经该连接完成真实 STAR 读、旧 expected 拒绝、写入、回读、另存与重载，源摘要未变且会话已关闭；独立模型 turn 加载同一 Skill 并实际读取合成参数；服务重启后已停止会话未重新加载 | 桌面／IDE 形态、取消与写入中断恢复未验收 |
-| Claude Code 2.1.296 | 固定版本独立运行；读取安装器生成的项目配置；控制协议确认 StarBridge 0.1.0 为 connected、发现 18 个工具；初始化实际发现项目 Skill | 当日未登录，按用户选择只做无模型验收；未覆盖模型工作流和真实 STAR，不据此判断当前登录状态 |
-| DSH 0.2.1-rc.2 | 完整 headless profile 实际取得契约、加载 Skill 并完成定向只读审查；无 Skill 的真实读写、旧 expected 拒绝、回读、保存重载通过；缺少 MCP 时如实报告；环境标记传入成功；超过 300 秒的调用未被宿主 60 秒默认值截断，超时后先查状态并清理旧副本，在新副本完成审查 | 全树搜索耗尽工具预算后会话进入 uncertain（见下文）；自动断线重连、写入中途取消、用户级 Skill 根目录未验收 |
-
-已有 10 项 Core、6 项 Java 发现及 15 项写入影响范围检查通过；这些检查不证明真实 CFD 物理有效性。Skill 格式检查通过，不等于三个宿主已完成该工作流。四个通用安装器目标的项目级 MCP 替换、移除、恢复及无关服务保留已验证；Skill 完整移除、重装及无关 Skill 保留已验证。当时未覆盖的用户级组合、跨发行版本回退、模型任务及异常恢复作为历史限制保留；后续仅按调整后的[安装验收范围](archive/plan-2026-11-01-14-42.md#验收范围)执行。
-
-Claude Code 通过临时进程设置批准本次项目服务（`enabledMcpjsonServers: ["starbridge"]`），并禁用 hooks；未改动用户全局配置。控制协议初始化后需等待异步 MCP 连接，瞬时 `pending` 不表示连接失败。此次只发送初始化和状态请求，没有发送模型消息；检查方式依据[官方控制协议实现](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py)。
-
-本轮只读模型审查在 Codex 与 DSH 中均实际读到 `_DiscoveryScalar.quantity_value = 2`，未把该合成值当成工程合格结论；独立写入验收将工作副本中的值改为 `3`，另存重载后仍为 `3`。STAR 打开／检查副本后可能已有 `modified=true`，正常关闭因未保存标志被拒绝；已保存或确认没有设置写入的本轮专用副本，经状态查询后显式 `discard` 清理。这个清理授权仅属于验收副本，不改变只读 Skill 默认不保存、不擅自丢弃的规则。
-
-DSH 的第一次只读审查以 `search_settings(expand=true, timeout=300)` 扩展全树，实际约 304 秒后返回部分结果，内部请求超时使会话进入 `uncertain`，后续读取与正常关闭被拒绝。已保留失败证据；模型没有重发写入或伪造当前值。恢复时先查询状态，显式丢弃这个无设置写入的验收副本，再在全新副本完成定向读取。Skill 已补充优先按已知类型／名称定位和逐层浏览的指导。此结果验证了真实长调用和读操作超时后的停止／清理行为，不等于全树搜索、自动重连或写入中断恢复均已通过。
-
-## 发布准备
-
-[`server.json`](../server.json) 使用 `io.github.Laxpud/starbridge` 和 PyPI 包 `starbridge-cfd`；README 的 `mcp-name` 与其一致。Registry 元数据通过官方 `2025-12-11` JSON Schema 校验。`runtimeArguments --with starbridge-cfd[mcp]==0.1.0` 安装 MCP extra，发行包同名入口启动服务；本地 wheel 的 `uvx` 启动验证通过（用 `--find-links` 指向本地发行目录），发布后对应形式为 `uvx --with 'starbridge-cfd[mcp]==0.1.0' starbridge-cfd@0.1.0`。不同 Registry 消费者的实际解析仍需分别确认，Schema 通过不代表官方登记成功。[Registry PyPI 元数据规则](https://modelcontextprotocol.io/registry/package-types)要求已发布包的 README 中包含一致的身份标记。
-
-发布物包括 wheel、源码包、同提交的 Skills、Registry 元数据和本页兼容说明。三个 Harness 的项目级安装接入已按调整后的范围验收。外部发布仍须另获授权，并复核名称／身份可用性、生成固定发布 tag、记录最终校验和，再上传 PyPI、发布 Git Release 和登记 Registry。安装验收不代表“三个 Harness 的全部模型与算例工作流均已支持”；PyPI、Git Release 和 Registry 尚未发布；插件 Git 来源与市场安装状态见[三端插件安装](#三端插件安装)。
+- [分发验证记录](evidence/distribution.md)：安装批次、实际版本、结果与未覆盖范围。
+- [会话使用说明](tech/bridge-session.md)：连接算例、保存、断开与数据保留。
+- [维护者分发说明](tech/distribution.md)：打包资源、插件入口、Registry 元数据与发布准备。

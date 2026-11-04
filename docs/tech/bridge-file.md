@@ -2,7 +2,7 @@
 
 [返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [当前工作](../../TODO.md)
 
-核对基线：2026-10-20，本机 Linux、STAR-CCM+ 2602 Build 21.02.007，以及用户提供的 `Base.sim~`。本页说明每次加载文件的入口；连续操作同一后台会话见[后台会话说明](bridge-session.md)。源码脚本保留为兼容入口；发行包另提供 `starbridge-file`、`starbridge-session` 和共享 JSON CLI，见[分发说明](../distribution.md#安装程序)。
+本页说明当前每次加载文件的兼容入口；历史实测版本、算例和结果见[文件验证记录](../evidence/bridge-file.md)。连续操作同一后台会话见[后台会话说明](bridge-session.md)。源码脚本保留为兼容入口；发行包另提供 `starbridge-file`、`starbridge-session` 和共享 JSON CLI，见[分发说明](../distribution.md#安装程序)。
 
 ## 读取算例对象与参数
 
@@ -20,7 +20,7 @@ python3 bridge/runner/file_bridge.py inspect 'Base.sim~' \
 * 算例名称、当前加载文件路径及 STAR 的 `modified` 标志；此标志在本机另存后仍可能为真，不能单凭它判断保存失败。
 * 参数名称与 STAR 对象类型。
 * 标量参数的表达式 `definition`、单位 `unit`、当前单位值 `raw_value` 和 SI 值 `si_value`。
-* 向量参数的表达式、单位和当前单位向量；本次输入只有标量，向量读取分支尚未实测。
+* 向量参数的表达式、单位和当前单位向量；实际验证范围见 [Inspector 记录](../evidence/inspector.md)。
 * 未覆盖类型的 `unsupported` 标记，以及参数读取失败时的 `read_error`。收到这些标记时，不应把快照视为完整读取。
 
 无量纲参数的单位名称可为空字符串。表达式和求值结果同时保留，例如引用其他参数的表达式不会仅被记录为当前数值。非有限标量值作为字符串输出，避免生成不合法 JSON。
@@ -66,13 +66,13 @@ python3 bridge/runner/file_bridge.py set-scalar 'Base.sim~' \
 | `apply/BridgeFileMacro.java` | 本次实际执行的宏 |
 | `apply/star.log` | STAR 加载、编译和执行日志 |
 | `apply/result.json` | 宏返回的修改前后快照及目录结果 |
-| `apply/legacy-plan.json` | 兼容 `modify` / `set-scalar` 裁剪后的默认目录执行计划 |
-| `apply/snapshot-plan.json` | `inspect` 及修改前后使用的只读快照布局和调用计划 |
 | `reopen/` | 修改操作第二次启动 STAR 的同类产物 |
+
+计划与规范化请求直接传给执行器并嵌入入口宏，文件 CLI 默认不另存计划 JSON。内部 `execute(debug=true)` 才另外保存请求与计划；文件 CLI 当前不提供此调试选项。
 
 Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常退出就判断宏执行成功。失败时检查错误消息指向的日志；输出文件可能已保存但后续核对失败，此时不会生成成功摘要。保留该文件用于排查，再次运行时应选择新的输出路径。
 
-本机首次在 `C.UTF-8` 环境下启动时遇到 STAR 数值格式提供器递归错误。原型对子进程指定 `en_US.UTF-8`，并通过 `-nbuserdir` 把 STAR 客户端缓存放在本次工作目录，不修改全局区域设置。其他主机是否需要这一设置尚未验证。
+Runner 对 STAR 子进程指定 `en_US.UTF-8`，并通过 `-nbuserdir` 把客户端缓存放在本次工作目录，不修改全局区域设置。采用该区域设置的早期运行依据见[文件验证记录](../evidence/bridge-file.md)。
 
 算例和 `outputs/` 已被 Git 忽略，运行产物保留在本地。文件入口当前没有操作超时与进程恢复机制，不应把它当作无人值守服务。
 
@@ -80,7 +80,7 @@ Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常�
 
 | 文件 | 职责 |
 |---|---|
-| [file_bridge.py](../../bridge/runner/file_bridge.py) | 校验路径、生成宏、启动 STAR、记录日志、重新加载并核对旧快照、目录内容与输入摘要 |
+| [file_bridge.py](../../src/starbridge/bridge/runner/file_bridge.py) | 校验路径、生成宏、启动 STAR、记录日志、重新加载并核对旧快照、目录内容与输入摘要 |
 | [BridgeFileMacro.java](../../src/starbridge/bridge/java/BridgeFileMacro.java) | 调用 STAR Java API 读取对象快照、设置标量、另存文件并序列化结果 |
 
 宏模板中的占位符由 Runner 填入，不能直接作为完整宏执行。输入由 STAR 自身加载，没有解析或修改 `.sim` 二进制格式。
@@ -89,8 +89,4 @@ Runner 同时检查 STAR 退出码及宏结果文件，避免只凭进程正常�
 
 ## 已确认的范围
 
-早期参数原型的实际输入共读取到 32 个标量全局参数，无参数读取错误。将 `_AirfoilPitchAmplitude` 从 `5 deg` 改为 `6 deg` 后，新文件重新加载结果与保存后快照一致；参数 Diff 只有该项，输入文件摘要保持一致。
-
-迁入共享目录后的 `modify` / `set-scalar` 已完成旧字段兼容、完整快照与目录重载核对，具体验收与限制见 [Modifier](modifier.md#已确认的范围)。
-
-上述早期参数原型没有执行网格生成或求解，也未验证向量、其他参数类型、异常单位、MCP 或工作记忆功能。扩展对象读取的验证范围见 [Inspector](inspector.md#验证范围)。后台会话的验证范围单独记录在[会话说明](bridge-session.md#已确认的范围)。
+既有验证结果与复现材料见[验证记录](../evidence/bridge-file.md)。当前会话与执行改造的实测缺口统一见[会话验证边界](bridge-session.md#验证边界)。

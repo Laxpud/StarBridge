@@ -14,7 +14,7 @@ python3 bridge/runner/session_bridge.py inspect \
   --session-id SESSION_ID
 ```
 
-第二条命令要求已经用 `session_bridge.py start` 启动会话。两种入口自动加载仓库随附的候选目录、`execution.json` 和 `snapshot.json`，不需要新增参数或自行生成目录。当前 server 必须精确匹配所选目录的 release/Build；默认 2602，其他版本见[版本选择](catalog-versions.md)。其余启动条件、目录要求与失败恢复分别见上方使用说明。
+第二条命令要求已经用 `session_bridge.py start` 连接已有服务或启动自有会话。两种入口自动加载仓库随附的候选目录、`execution.json` 和 `snapshot.json`，不需要新增参数或自行生成目录。当前 server 必须精确匹配所选目录的 release/Build；文件入口默认 2602，会话入口沿用连接时探测并保存的版本，见[版本选择](catalog-versions.md)。其余启动条件、目录要求与失败恢复分别见上方使用说明。
 
 ## 快照字段
 
@@ -44,7 +44,7 @@ python3 bridge/runner/session_bridge.py inspect \
 
 [`src/starbridge/catalogs/2602/snapshot.json`](../../src/starbridge/catalogs/2602/snapshot.json) 单独维护集合与字段布局，目前包含 16 种节点、11 个根集合和 57 条读取管线。它不复制 Java 成员声明：成员签名、指纹和调用参数继续由 [`execution.json`](../../src/starbridge/catalogs/2602/execution.json) 与[候选目录](../../src/starbridge/catalogs/2602/generated/catalog.json)共同核对。快照布局版本和输出 `schema_version` 分开维护，目前都为 `1`。
 
-[`src/starbridge/core/snapshot.py`](../../src/starbridge/core/snapshot.py) 校验版本、节点引用、类型分支、输出字段和只读管线；每个调用必须声明 `effect: read`，请求不能加入任意 Java 调用。编译结果作为 `SNAPSHOT_PLAN` 交给共享 `CatalogRuntime` 遍历，运行目录保存 `snapshot-plan.json`。文件和后台会话的 `inspect`、`save`、修改前后快照及重载核对都使用该布局，Java 不再单独维护各对象的固定快照读取表。
+[`src/starbridge/core/snapshot.py`](../../src/starbridge/core/snapshot.py) 校验版本、节点引用、类型分支、输出字段和只读管线；每个调用必须声明 `effect: read`，请求不能加入任意 Java 调用。编译结果作为 `SNAPSHOT_PLAN` 交给共享 `CatalogRuntime` 遍历。快照计划直接传入执行器，仅内部调试模式另存 `snapshot-plan.json`；会话文件保留方式见[运行数据规则](bridge-session.md#运行数据与项目产物)。`inspect`、`save`、旧兼容修改和文件重载核对使用该布局；会话的目录／发现修改只在显式启用 `audit=true` 时读取完整快照。Java 不再单独维护各对象的固定快照读取表。
 
 节点自动输出名称和类型，其他字段按布局明确读取；`tags` 通过 `names` 适配器生成，并非所有节点都隐式读取标签。字段有四种形式：
 
@@ -70,22 +70,10 @@ python3 bridge/runner/session_bridge.py inspect \
 
 错误位置使用“集合/对象名称/子集合”的可读路径，名称本身可能含 `/`，因此它不是可供分割解析的 JSON Pointer。`inspect` 对部分读取输出警告并保留结果，退出码仍可为零。宏的 `status: ok` 表示执行和结果写出成功；使用者必须另外检查快照完整性。
 
-布局或成员校验失败在启动客户端、创建工作目录或写入会话活动标记之前拒绝。运行时版本检查先于快照字段读取；版本不符返回 `rejected` 和最小会话元数据，不将其当作完整快照。已有后台会话保持 `ready`；`save` 也在保存前核对版本，修改同时核对快照计划与写入计划。`start` 的首次检查若被拒绝会关闭刚启动的服务；普通 `stop` 的关闭前检查被拒绝则保留原服务。`status` 和 `stop --discard` 不依赖目录，便于查看状态和明确放弃服务。超时或其他无法确认的操作失败仍按[会话失败处理](bridge-session.md#身份和失败处理)处理。
+布局或成员校验失败在启动客户端、创建工作目录或写入会话活动标记之前拒绝。运行时版本检查先于快照字段读取；版本不符返回 `rejected` 和最小会话元数据，不将其当作完整快照。已有后台会话保持 `ready`；`save` 也在保存前核对版本，修改同时核对快照计划与写入计划。自有服务的首次检查若被拒绝会清理刚启动的服务；外部会话只核对并连接，不终止用户进程。自有服务普通 `stop` 的关闭前检查被拒绝则保留原服务，外部会话关闭仅断开连接。`status` 和 `stop --discard` 不依赖目录，便于查看状态和明确放弃服务。超时或其他无法确认的操作失败仍按[会话失败处理](bridge-session.md#身份和失败处理)处理。
 
 Inspector 不调用报告求值、网格生成、求解或工作流执行。当前不读取场数据数组、监视器历史、完整边界条件、网格控制、物性及模型的全部设置；多相子连续体不递归展开。Simulation Operations 输出结构清单，数组位置不代表执行顺序，也不重建条件和循环的控制逻辑。子工作流仅引用，避免引用循环。
 
 ## 验证范围
 
-2026-10-28，本机 Linux、STAR-CCM+ 2602 Build 21.02.007 的 `Base.sim~` 已通过迁移后的文件 `inspect`：快照完整，去除加载元数据后与迁移前快照逐字段一致，原输入 SHA256 未变。
-
-后台工作副本另建 `_SnapshotVector`，快照正确保留定义 `[1.25, -2.5, 3.75]`、空单位名和三个当前单位分量；另建两个工作流，覆盖两层 `LoopAutomationBlock` 嵌套、内层子工作流引用以及子工作流内的停止块。目录快照完整且无读取错误，与迁移前只读 Inspector 在同一服务上读取的内容逐字段一致，比较排除加载元数据。未执行任何工作流。
-
-受控故障适配器使 32 个标量节点分别产生 `read_error` 和全局 `read_errors`，向量与两个工作流仍完整读取；参数根集合的枚举故障则只产生一条 `parameters` 集合错误并返回 `[]`，165 个场函数等其他集合继续正常读取。同一不完整快照计划用于旧 `set-scalar` 写入数值 `77` 时，在写入前拒绝；恢复默认计划后完整读取，角度仍为 `5 deg`。
-
-快照计划注入错误 Build `21.02.999` 时，`inspect` 在字段读取前返回 `rejected`，会话保持 `ready` 且清除活动请求标记。布局中插入 `effect: write` 成员也被 Core 在执行前拒绝。这些检查使用专用故障计划，确认错误隔离与拒绝行为，不代表所有实际模型错误都已覆盖。
-
-使用新快照布局的后台旧 `set-scalar` 成功写入 `7 deg`，并显式另存为 `fixture-saved.sim`。schema 2 文件 `modify` 独立加载该副本后，修改前完整快照与会话保存结果一致；写入 `8 deg`、另存并独立重载后，`reopened_catalog_match`、`reopened_snapshot_match` 和 `input_unchanged` 均通过。向量字段和两工作流的嵌套结构保持一致，原始 `Base.sim~` 摘要未变，本轮服务均已关闭。
-
-该基准算例包含 32 个标量参数、165 个场函数（3 个用户场函数）、6 个标签、1 个连续体及 18 个模型、2 个区域及 17 个边界、3 个接口、4 个网格操作、6 个报告、15 个监视器和 4 个停止准则。迁移前的文件及后台会话读取均没有 `read_errors`；除工作副本的名称和路径外，对象快照一致，连续两次会话快照完全一致，服务只加载一次算例。原文件与工作副本 SHA256 未变化，参数原有字段与更早版本读取结果一致。
-
-基准文件没有 Simulation Operations，非空工作流与向量分支来自上述专用工作副本；其他参数类型、未注入的错误场景及其他 STAR 版本尚未验证。按需目录读取此前的向量与逐属性错误结果见其[独立验证范围](catalog-runtime.md#验证范围与剩余工作)，不混作本次快照验收。Java API 已对照本机安装目录的 `doc/client/html`；实际覆盖以各入口声明的字段及验证范围为准。
+既有验证结果与复现材料见[验证记录](../evidence/inspector.md)。当前会话与执行改造的实测缺口统一见[会话验证边界](bridge-session.md#验证边界)。

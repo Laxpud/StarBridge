@@ -19,11 +19,19 @@ StarBridge 让 AI Agent 通过本机 [MCP 或共享 JSON CLI](tech/mcp.md) 检�
 
 支持范围取决于精确的 [STAR release／Build](tech/catalog-versions.md)及已适配的属性或操作，尚未覆盖全部算例设置。本机 GUI／服务器连接已有实现，但真实 GUI 接入、保存、失败恢复及调整后的写入链路尚未经过 STAR 实测，见[验证边界](tech/bridge-session.md#验证边界)。网格生成、求解执行和持久化工作记忆仍为后续方向，见[设计文档](../StarBridge.md)和[路线图](roadmap.md)。
 
+## 环境准备
+
+启动器需要 PATH 中的 `python3` 与 `uv`，并准备 Python 3.11+ 环境。算例操作需要 Linux、兼容的 STAR-CCM+ 安装及许可证；运行时发现还需要该安装的本机 Javadoc。
+
 ## 快速开始
 
-Codex、Claude Code 和 DeepSeek Harness（DSH）用户按[插件安装说明](distribution.md#三端插件安装)统一安装程序、MCP 接入和算例审查 Skill。启动器需要 PATH 中的 `python3` 与 `uv`，并准备 Python 3.11+ 环境。算例操作需要 Linux、兼容的 STAR-CCM+ 安装及许可证；运行时发现还需要该安装的本机 Javadoc。
+Codex、Claude Code 和 DeepSeek Harness（DSH）用户按[插件安装说明](distribution.md#三端插件安装)统一安装程序、MCP 接入和算例审查 Skill。
 
-源码或通用 stdio 接入见[独立安装说明](distribution.md#源码与通用接入)。`starbridge-cfd` 可在源码目录外运行，当前 `0.1.0` 尚未发布到 PyPI；各客户端的安装结果和限制也记录在该说明中。安装完成后，按 [MCP 契约](tech/mcp.md)和[会话说明](tech/bridge-session.md)连接算例并读取设置。
+源码或通用 stdio 接入见[独立安装说明](distribution.md#源码与通用接入)。`starbridge-cfd` 可在源码目录外运行，当前 `0.1.0` 尚未发布到 PyPI；各客户端的安装结果和限制见[安装记录](evidence/distribution.md)。
+
+## 接下来怎么用
+
+安装完成后，按 [MCP 契约](tech/mcp.md)和[会话说明](tech/bridge-session.md)连接算例并读取设置。
 
 ## 更多文档
 
@@ -50,7 +58,7 @@ Codex、Claude Code 和 DeepSeek Harness（DSH）用户按[插件安装说明](d
 
 ## 参与贡献
 
-欢迎补充具体算例工作流、澄清需求或改进文档。可从[当前里程碑](../TODO.md)查看待讨论的规划问题；实现方案仍在讨论中。
+欢迎补充具体算例工作流、澄清需求或改进文档。可从[当前里程碑](../TODO.md)查看剩余工作，从[路线图](roadmap.md)查看范围仍待讨论的候选方向。
 
 ## 许可证
 

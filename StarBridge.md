@@ -1,20 +1,14 @@
-# StarBridge
+# StarBridge 目标设计
 
 [项目入口](docs/README.cn.md) · [当前工作](TODO.md) · [路线图](docs/roadmap.md) · [参考项目](docs/tech/references.md)
 
 ## 项目定位
 
-**StarBridge** 是一个面向 AI Agent 的 **STAR-CCM+ 交互插件**，通过 Skills、MCP、自动化接口和持久化工作记忆，使 Agent 能够读取、理解、修改、运行 STAR-CCM+ 算例，并验证操作结果。
+**StarBridge** 面向 AI Agent 提供 STAR-CCM+ 交互能力。目标是通过 Skills、MCP、自动化 Bridge 和工作记忆，支持算例的结构化读取、修改、执行与结果核对；其中尚未实现的部分仍是目标设计。
 
 本文维护项目定位、目标架构和候选方向，不作为当前功能或进度清单。当前实现与源码关系见[技术入口](docs/tech/index.md)，任务状态见 [TODO](TODO.md)，未来候选见[路线图](docs/roadmap.md)。
 
 运行时发现方向采用 [ADR 0001](docs/adr/0001-runtime-discovery.md)。会话接入、三端插件、保存和简化后的写入行为以 [ADR 0002](docs/adr/0002-plugins-sessions-and-storage.md)及其[规格](docs/specs/spec-2026-11-03-14-23.md)为准：不再强制副本或全快照不变检查；新实现的运行验证边界见[会话说明](docs/tech/bridge-session.md#验证边界)。
-
-StarBridge 不将自身限定为单纯的 CLI 或 Java Macro 工具，而是作为 AI Agent 与 STAR-CCM+ 之间的统一桥接层。
-
-核心目标：
-
-> 让 AI Agent 能够以结构化、安全、可验证的方式操作 STAR-CCM+ 算例。
 
 这里的“验证”限定为检查操作是否成功、设置是否按预期改变，以及是否产生非预期修改。验证 CFD 结果可信性不属于当前定位；Agent 可以结合知识储备、技术文本和工作记忆判断物理合理性与网格质量，当前暂不考虑收敛性判断。
 
@@ -44,40 +38,23 @@ StarBridge 计划提供以下能力：
 
 ## 总体架构
 
-```text
-AI Agent / Skills
-        │
-        ▼
-     MCP / CLI
-        │
-        ▼
-  StarBridge Core
-   ├── Inspector：描述与读取
-   ├── Modifier：统一配置修改
-   │       │
-   │       ▼
-   │   运行时对象树与属性发现
-   │       │
-   │   版本 API 依据 / 通用规则 / 特殊约束
-   │       │
-   │   生成并校验执行计划
-   │       │
-   │       ▼
-   │   通用类型适配器 / 特殊操作适配器
-   │       │
-   │       ▼
-   │   Java API Bridge
-   │
-   ├── 网格与求解执行
-   ├── 会话管理 / Runner
-   └── 工作记忆存储与检索
-        │
-        ▼
-  STAR-CCM+ 算例会话
-    （后台 / GUI）
-        │
-       .sim
+```mermaid
+flowchart TD
+    agent["AI Agent 与领域 Skills"] -->|结构化请求| api["MCP / CLI"]
+    api -->|导航与读取| read["Inspector 与运行时发现"]
+    api -->|配置修改| write["Modifier"]
+    read -->|元数据与规则| plan["计划生成与类型适配"]
+    write -->|元数据与规则| plan
+    plan -->|已适配的调用| bridge["Java API Bridge"]
+    api -->|连接、保存与关闭| session["会话管理 / Runner"]
+    session -->|连接或启动| star["STAR 算例会话：后台 / GUI"]
+    bridge -->|读取、执行与回读| star
+    api -.->|候选执行接口| execution["网格与求解执行"]
+    execution -.->|专门操作| bridge
+    agent -.->|候选上下文检索| memory["持久化工作记忆"]
 ```
+
+实线表示目标架构中的职责关系，虚线表示尚待设计的执行和记忆能力；不据此判断实现进度。当前进程与组件的 C4 图见[当前架构](docs/tech/architecture.md)。
 
 目标架构中，Inspector 与 Modifier 共享运行时对象身份、属性描述及适配规则。Inspector 沿实际对象层级导航、搜索并读取当前状态；Modifier 承接已适配的属性或结构操作。Bridge 根据运行时描述符、具体版本的 API 声明和规则生成明确计划，执行器按类型或操作语义处理。当前发现与受控写入的实现范围见[运行时发现](docs/tech/runtime-discovery.md)，后续迁移按 [TODO](TODO.md)推进。
 
@@ -93,7 +70,7 @@ AI Agent / Skills
 
 ### 目录描述什么
 
-版本资料描述 API 类型与规则依据，不保存某个算例的对象实例或当前参数值；运行时发现负责实例、属性及关系。下表是仍需表达的信息，具体来源和生成方式以新 Spec 为准。
+版本资料描述 API 类型与规则依据，不保存某个算例的对象实例或当前参数值；运行时发现负责实例、属性及关系。下表描述版本材料需要表达的信息；运行时发现的既定要求见[发现规格](docs/archive/spec-2026-10-30-12-24.md)，当前简化要求见[现行规格](docs/specs/spec-2026-11-03-14-23.md)。
 
 | 内容 | 需要描述的信息 |
 |---|---|
@@ -118,7 +95,7 @@ AI Agent / Skills
 4. 为另一版本生成目录，比较新增、删除、签名、值类型及元数据变化；改名或等价替换只能作为候选，经确认后建立映射。
 5. 普通签名变化通过版本材料与生成计划比较处理；数据类型、调用效果或操作语义变化需要更新规则、适配器和验证依据。
 
-GUI 对算例的修改所对应的 Java 宏是建立和核对映射的重要依据。目录应能持续增补能力，而不是为每个对象另建一套工具。候选目录 v1 的生成、合并和比较方式见[目录工具](docs/tech/catalog.md)；已经实现的只读调用管线与类型适配见[运行时契约](docs/tech/catalog-runtime.md#人工执行映射)，属性修改与首个结构操作契约见[目录修改](docs/tech/catalog-modifier.md)。
+GUI 对算例的修改所对应的 Java 宏是建立和核对映射的重要依据。目录应能持续增补能力，而不是为每个对象另建一套工具。候选目录 v1 的生成、合并和比较方式见[目录工具](docs/tech/catalog.md)；已经实现的只读调用管线与类型适配见[运行时契约](docs/tech/catalog-runtime.md#人工执行映射)，属性修改与结构操作契约见[目录修改](docs/tech/catalog-modifier.md)。
 
 ### 版本能力与运行状态
 
@@ -165,7 +142,7 @@ StarBridge 的操作对象既包括 `.sim` 文件，也包括已加载的算例�
 3. 区分连接、断开、保存和关闭；Agent 断开连接不应隐含关闭算例或丢弃修改。
 4. GUI 模式下，用户和 Agent 可能修改同一算例。Agent 执行修改前应检查当前状态，避免根据过时信息操作；具体协调机制待设计。
 
-连接已有 GUI 会话的机制，以及后台会话能否直接接入 GUI，需要后续技术验证。支持两种模式不意味着当前要求二者无缝切换。
+已有 GUI 会话连接的真实运行行为，以及后台会话能否直接接入 GUI，仍需技术验证。支持两种模式不意味着当前要求二者无缝切换。
 
 ---
 
@@ -198,12 +175,6 @@ StarBridge 的操作对象既包括 `.sim` 文件，也包括已加载的算例�
 5. **支持查看、修改和删除。** 用户可以纠正错误记忆；记忆跨 Agent 对话和 STAR 会话保留，后台与 GUI 模式使用同一套上下文机制。
 
 Skills 提供领域工作流，工作记忆补充具体用户、项目和算例的上下文，并可作为未来生成个性化 Skill 的依据，见[个性化 Skill 生成路线](#个性化-skill-生成路线)。记忆不是 MCP 正确调用的前置条件。存储介质、检索方式及具体接口留待后续设计，当前不预设文件、数据库或其他方案。
-
----
-
-## 项目结构
-
-当前进程、组件与源码分工见[技术入口](docs/tech/architecture.md#源码对应关系)。尚未实现的工作记忆和求解执行不预建空模块。
 
 ---
 
@@ -273,75 +244,22 @@ NWSEControls
 
 ---
 
-## MCP
+## 接口与执行边界
 
-MCP 是 Agent 操作 STAR-CCM+ 的主要结构化接口，调用共享 Core API。对外接口按能力组织，不为每种对象的每个属性创建独立 Tool。
+MCP 是 Agent 的主要结构化接口，CLI 面向开发、调试和自动化脚本，两者调用同一 Core。接口按能力组织，不为每个对象的每个属性创建独立 Tool。调用说明由初始化信息、工具描述、参数 schema、契约资源和实际对象描述共同提供；自说明能力不代替领域判断。
 
-调用契约由 MCP 初始化说明、工具描述与参数 schema、`get_contract`／`starbridge://contract` 和对象描述结果共同提供。调用者无需读取仓库文件即可取得请求格式、值编码、分页、保存及错误恢复约定；这种自说明能力不代替领域判断。
+Bridge 连接或启动目标算例会话，取得 `Simulation`，按匹配版本的规则核对条件，调用 Java API，再回读并序列化结果。批处理／临时客户端是现有执行机制；具体连接条件与实测缺口见[会话说明](docs/tech/bridge-session.md)。保存只由明确的保存请求触发，Agent 无需直接编写 Java API 调用。
 
-现有工具和资源统一见 [MCP 与共享 Core API](docs/tech/mcp.md)。发现接口使用 `node_id` 和 `property_id`，目录接口使用类型、属性、操作标识及 `target`，两种实例契约不能混用。会话生命周期独立于配置修改；未来网格、求解和记忆能力也应保持各自调用语义。
-
----
-
-## Bridge
-
-Bridge 是 StarBridge 与 STAR-CCM+ 的实际通信层。
-
-主要依赖：
-
-```text
-STAR-CCM+ Java API
-+
-STAR-CCM+ Batch / CLI
-```
-
-以下是批处理调用示例，仅说明一种执行入口，不代表常驻会话的最终通信方案：
-
-```bash
-starccm+ -batch StarBridgeMacro.java case.sim
-```
-
-Bridge 负责：
-
-1. 启动 STAR-CCM+ 或连接目标算例会话（具体连接机制待验证）
-2. 获取目标会话中的 `Simulation`
-3. 按已匹配版本的目录和适配器访问 STAR 对象
-4. 在当前会话中核对条件，执行查询、修改或专门操作
-5. 回读并将结果序列化
-6. 返回给 MCP / CLI
-7. 按明确的保存请求写出修改后的 `.sim`
-
-AI Agent 不需要了解具体的 STAR Java API 实现。
-
----
-
-## Schema
-
-StarBridge 将 Java API 描述、运行时实例和修改请求分别转换为结构化契约，避免混用类型信息、对象身份和当前值。
-
-| 契约 | 主要内容 |
+| 契约层 | 需要区分的信息 |
 |---|---|
-| 版本目录 | 对象类型、属性、操作、Java 映射、值类型、约束、来源与适配状态 |
-| 运行时对象与快照 | 会话身份、对象引用、当前值、单位、关系、可用条件及读取错误 |
-| 修改请求 | 目录与版本关联、目标对象、属性或操作、预期旧状态、输入值与选项 |
-| 执行结果 | 拒绝或执行状态、回读值、已覆盖字段 Diff、保存与重载核对结果及验证范围 |
+| 版本材料与计划 | 类型、属性、操作、Java 映射、约束、来源与适配状态 |
+| 运行时对象与快照 | 会话身份、实例引用、当前值、单位、关系、可用条件与读取错误 |
+| 修改请求 | 版本关联、目标、属性或操作、预期旧状态、新值与选项 |
+| 执行结果 | 拒绝或执行状态、回读、已覆盖字段的变化，以及该流程实际执行的保存或重载核对 |
 
-目录格式版本与请求、快照格式版本分别维护。目录中的 Java 映射由 Bridge 使用；Agent 通过稳定的类型、属性和操作描述构造请求。当前契约见[目录描述与读取](docs/tech/catalog-runtime.md)、[目录修改](docs/tech/catalog-modifier.md)、[Inspector](docs/tech/inspector.md) 和 [Modifier](docs/tech/modifier.md)，不将上述全部目标格式视为已实现接口。
+目录格式、请求与快照格式分别版本化。Java 映射由 Bridge 使用，Agent 使用公开描述构造请求；类型信息、实例身份和当前值不能混用。发现引用、目录 `target` 和兼容快照目前仍有不同契约，统一迁移的安排见[实施计划](docs/plans/plan-2026-11-03-14-23.md#接口与执行)。
 
----
-
-## CLI
-
-CLI 用于开发、调试和自动化脚本，与 MCP 使用同一 Core API、Inspector、Modifier 和版本目录。当前 JSON CLI 直接接收与 MCP 工具相同的参数对象：
-
-```bash
-python3 starbridge.py contract
-python3 starbridge.py get_capabilities --arguments capabilities.json
-python3 starbridge.py read_properties --arguments read.json
-python3 starbridge.py modify --arguments change.json
-```
-
-参数文件中的算例、会话和输出路径必须为绝对路径，契约见 [MCP 与共享 Core API](docs/tech/mcp.md#同源-json-cli)。文件模式继续保留加载、另存与重载核对的原脚本调用方式，会话模式明确绑定已加载算例。各类对象的读写通过目录中的属性和操作标识表达；既有入口以[目录描述与读取](docs/tech/catalog-runtime.md)、[目录修改](docs/tech/catalog-modifier.md)、[文件](docs/tech/bridge-file.md)和[后台会话](docs/tech/bridge-session.md)说明为准。
+当前工具参数和 JSON CLI 用法见[MCP 与 Core API](docs/tech/mcp.md)，值编码见[目录读取](docs/tech/catalog-runtime.md)，修改和失败契约见[目录修改](docs/tech/catalog-modifier.md)。网格、求解和记忆接口的未来设计不改变会话生命周期与配置修改各自的语义。
 
 ---
 
@@ -409,54 +327,17 @@ StarBridge Skills
 StarBridge MCP
 ```
 
-从而使 STAR-CCM+ 算例真正具备 Agent-friendly 的结构。
+这些约定可帮助 Agent 按稳定名称和明确关联理解算例；具体支持仍取决于实际接口。
 
 ---
 
-## 长期目标
+## 目标工作流示例
 
-StarBridge 最终希望实现：
+以下任务用于说明长期方向，不代表这些操作现已全部支持：
 
-```text
-用户
- │
- ▼
-自然语言
- │
- ▼
-AI Agent
- │
- ▼
-StarBridge
- │
- ▼
-STAR-CCM+
- │
- ▼
-Simulation
-```
+- 检查算例网格设置，或找出 OGE 模板中不符合用户规范的设置。
+- 将旋翼半径改为 `4.91 m`，或将背景计算域调整为 `±10R`。
+- 核对 `RotorControls` 是否完整，以及 Startup ramp 的单位和逻辑。
+- 根据当前算例生成一个 NWSE 版本。
 
-用户可以直接提出：
-
-> 检查这个算例的网格设置。
-
-> 找出当前 OGE 模板中不符合规范的设置。
-
-> 将旋翼半径修改为 4.91 m。
-
-> 将背景计算域调整为 ±10R。
-
-> 检查 RotorControls 是否完整。
-
-> 检查 Startup ramp 是否存在单位或逻辑错误。
-
-> 根据当前算例生成一个 NWSE 版本。
-
-Agent 负责理解任务，Skill 提供领域知识，持久化工作记忆补充用户和算例上下文，MCP 提供操作能力，Bridge 在目标后台或 GUI 会话中完成 STAR-CCM+ 的实际读写。
-
----
-
-## 一句话定义
-
-> **StarBridge 是一个面向 AI Agent 的 STAR-CCM+ 插件，通过 Skills、MCP、持久化工作记忆和自动化 Bridge，使 Agent 能够在后台或 GUI 常驻算例会话中结构化地读取、理解、修改、运行算例并验证操作结果。**
-
+Agent 理解任务，Skill 提供领域工作流，工作记忆补充背景，MCP 暴露实际可用操作，Bridge 在目标算例会话中执行并回读。当前任务与未承诺候选分别由 [TODO](TODO.md)和[路线图](docs/roadmap.md)维护。

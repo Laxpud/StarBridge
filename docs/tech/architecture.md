@@ -21,7 +21,7 @@ StarBridge 向 Agent 提供结构化接口，STAR-CCM+ 持有实际算例状态�
 以下展示共享会话入口。MCP 服务与 JSON CLI 使用同一套 Python 实现；JSON CLI 在调用它的进程中执行 Core，无需另外连接 MCP 服务。
 
 ```mermaid
-flowchart LR
+flowchart TD
     host["Agent 宿主"] -->|stdio 请求与结果| python["StarBridge Python 进程"]
     python -->|启动临时批处理客户端| client["STAR Java 客户端"]
     client -->|连接目标服务并执行宏| server["已有或自有 STAR 服务"]
@@ -37,7 +37,7 @@ Java 代码在目标 STAR 会话中定位对象、检查必要条件、执行读
 
 独立[文件 Runner](bridge-file.md)每次从文件加载，修改后另存并重载核对；它保留自己的调用与产物契约，不需要先建立共享会话。上图中的常驻 STAR 服务适用于[会话 Runner](bridge-session.md)。
 
-插件启动与 Python 依赖准备由[分发说明](../distribution.md)维护；具体请求格式见 [MCP 契约](mcp.md)。
+插件启动和打包关系见[分发维护](distribution.md)，用户安装步骤见[分发说明](../distribution.md)；具体请求格式见 [MCP 契约](mcp.md)。
 
 ## Python 组件（C4 L3）
 
@@ -47,13 +47,12 @@ flowchart TD
     service -->|对象树与属性请求| discovery["运行时发现与规则"]
     service -->|目录读写请求| execution["目录执行计划与类型适配"]
     discovery -->|编译读写计划| execution
-    service -->|会话生命周期与目录操作| runner["会话 Runner"]
-    discovery -->|通过 Service 回调执行发现与读写| runner
-    execution -->|返回计划供调用者执行| service
+    service -->|会话与目录操作| runner["会话 Runner"]
+    discovery -->|请求执行：Service 回调| runner
     runner -->|生成入口宏并启动客户端| java["Java 宏与执行器"]
 ```
 
-Service 校验公开方法和参数并形成状态封套；发现模块维护会话内引用、分页和索引，并按规则准备属性计划；目录模块复用已审阅的类型与操作适配。Runner 负责进程身份、互斥、客户端执行和请求状态，Java 执行器负责实际对象访问与回读。图中的计划返回线表示数据传递，不是目录模块反向调用 Service。
+Service 校验公开方法和参数并形成状态封套；发现模块维护会话内引用、分页和索引，并按规则准备属性计划；目录模块复用已审阅的类型与操作适配。Runner 负责进程身份、互斥、客户端执行和请求状态，Java 执行器负责实际对象访问与回读。图只画请求依赖；目录模块将计划返回给调用者，再由 Service 组织执行，不反向调用 Service。
 
 详细机制分别见[运行时发现](runtime-discovery.md)、[目录读取](catalog-runtime.md)、[目录修改](catalog-modifier.md)和[会话状态处理](bridge-session.md#身份和失败处理)。
 
@@ -66,7 +65,7 @@ Service 校验公开方法和参数并形成状态封套；发现模块维护会
 | 兼容入口 | Inspector schema 1、旧 `modify` 和 `set-scalar` | 保留既有快照与结果投影；以各兼容页为准。 |
 | 文件 Runner | 独立加载、另存和重载检查 | 文件流程的原文件摘要与重载检查不等于普通会话赋值的要求。 |
 
-统一接口及旧入口移除的剩余工作见 [TODO](../../TODO.md#接口与执行)。各专题中的历史实测记录保留原版本和场景，不代表最新会话、缓存或写入改造已经通过真实 STAR 验证。候选方案放在目标设计与路线图，接口说明只描述已有实现。
+统一接口及旧入口移除的剩余工作见 [TODO](../../TODO.md#当前里程碑三端插件会话接入与运行简化)。各专题中的历史实测记录保留原版本和场景，不代表最新会话、缓存或写入改造已经通过真实 STAR 验证。候选方案放在目标设计与路线图，接口说明只描述已有实现。
 
 ## 源码对应关系
 

@@ -21,11 +21,19 @@ StarBridge lets AI agents inspect STAR-CCM+ cases and change supported settings 
 
 Support depends on the exact [STAR release and Build](docs/tech/catalog-versions.md) and the adapted property or operation; it does not cover every simulation setting. Local GUI/server attachment is implemented, but real GUI attachment, saving, failure recovery, and the revised write path have not yet been exercised against STAR; see the [validation limits](docs/tech/bridge-session.md#验证边界). Mesh generation, solver execution, and persistent working memory remain future work in the [design](StarBridge.md) and [roadmap](docs/roadmap.md).
 
+## Prerequisites
+
+The launcher needs `python3` and `uv` on PATH and prepares a Python 3.11+ environment. Simulation operations require Linux, a compatible STAR-CCM+ installation, and a license; runtime discovery also needs that installation's local Javadoc.
+
 ## Getting started
 
-For Codex, Claude Code, or DeepSeek Harness (DSH), follow the [plugin installation guide](docs/distribution.md#三端插件安装) to install the program, MCP connection, and shared case-audit Skill together. The launcher needs `python3` and `uv` on PATH and prepares a Python 3.11+ environment. Simulation operations require Linux, a compatible STAR-CCM+ installation, and a license; runtime discovery also needs that installation's local Javadoc.
+For Codex, Claude Code, or DeepSeek Harness (DSH), follow the [plugin installation guide](docs/distribution.md#三端插件安装) to install the program, MCP connection, and shared case-audit Skill together.
 
-For source or generic stdio use, follow the [standalone installation instructions](docs/distribution.md#源码与通用接入). The `starbridge-cfd` package can run outside the source checkout; version `0.1.0` has not been published to PyPI. The same guide records each client's installation results and limits. After installation, use the [MCP contract](docs/tech/mcp.md) and [session guide](docs/tech/bridge-session.md) to connect a case and read its settings.
+For source or generic stdio use, follow the [standalone installation instructions](docs/distribution.md#源码与通用接入). The `starbridge-cfd` package can run outside the source checkout; version `0.1.0` has not been published to PyPI. The [installation records](docs/evidence/distribution.md) describe each client's results and limits.
+
+## Next steps
+
+After installation, use the [MCP contract](docs/tech/mcp.md) and [session guide](docs/tech/bridge-session.md) to connect a case and read its settings.
 
 ## More documentation
 
@@ -52,7 +60,7 @@ The design and planning documents are maintained in Chinese. Only the project en
 
 ## Contributing
 
-Contributions can describe concrete simulation workflows, clarify requirements, or improve the documents. Use the [current milestone](TODO.md) to identify open planning questions; implementation choices remain under discussion.
+Contributions can describe concrete simulation workflows, clarify requirements, or improve the documents. See the [current milestone](TODO.md) for remaining work and the [roadmap](docs/roadmap.md) for proposals whose scope is still open.
 
 ## License
 

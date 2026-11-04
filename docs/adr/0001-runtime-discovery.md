@@ -1,6 +1,6 @@
 # 0001：采用运行时对象树与属性发现
 
-状态：已接受，尚未完成产品化实施。
+状态：已接受；其中会话 Runner 与兼容入口的安排已由 [ADR 0002](0002-plugins-sessions-and-storage.md)调整。原阶段记录见[归档](../archive/milestone-2026-10-30-15-28-runtime-discovery-and-writes.md)，当前任务见 [TODO](../../TODO.md)。
 
 日期：2026-10-30
 
