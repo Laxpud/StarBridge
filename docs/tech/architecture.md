@@ -1,6 +1,6 @@
 # 当前架构
 
-[技术入口](index.md) · [目标设计](../../StarBridge.md) · [当前任务](../../TODO.md)
+[技术入口](index.md) · [需求文档](<../../StarBridge.md>) · [当前任务](../../TODO.md)
 
 核对基线：2026-11-04 的会话 Runner、Core Service、CLI 与插件启动代码。本文说明当前进程和组件如何协作。真实 GUI 接入、保存、失败恢复及调整后的写入链路仍有[实测缺口](bridge-session.md#验证边界)；实现存在不等于运行验证完成。
 

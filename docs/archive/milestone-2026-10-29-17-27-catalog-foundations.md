@@ -2,7 +2,7 @@
 
 目标：以 STAR-CCM+ 2602 的“对象—属性—操作目录”为主要适配层，让 Inspector 与 Modifier 通过共享目录和通用类型适配器读取、修改算例配置。运行时发现用于实例定位、状态检查和目录校验。
 
-设计：[版本化对象、属性与操作目录](../../StarBridge.md#版本化对象属性与操作目录)。已提供[离线目录工具](../tech/catalog.md)、[目录驱动描述与读取](../tech/catalog-runtime.md)和[首批目录修改](../tech/catalog-modifier.md)；兼容 [Modifier](../tech/modifier.md) 与 `set-scalar` 也已使用共享目录，[Inspector](../tech/inspector.md) 快照也已通过独立布局复用目录，已提供[分项覆盖报告](../tech/catalog.md#分项覆盖报告)和张量 Profile 与材料物性方法结构操作及其描述。
+设计：[版本化对象、属性与操作目录](<StarBridge.md#版本化对象属性与操作目录>)。已提供[离线目录工具](../tech/catalog.md)、[目录驱动描述与读取](../tech/catalog-runtime.md)和[首批目录修改](../tech/catalog-modifier.md)；兼容 [Modifier](../tech/modifier.md) 与 `set-scalar` 也已使用共享目录，[Inspector](../tech/inspector.md) 快照也已通过独立布局复用目录，已提供[分项覆盖报告](../tech/catalog.md#分项覆盖报告)和张量 Profile 与材料物性方法结构操作及其描述。
 
 完成条件：能够从明确版本的 API 材料重复生成、加载和比较目录；目录条目包含来源与适配状态；Inspector 和 Modifier 使用同一目录完成已有能力的读取、修改及验证；可区分目录中的能力、当前算例中的实例和当前可写条件。未知版本、缺失映射及未适配类型应明确报告，不能按猜测调用。此里程碑完成不代表全部算例配置已覆盖，剩余覆盖进入[下一阶段](../roadmap.md#目录覆盖扩展与版本演进)。
 

@@ -1,6 +1,6 @@
 # 版本目录工具
 
-[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [目录描述与读取](catalog-runtime.md) · [目录修改](catalog-modifier.md) · [设计文档](../../StarBridge.md#版本化对象属性与操作目录) · [当前任务](../../TODO.md)
+[返回项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md) · [目录描述与读取](catalog-runtime.md) · [目录修改](catalog-modifier.md) · [历史设计](<../archive/StarBridge.md#版本化对象属性与操作目录>) · [当前任务](../../TODO.md)
 
 目录工具从本机 STAR Javadoc 生成候选 API，校验和合并人工语义，比较不同版本的声明变化，并分别统计静态发现、执行实现和已有结果中的成功观察。本页命令只读取安装材料，不需要许可证，不启动 STAR，也不加载或修改算例。候选目录配合人工 `execution.json` 已可执行[当前算例的描述与读取](catalog-runtime.md)及[首批单属性修改](catalog-modifier.md)；兼容修改入口和 [Inspector 快照](inspector.md#快照布局与共享调用)也复用目录，快照集合与字段另由 `snapshot.json` 描述。
 

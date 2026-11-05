@@ -4,7 +4,7 @@
 
 完成条件：真实输入的参数可结构化读取；一次标量修改可另存并重新加载核对；输入文件保持不变，操作日志与结果可查看。当前不要求常驻会话、MCP、工作记忆或求解。
 
-方案：[设计文档](../../StarBridge.md) · [文件 Bridge 使用说明](../tech/bridge-file.md) · [参考项目](../tech/references.md)
+方案：[设计文档](<StarBridge.md>) · [文件 Bridge 使用说明](../tech/bridge-file.md) · [参考项目](../tech/references.md)
 
 - [x] 对照本机 STAR 版本与 Javadoc 确认文件操作入口及标量参数 API。
 - [x] 实现按文件读取全局参数的 Runner 和 Java 宏。

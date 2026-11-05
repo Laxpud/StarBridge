@@ -17,7 +17,7 @@ StarBridge 让 AI Agent 通过本机 [MCP 或共享 JSON CLI](tech/mcp.md) 检�
 - **受控修改**：写入前核对目标、预期旧值及必要约束，写入后回读结果。已适配属性、方法切换及验证记录见[修改说明](tech/catalog-modifier.md)。
 - **显式保存**：会话修改保留在内存中，收到保存指令后才写回当前文件或另存为；独立文件流程则另存新文件并重新加载核对。具体操作见[会话说明](tech/bridge-session.md)和[文件 Bridge](tech/bridge-file.md)。
 
-支持范围取决于精确的 [STAR release／Build](tech/catalog-versions.md)及已适配的属性或操作，尚未覆盖全部算例设置。本机 GUI／服务器连接已有实现，但真实 GUI 接入、保存、失败恢复及调整后的写入链路尚未经过 STAR 实测，见[验证边界](tech/bridge-session.md#验证边界)。网格生成、求解执行和持久化工作记忆仍为后续方向，见[设计文档](../StarBridge.md)和[路线图](roadmap.md)。
+支持范围取决于精确的 [STAR release／Build](tech/catalog-versions.md)及已适配的属性或操作，尚未覆盖全部算例设置。本机 GUI／服务器连接已有实现，但真实 GUI 接入、保存、失败恢复及调整后的写入链路尚未经过 STAR 实测，见[验证边界](tech/bridge-session.md#验证边界)。网格生成、求解执行和持久化工作记忆仍为后续方向，见[需求文档](<../StarBridge.md>)和[路线图](roadmap.md)。
 
 ## 参与贡献
 

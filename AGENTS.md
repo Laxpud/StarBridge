@@ -7,7 +7,7 @@
 | 当前工作与任务状态 | [TODO.md](<TODO.md>) |
 | 项目用法与安装 | [中文说明](<docs/README.cn.md>)、[英文说明](<README.md>) |
 | 当前实现、接口与源码分工 | [技术文档索引](<docs/tech/index.md>) |
-| 项目定位与目标设计 | [StarBridge.md](<StarBridge.md>) |
+| 项目定位与需求 | [StarBridge.md](<StarBridge.md>) |
 | 后续候选与未来安排 | [路线图](<docs/roadmap.md>) |
 
 ## README 维护
