@@ -8,7 +8,7 @@ from copy import deepcopy
 from functools import lru_cache
 
 from .catalog import CatalogError
-from .execution import WRITE_IDENTITY_PROPERTIES, _file_key
+from .execution import SELECTOR_INPUT_TYPES, WRITE_IDENTITY_PROPERTIES, _file_key
 
 
 @lru_cache(maxsize=8)
@@ -254,11 +254,12 @@ class AcceptedWriteRules:
 
 
 class GenericWriteRules(AcceptedWriteRules):
-    """优先保留特殊已接受规则，再生成普通常量数量赋值规则。
+    """优先保留特殊已接受规则，再生成普通数量或静态选择赋值规则。
 
     标量只接受具有实际范围的 BoundedScalarInput，沿原 input 在执行前
     检查范围和单位。向量保留原坐标约定；带未知范围、关联和编辑器的
-    描述符拒绝。两个族都禁止覆盖表达式，核对目标数量身份、单位和必要范围。
+    描述符拒绝。数量族禁止覆盖表达式；选择族保留当前 descriptor，
+    只接受会话对象引用并在唯一 Bean setter 前重验完整可选域及基数。
     """
 
     def __init__(self, target, descriptors=None):
@@ -266,9 +267,16 @@ class GenericWriteRules(AcceptedWriteRules):
         self.descriptors = descriptors
 
     def required_classes(self, selected):
-        return super().required_classes(selected) | {
+        classes = super().required_classes(selected) | {
             'star.common.ScalarPhysicalQuantity', 'star.common.VectorPhysicalQuantity',
             'star.common.Units'}
+        # Bean setter 可能声明在基类，不能从 getter 的声明类或 link 名称推测。
+        for descriptor in selected.values():
+            setter = descriptor.get('setter') or {}
+            if descriptor.get('property_type') in SELECTOR_INPUT_TYPES and setter.get('owner'):
+                classes.add(setter['owner'].replace('$', '.'))
+                classes.add(descriptor['property_type'])
+        return classes
 
     def attach(self, catalog, rules, selected, type_id, member):
         # 已有特殊规则即使因为上下文或歧义不能迁移，也必须阻止通用回退。
@@ -305,6 +313,23 @@ class GenericWriteRules(AcceptedWriteRules):
             if any(name != 'star.locale.annotation.StarBeanProperty' for name in annotations):
                 continue
             kind = descriptor.get('property_type')
+            if kind in SELECTOR_INPUT_TYPES and entry.get('adapter') == 'selector':
+                setter = descriptor.get('setter') or {}
+                if (setter.get('public') is not True or setter.get('static') is not False
+                        or setter.get('return_type') != 'void'
+                        or setter.get('parameter_types') != [kind]
+                        or setter.get('annotations')):
+                    continue
+                # 替代输入来自当前 descriptor 的克隆；最终调用真实 Bean setter，
+                # 不调用 Internal getManager，也不把 self-link 当作 manager getter。
+                final = member(setter['owner'], setter['name'], [kind], effect='write')
+                final['arguments'] = [{'context': 'value'}]
+                entry.update(writable=True, write={
+                    'adapter': 'selector_static',
+                    'pipeline': {'root': 'object', 'steps': [final]},
+                    'guards': [], 'preserved_properties': []},
+                    reason='通用静态选择替换：当前 descriptor 可选域、基数、顺序及会话引用身份检查；查询赋值不支持')
+                continue
             if kind == 'star.common.BoundedScalarInput':
                 family, owner, setter = 'scalar_value', 'star.common.ScalarPhysicalQuantity', 'setValueAndUnits'
             elif kind == 'star.common.VectorPhysicalQuantityInput':

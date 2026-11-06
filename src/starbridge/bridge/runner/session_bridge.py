@@ -23,8 +23,8 @@ from starbridge.bridge.runner.file_bridge import (catalog_content, catalog_diff,
                          prepare_catalog_modification, prepare_catalog_read,
                          prepare_snapshot)
 from starbridge.bridge.runner.modifier import ModificationRejected, snapshot_diff
-from starbridge.core.catalog_bundle import check_plan_targets, session_target
-from starbridge.core.session_store import session_directory, runtime_root, public_session
+from starbridge.core.catalog_bundle import BUNDLES, check_plan_targets, session_target
+from starbridge.core.session_store import session_directory, runtime_root, public_session, session_version
 
 
 class OperationUncertain(RuntimeError):
@@ -125,7 +125,7 @@ def finish_request(directory, state, status, *, uncertain=False):
     state.update(last_request=identifier, last_request_status=status, active_request=None)
     if uncertain:
         state['uncertain_request'] = identifier
-    for key in ('client_process', 'request_owner', 'active_action', 'active_mutating'):
+    for key in ('client_process', 'client_launch_state', 'request_owner', 'active_action', 'active_mutating'):
         state.pop(key, None)
     state['state'] = 'uncertain' if state.get('uncertain_request') else 'ready'
     write_json(directory / 'session.json', state)
@@ -146,10 +146,22 @@ def refresh_request(directory, state):
         except (OSError, ValueError):
             data = {}
         mutating = state.get('active_mutating', True)
-        # 控制端中断时可能尚未完成 Python 回读检查；只有宏明确 rejected 才证明未赋值。
-        uncertain = mutating and data.get('status') != 'rejected'
-        finish_request(directory, state, 'uncertain' if uncertain else data.get('status', 'error'),
-                       uncertain=uncertain)
+        # 通用步骤凭据在每步结束后原子写入；终态可恢复，不能因控制端断开而重做。
+        # 原目录写入仍可能缺少 Python 回读检查，只有 rejected 能证明未赋值。
+        final_macro = (state.get('active_action') == 'macro' and data.get('execution', {}).get('status')
+                       in ('completed', 'partial', 'failed', 'uncertain', 'rejected'))
+        # 启动前持久记录阶段，PID未登记不再等于未派发。旧记录缺少阶段时按未知处理。
+        dispatched = state.get('client_launch_state') not in ('preparing', 'not_started')
+        uncertain = (data['execution'].get('uncertain', False) if final_macro
+                     else mutating and dispatched and data.get('status') != 'rejected')
+        if final_macro:
+            state['current_file'] = data['after']['session_path']
+            state['modified'] = data['after']['modified']
+        # 中间凭据中的 running 不能成为已结束请求的末次状态；无终态的只读调用按失败收尾。
+        status = data.get('status', 'error')
+        if status not in ('ok', 'rejected', 'partial', 'uncertain', 'error'):
+            status = 'error'
+        finish_request(directory, state, 'uncertain' if uncertain else status, uncertain=uncertain)
         if disconnected:
             state.update(state='disconnected', recovery_required=bool(state.get('uncertain_request')))
             write_json(directory / 'session.json', state)
@@ -157,6 +169,26 @@ def refresh_request(directory, state):
         # 旧记录没有请求类型，不能凭缺少字段推断旧写入未执行。
         state['uncertain_request'] = state.get('last_request', 'legacy-request')
         write_json(directory / 'session.json', state)
+    identifier = state.get('uncertain_request')
+    if identifier and not state.get('active_request'):
+        run = directory / 'requests' / identifier
+        if (run / 'macro-request.json').is_file():
+            from starbridge.bridge.runner.macro_execution import final_receipt
+            data = final_receipt(run / 'result.json')
+            if data is not None and data['execution'].get('uncertain') is False:
+                # 客户端超时后服务端可能稍后才写入终态。只依据本次明确凭据恢复，
+                # 普通成功读取仍不能解除未知写入；没有终态就继续保留限制。
+                state.pop('uncertain_request', None)
+                state['resolved_request'] = identifier
+                if state.get('last_request') == identifier:
+                    state['last_request_status'] = data['status']
+                    state['current_file'] = data['after']['session_path']
+                    state['modified'] = data['after']['modified']
+                if state.get('state') == 'uncertain':
+                    state['state'] = 'ready'
+                if state.get('state') == 'disconnected':
+                    state['recovery_required'] = False
+                write_json(directory / 'session.json', state)
 
 
 def terminate_owned(state):
@@ -192,44 +224,82 @@ def terminate_owned(state):
 
 def request(directory, state, action, timeout, *, output=None,
             catalog_plan=None, catalog_request=None,
-            snapshot_plan=None, discovery_request=None):
+            snapshot_plan=None, discovery_request=None, macro_request=None):
     """核对进程和加载对象身份后执行请求；不检查磁盘原文件摘要或自动保存。"""
     if not alive(state):
         raise RuntimeError('Managed server is not running; refusing to connect to its old port')
-    check_plan_targets(catalog_plan, snapshot_plan, target=session_target(state))
+    if action in ('macro', 'session-info', 'save'):
+        # 通用路径只绑定实际版本，不接受夹带结构化计划，也不装载目录辅助类。
+        session_version(state)
+        if any(value is not None for value in (catalog_plan, catalog_request, snapshot_plan, discovery_request)):
+            raise ValueError('Generic lifecycle and macro requests cannot contain structured catalog plans')
+    elif action == 'discovery':
+        session_version(state)
+        if catalog_plan is not None or snapshot_plan is not None:
+            raise ValueError('Discovery cannot contain catalog or snapshot plans')
+    else:
+        check_plan_targets(catalog_plan, snapshot_plan, target=session_target(state))
     # 旧管理会话升级时在持锁请求中只补一次世代标识；对象 key 必须与该 token 配对。
     if not state.get('session_token'):
         state['session_token'] = uuid.uuid4().hex
         write_json(directory / 'session.json', state)
-    identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
+    if action == 'macro':
+        from starbridge.core.macros import request_identifier
+        identifier = request_identifier(macro_request['request_id'])
+    else:
+        identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
     run = directory / 'requests' / identifier
-    mutating = action in ('save', 'modify', 'catalog-modify')
+    mutating = (any(step['effect'] == 'mutate' for step in macro_request['steps']) if action == 'macro'
+                else action in ('save', 'modify', 'catalog-modify'))
     state.update(active_request=identifier, active_action=action, active_mutating=mutating,
-                 request_owner=process_identity(os.getpid()), state='running')
+                 request_owner=process_identity(os.getpid()), client_launch_state='preparing', state='running')
     write_json(directory / 'session.json', state)
+
+    def record_launch(phase):
+        """派发前先落盘；Popen中断而未取得PID时，不能再声称操作没有启动。"""
+        state['client_launch_state'] = phase
+        write_json(directory / 'session.json', state)
 
     def record_client(pid):
         """客户端启动后立即保存进程身份，供服务中断后的状态查询使用。"""
-        state['client_process'] = process_identity(pid)
+        state.update(client_process=process_identity(pid), client_launch_state='started')
         write_json(directory / 'session.json', state)
 
     try:
-        data = execute(state['star'], None, run, output,
-                       action=action, host=state['host'], port=state['port'],
-                       expected_session=state['current_file'] or '', timeout=timeout,
-                       client_userdir=directory / 'client-settings',
-                       catalog_plan=catalog_plan, catalog_request=catalog_request,
-                       session_token=state['session_token'], snapshot_plan=snapshot_plan,
-                       discovery_request=discovery_request,
-                       expected_simulation_key=state.get('simulation_key', ''), on_client_start=record_client,
-                       debug=state.get('debug', False))
+        if action == 'macro':
+            from starbridge.bridge.runner import macro_execution
+            data = macro_execution.execute(state, run, macro_request, timeout, record_client,
+                                           on_client_launch=record_launch)
+        elif action in ('session-info', 'save'):
+            from starbridge.bridge.runner import lifecycle_execution
+            data = lifecycle_execution.execute(state, run, action, timeout,
+                                               output=output, on_client_start=record_client,
+                                               on_client_launch=record_launch)
+        else:
+            data = execute(state['star'], None, run, output,
+                           action=action, host=state['host'], port=state['port'],
+                           expected_session=state['current_file'] or '', timeout=timeout,
+                           client_userdir=directory / 'client-settings',
+                           catalog_plan=catalog_plan, catalog_request=catalog_request,
+                           session_token=state['session_token'], snapshot_plan=snapshot_plan,
+                           discovery_request=discovery_request,
+                           expected_simulation_key=state.get('simulation_key', ''), on_client_start=record_client,
+                           on_client_launch=record_launch, debug=state.get('debug', False))
         if not alive(state):
             raise RuntimeError('Server exited or changed identity during request')
-        state['current_file'] = data['after']['session_path']
-        state['modified'] = data['after']['modified']
+        if data['status'] != 'rejected':
+            state['current_file'] = data['after'].get('session_path', state.get('current_file'))
+            state['modified'] = data['after'].get('modified', state.get('modified'))
+        if action in ('session-info', 'save') and data['status'] == 'ok':
+            actual = data['after'].get('star_version')
+            if actual != session_version(state):
+                raise RuntimeError('Lifecycle receipt version differs from the bound STAR version')
+            state['star_version'] = actual
+            state['version_source'] = 'bound_version_verified_by_server'
     except BaseException as error:
-        dispatched = 'client_process' in state
-        if dispatched and client_running(state):
+        dispatched = state.get('client_launch_state') not in ('preparing', 'not_started')
+        # 未登记PID时只能保留不确定，不能用仍存活的控制端冒充客户端继续运行。
+        if dispatched and state.get('client_process') is not None and client_running(state):
             write_json(directory / 'session.json', state)
             if isinstance(error, Exception):
                 raise OperationBusy('Request client is still running; query session_status') from error
@@ -239,8 +309,42 @@ def request(directory, state, action, timeout, *, output=None,
         if uncertain and isinstance(error, Exception):
             raise OperationUncertain(str(error)) from error
         raise
-    finish_request(directory, state, data['status'], uncertain=data['status'] == 'uncertain')
+    uncertain = data['status'] == 'uncertain' or data.get('execution', {}).get('uncertain', False)
+    if state.get('client_process') is not None and client_running(state):
+        # 步骤凭据与客户端退出是两件事；启动器退出后同组子进程仍可能在收尾。
+        # 返回已取得的结果，但保留活动身份，后续请求必须等状态查询确认客户端结束。
+        if uncertain:
+            state['uncertain_request'] = identifier
+        write_json(directory / 'session.json', state)
+    else:
+        finish_request(directory, state, data['status'], uncertain=uncertain)
     return data, run
+
+
+def bind_legacy_version(directory, state, timeout):
+    """为没有任何版本字段的旧会话补实际绑定，不把历史2602默认当作检测结果。
+
+    仅在首次通用操作前进行所选启动器检测和同一进程/加载对象的只读握手；
+    保留原所有权、引用世代与未知写记录，失败不会执行原本请求的用户步骤或保存。
+    """
+    if 'star_version' in state or 'catalog_target' in state:
+        session_version(state)
+        return
+    from starbridge.core.environment import inspect_installation
+    from starbridge.bridge.runner import lifecycle_execution
+    detected = inspect_installation(state['star'], min(timeout, 30))
+    if detected['status'] != 'ok':
+        raise ValueError('Legacy session version could not be detected; reconnect using the selected installation')
+    version = detected['version']
+    proof = lifecycle_execution.prepare(state['star'], version, min(timeout, 90))
+    state.update(star_version=version, version_source='selected_launcher', lifecycle_compilation=proof,
+                 catalog_target=version if BUNDLES.get(version['release']) == version['build'] else None)
+    data, run = request(directory, state, 'session-info', timeout)
+    if data['status'] != 'ok':
+        raise ModificationRejected(f'Legacy session identity could not be verified: {data.get("error")}; see {run}')
+    state['simulation_key'] = data['after']['simulation_key']
+    write_json(directory / 'session.json', state)
+    compact_request(state, run, 'session-info')
 
 
 def local_servers(star):
@@ -319,10 +423,12 @@ def prune_sessions():
     # 保留目录，重建缓存的写入方始终使用原子替换；不删除未知扩展名的文件。
     if idle:
         from starbridge.bridge.runner.java_runtime import prune_runtime_cache
+        from starbridge.bridge.runner.lifecycle_execution import prune_cache
         prune_runtime_cache(cutoff)
+        prune_cache(cutoff)
         for path in (runtime_root() / 'cache').rglob('*.json'):
             try:
-                if 'java' in path.relative_to(runtime_root() / 'cache').parts:
+                if {'java', 'lifecycle'} & set(path.relative_to(runtime_root() / 'cache').parts):
                     continue
                 if path.stat().st_mtime < cutoff:
                     path.unlink()
@@ -367,19 +473,21 @@ def start(args, directory):
                  'modified': None, 'active_request': None,
                  'project_dir': str(getattr(args, 'project_dir', None) or source.parent),
                  'debug': getattr(args, 'debug', False),
-                 'session_token': uuid.uuid4().hex, 'catalog_target': args.snapshot_plan['target']}
+                 'session_token': uuid.uuid4().hex, 'star_version': dict(args.star_version),
+                 'version_source': 'selected_launcher',
+                 'catalog_target': (dict(args.star_version) if
+                                    BUNDLES.get(args.star_version['release']) == args.star_version['build'] else None),
+                 'lifecycle_compilation': args.lifecycle_compilation}
         matches = []
-        for candidate in local_servers(star):
+        for candidate in ([] if getattr(args, 'create', False) else local_servers(star)):
             if args.port is not None and candidate['port'] != args.port:
                 continue
             probe_state = dict(state, ownership='external', **candidate)
             # 先用最小只读请求识别当前加载文件，不生成全范围 Inspector 快照。
             probe = directory / 'probes' / uuid.uuid4().hex
             try:
-                data = execute(star, None, probe, action='session-info', host='localhost',
-                               port=candidate['port'], timeout=min(args.timeout, 15),
-                               client_userdir=directory / 'client-settings',
-                               snapshot_plan=args.snapshot_plan, session_token=state['session_token'], debug=state['debug'])
+                from starbridge.bridge.runner import lifecycle_execution
+                data = lifecycle_execution.execute(probe_state, probe, 'session-info', min(args.timeout, 15))
             except RuntimeError:
                 continue
             info = data['after']
@@ -387,7 +495,8 @@ def start(args, directory):
                     (info.get('session_path') and Path(info['session_path']).resolve() == source))):
                 matches.append(dict(probe_state, simulation_key=info['simulation_key'],
                                     current_file=info.get('session_path') or None,
-                                    modified=info['modified'], state='ready'))
+                                    modified=info['modified'], state='ready',
+                                    version_source='bound_version_verified_by_server'))
         if len(matches) > 1:
             state['state'] = 'failed'
             write_json(directory / 'session.json', state)
@@ -403,24 +512,30 @@ def start(args, directory):
                 if (existing.get('port') == state['port'] and alive(existing)
                         and existing.get('simulation_key') == state['simulation_key']
                         and existing.get('server_process', existing.get('process')) == state['process']):
-                    if existing.get('recovery_required'):
-                        # 重连沿用未确认记录，允许只读核对，不能用新 ID 绕过写入限制。
+                    if (existing.get('recovery_required') or
+                            existing.get('state') not in ('stopped', 'disconnected', 'failed')):
+                        # 同一加载对象的成功probe可补旧版本字段，但不能更换世代、所有权或绕过未知写锁。
                         with locked(record.parent):
                             existing = json.loads(record.read_text())
-                            refresh_request(record.parent, existing)
-                            existing['state'] = ('running' if existing.get('active_request') else
-                                                 'uncertain' if existing.get('uncertain_request') else 'ready')
+                            if (not alive(existing) or existing.get('simulation_key') != state['simulation_key']):
+                                raise ValueError('Existing session identity changed while reconnecting')
+                            if ('star_version' in existing or 'catalog_target' in existing) and session_version(existing) != state['star_version']:
+                                raise ValueError('Existing session version differs from the detected STAR server')
+                            if existing.get('recovery_required'):
+                                refresh_request(record.parent, existing)
+                                existing['state'] = ('running' if existing.get('active_request') else
+                                                     'uncertain' if existing.get('uncertain_request') else 'ready')
+                            existing.update(star_version=state['star_version'], catalog_target=state['catalog_target'],
+                                            version_source=state['version_source'],
+                                            lifecycle_compilation=state['lifecycle_compilation'])
                             write_json(record, existing)
-                        shutil.rmtree(directory)
-                        return existing
-                    if existing.get('state') not in ('stopped', 'disconnected', 'failed'):
                         shutil.rmtree(directory)
                         return existing
             write_json(directory / 'session.json', state)
             if not state.get('debug'):
                 shutil.rmtree(directory / 'probes', ignore_errors=True)
             return state
-        if source is None:
+        if source is None and not getattr(args, 'create', False):
             state['state'] = 'failed'
             write_json(directory / 'session.json', state)
             raise ValueError('No accessible STAR session at the specified port')
@@ -429,7 +544,8 @@ def start(args, directory):
             probe.bind(('0.0.0.0', args.port or 0))
             port = probe.getsockname()[1]
         command = [star, '-server', '-np', '1', '-noretry', '-loc', '-port', str(port),
-                   '-portrange', '1', '-load', str(source)]
+                   '-portrange', '1']
+        command += ['-new'] if getattr(args, 'create', False) else ['-load', str(source)]
         write_json(directory / 'server-command.json', command)
         environment = os.environ.copy()
         environment.update(LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8')
@@ -459,8 +575,7 @@ def start(args, directory):
                 if time.monotonic() >= deadline:
                     raise RuntimeError('Server startup timed out')
                 time.sleep(0.2)
-            data, run = request(directory, state, 'session-info', max(1, deadline - time.monotonic()),
-                                snapshot_plan=args.snapshot_plan)
+            data, run = request(directory, state, 'session-info', max(1, deadline - time.monotonic()))
             if data['status'] != 'ok':
                 raise ModificationRejected(f'Initial inspection rejected: {data.get("error")}; see {run}')
             state['initial_request'] = run.name
@@ -502,26 +617,40 @@ def operate(args, directory):
             raise RuntimeError('Managed server is not running')
         if state.get('active_request'):
             raise OperationBusy('Request is still running; query session_status')
-        if (state.get('uncertain_request') and args.action in ('save', 'modify', 'stop')
+        macro_mutating = (args.action == 'macro' and
+                          any(step['effect'] == 'mutate' for step in args.macro_request['steps']))
+        if args.action == 'macro':
+            from starbridge.core.macros import request_identifier, execution_result
+            run = directory / 'requests' / request_identifier(args.macro_request['request_id'])
+            if run.exists():
+                previous = json.loads((run / 'macro-request.json').read_text())
+                if previous['fingerprint'] != args.macro_request['fingerprint']:
+                    raise ValueError('request_id was already used for a different macro; no operation was repeated')
+                return dict(execution_result(directory, args.macro_request['request_id']),
+                            session_id=state['session_id'], replayed=True)
+        if (state.get('uncertain_request') and (args.action in ('save', 'modify', 'stop') or macro_mutating)
                 and not (args.action == 'stop' and args.discard)):
             raise OperationUncertain('Write outcome is unconfirmed; status and read-only requests remain available')
         # 持锁后从会话绑定选择版本。所有本地计划校验都在请求活动标记与 uncertain
         # 捕获块之前完成，版本错配只拒绝本次输入，不污染可继续使用的会话。
         if not (args.action == 'stop' and args.discard):
-            target = session_target(state)
-            catalog_plan = getattr(args, 'catalog_plan', None)
-            check_plan_targets(catalog_plan, target=target)
-            if args.action == 'modify' and catalog_plan is None:
-                raise ValueError('Modification requires a catalog plan; schema 1 and set-scalar were removed')
-            if args.action in ('inspect', 'save', 'stop') or (args.action == 'modify' and getattr(args, 'audit', False)):
-                args.snapshot_plan = prepare_snapshot(target)
-            check_plan_targets(catalog_plan, getattr(args, 'snapshot_plan', None), target=target)
+            if args.action in ('macro', 'save', 'stop', 'discovery'):
+                bind_legacy_version(directory, state, args.timeout)
+            else:
+                target = session_target(state)
+                catalog_plan = getattr(args, 'catalog_plan', None)
+                check_plan_targets(catalog_plan, target=target)
+                if args.action == 'modify' and catalog_plan is None:
+                    raise ValueError('Modification requires a catalog plan; schema 1 and set-scalar were removed')
+                if args.action == 'inspect' or (args.action == 'modify' and getattr(args, 'audit', False)):
+                    args.snapshot_plan = prepare_snapshot(target)
+                check_plan_targets(catalog_plan, getattr(args, 'snapshot_plan', None), target=target)
         if args.action == 'stop':
             # 先读取 STAR 的修改标志；本机另存后仍可能为真，不擅自清除此标志。
             # 失败或仍有修改时，只有显式 discard 才允许放弃剩余内存状态。
             if not args.discard:
-                data, run = request(directory, state, 'inspect', args.timeout,
-                                    snapshot_plan=args.snapshot_plan)
+                # 停止前只确认身份与 dirty 标志；完整 Inspector 可能读取大量无关或惰性对象。
+                data, run = request(directory, state, 'session-info', args.timeout)
                 if data['status'] != 'ok':
                     raise ModificationRejected(f'Close inspection rejected: {data.get("error")}; see {run}')
                 if data['after']['modified']:
@@ -535,8 +664,7 @@ def operate(args, directory):
         output = None
         if args.action == 'save':
             # GUI 可能在连接后另存为；先读取同一对象的当前路径，再决定显式保存的目标。
-            data, info_run = request(directory, state, 'session-info', args.timeout,
-                                     snapshot_plan=args.snapshot_plan)
+            data, info_run = request(directory, state, 'session-info', args.timeout)
             if data['status'] != 'ok':
                 raise ModificationRejected(f'Save identity check rejected: {data.get("error")}')
             compact_request(state, info_run, 'session-info')
@@ -555,7 +683,16 @@ def operate(args, directory):
                                 catalog_plan=getattr(args, 'catalog_plan', None),
                                 catalog_request=getattr(args, 'catalog_request', None),
                                 snapshot_plan=getattr(args, 'snapshot_plan', None),
-                                discovery_request=getattr(args, 'discovery_request', None))
+                                discovery_request=getattr(args, 'discovery_request', None),
+                                 macro_request=getattr(args, 'macro_request', None))
+            if args.action == 'macro':
+                # 步骤失败与未开始项都返回调用者，不用异常封套丢掉已完成的部分。
+                # 凭据不参加成功请求压缩，查询同一 request_id 永远不会触发重复执行。
+                from starbridge.core.macros import execution_result
+                return dict(execution_result(directory, args.macro_request['request_id']),
+                            session_id=state['session_id'], replayed=False,
+                            client_returncode=data.get('client_returncode'), compilation=data.get('compilation'),
+                            transport_interrupted=data.get('transport_interrupted', False))
             if data['status'] == 'rejected':
                 raise ModificationRejected(f'{data["error"]}; see {run / "result.json"}')
             if data['status'] == 'uncertain':
@@ -576,6 +713,8 @@ def operate(args, directory):
                 result['output'] = str(output)
             if args.action == 'discovery':
                 result['discovery'] = data['discovery']
+            elif args.action == 'save':
+                result['session_metadata'] = data['after']
             elif catalog_call:
                 # 目录结果独立封装；最小会话元数据不能冒充旧 Inspector 的完整快照。
                 result['catalog'] = data['catalog']

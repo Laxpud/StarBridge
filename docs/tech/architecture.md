@@ -2,7 +2,7 @@
 
 [技术入口](index.md) · [需求文档](<../../StarBridge.md>) · [当前任务](../../TODO.md)
 
-核对基线：2026-11-04 的会话 Runner、Core Service、CLI 与插件启动代码。本文说明当前进程和组件如何协作。真实 GUI 接入、保存、失败恢复及调整后的写入链路仍有[实测缺口](bridge-session.md#验证边界)；实现存在不等于运行验证完成。
+本文说明当前进程和组件如何协作。GUI 接入、保存和特定失败恢复已有真实运行依据，但不代表所有写入链路或异常均已覆盖；实际范围统一见[验证边界](<bridge-session.md#验证边界>)。
 
 ## 系统上下文（C4 L1）
 
@@ -10,11 +10,11 @@
 flowchart LR
     user["使用者"] -->|提出算例任务| host["Agent 宿主与 Skill"]
     host -->|通过 MCP 请求并接收结果| bridge["StarBridge"]
-    bridge -->|读取或修改已适配的算例设置| star["STAR-CCM+"]
+    bridge -->|算例读写、计算与导出| star["STAR-CCM+"]
     user -->|通过 GUI 查看或操作| star
 ```
 
-StarBridge 向 Agent 提供结构化接口，STAR-CCM+ 持有实际算例状态并执行 Java API 调用。Skill 组织领域检查顺序；当前设置来自实时读取。系统尚未提供网格生成、求解执行和持久化工作记忆工具，候选方向见[路线图](../roadmap.md)。
+StarBridge 向 Agent 提供结构化接口和通用 Java 步骤入口，STAR-CCM+ 持有实际算例状态并执行调用。Skill 组织领域检查顺序；当前设置来自实时读取。通用入口可调用当前版本的宏 API，不再以目录适配作为能力上限；工作记忆支持场景、方法和资料指引的检索与修订。小通道已走通网格、有限步计算、导出、关联导航及静态选择写入，对象参数也能用于通用宏和记忆方法。生命周期与目录版本支持分离；GUI 协同、请求恢复及标准节点模型的对应呈现已有实现与实际依据，具体范围及未验证部分见[通用执行与工作记忆](<generic-execution.md>)。
 
 ## 进程与存储（C4 L2）
 
@@ -33,7 +33,7 @@ Agent 宿主加载插件 Skill，并通过 stdio 启动 StarBridge MCP 进程。
 
 Java 代码在目标 STAR 会话中定位对象、检查必要条件、执行读取或修改并返回结构化结果。Python 侧负责会话身份、请求状态和结果整理。Linux 进程检查、会话文件锁和对象引用用于确定本次操作的对象；它们不阻止用户在 GUI 中同时修改算例，也不提供跨客户端事务。
 
-插件环境、会话状态和缓存位于用户目录；`.sim` 保存到工程路径。项目报告与导出的位置解析已提供，但不代表已有报告或导出工具。目录、生命周期和清理规则统一见[运行数据与项目产物](bridge-session.md#运行数据与项目产物)。
+插件环境、会话状态和缓存位于用户目录；`.sim` 保存到工程路径。参数化方法已提供网格／求解执行和图表／表／报告导出；通用宏仍负责方法库之外的操作。目录、生命周期和清理规则统一见[运行数据与项目产物](bridge-session.md#运行数据与项目产物)。
 
 独立[文件 Runner](bridge-file.md)每次从文件加载，修改后另存并重载核对；它保留自己的调用与产物契约，不需要先建立共享会话。上图中的常驻 STAR 服务适用于[会话 Runner](bridge-session.md)。
 
@@ -73,6 +73,9 @@ Service 校验公开方法和参数并形成状态封套；发现模块维护会
 |---|---|
 | [`cli.py`](../../src/starbridge/cli.py)、`__main__.py`、`mcp.py`、[`interfaces/mcp_server.py`](../../src/starbridge/interfaces/mcp_server.py) | 共享 JSON CLI、Python 模块和 MCP 入口；MCP 适配工具与资源。包内 `__init__.py` 组织命名空间及版本。 |
 | [`core/service.py`](../../src/starbridge/core/service.py)、`core/objects.py`、[`core/interface_contract.py`](../../src/starbridge/core/interface_contract.py) | 编排公开方法、状态封套和可供 Agent 获取的调用契约。 |
+| [macros.py](<../../src/starbridge/core/macros.py>)、[recipes.py](<../../src/starbridge/core/recipes.py>)、[memory.py](<../../src/starbridge/core/memory.py>) | 校验通用步骤和凭据；准备参数化方法；保存与检索带依据的项目／用户记忆，不自动执行记忆。 |
+| [macro_execution.py](<../../src/starbridge/bridge/runner/macro_execution.py>)、[StarBridgeProgram.java](<../../src/starbridge/bridge/java/StarBridgeProgram.java>) | 派发前编译宏，同请求连续执行并原子记录逐步结果；恢复时读取旧凭据，不盲目重放。 |
+| [GuiPresentation.java](<../../src/starbridge/bridge/java/GuiPresentation.java>) | 显式 GUI 位置方法使用的官方节点模型；读取根可达路径、属性栏及首层菜单元数据，不打开视图或执行动作。 |
 | [`core/environment.py`](../../src/starbridge/core/environment.py)、`catalog_bundle.py`、`session_store.py` | 探测实际安装、选择已登记版本、解析会话与产物位置。 |
 | [`core/discovery.py`](../../src/starbridge/core/discovery.py)、`discovery_rules.py`、`discovery_policy.py`、`discovery_write.py` | 运行时对象引用、分页与索引，版本规则、读计划和受控写计划。 |
 | [`core/catalog.py`](../../src/starbridge/core/catalog.py)、`execution.py`、`snapshot.py`、`coverage.py` | 目录校验、执行计划、兼容快照布局和覆盖统计。 |

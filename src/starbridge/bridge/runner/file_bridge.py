@@ -130,7 +130,8 @@ def execute(star, source, directory, output=None, *,
             action=None, host=None, port=None, expected_session="", timeout=None,
             client_userdir=None, catalog_plan=None,
             catalog_request=None, session_token=None, snapshot_plan=None,
-            discovery_request=None, expected_simulation_key='', on_client_start=None, debug=False):
+            discovery_request=None, expected_simulation_key='', on_client_start=None,
+            on_client_launch=None, debug=False):
     """生成宏并调用短生命周期客户端；会话模式只连接指定服务，不传入文件。"""
     catalog_actions = {'catalog-find': 'find', 'catalog-read': 'read', 'catalog-describe': 'describe',
                        'catalog-verify': 'read', 'catalog-modify': 'modify',
@@ -212,24 +213,33 @@ def execute(star, source, directory, output=None, *,
         # 本机 C.UTF-8 下 STAR 数值格式提供器出现递归；仅对子进程使用英文区域。
         environment = os.environ.copy()
         environment.update(LANG="en_US.UTF-8", LC_ALL="en_US.UTF-8")
-        process = subprocess.Popen(command, cwd=directory, env=environment,
-                                   stdin=subprocess.DEVNULL, stdout=log,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
+        process = None
         try:
+            if on_client_launch is not None:
+                on_client_launch('attempted')
+            try:
+                process = subprocess.Popen(command, cwd=directory, env=environment,
+                                           stdin=subprocess.DEVNULL, stdout=log,
+                                           stderr=subprocess.STDOUT, start_new_session=True)
+            except (OSError, ValueError):
+                if on_client_launch is not None:
+                    on_client_launch('not_started')
+                raise
             if on_client_start is not None:
                 on_client_start(process.pid)
             process.wait(timeout=timeout)
         except BaseException:
-            # 只终止本次创建的客户端进程组，不触碰独立运行的后台服务。
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+            # 创建与PID登记之间也可能中断；只清理确知属于本次客户端的进程组。
+            if process is not None:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
             raise RuntimeError(f"Client interrupted; operation outcome may be unknown; see {directory}")
     if process.returncode != 0 or not result.is_file():
         raise RuntimeError(f"STAR did not complete the macro; see {directory / 'star.log'}")

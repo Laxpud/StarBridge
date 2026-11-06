@@ -4,7 +4,7 @@
 
 MCP 和 JSON CLI 共用 Core Service。契约 schema 2 使用 `object_id` 表示当前会话对象，统一以 `property_id` 选择属性；类型查找和对象树导航取得的对象均交给同一组描述、读取和修改方法。结构操作有独立入口，不作为普通属性赋值。
 
-版本仍由实际安装决定：目录支持 2602 Build `21.02.007` 和 2510 Build `20.06.007`，运行时发现仅登记前者。统一接口没有扩大版本、值类型或结构操作范围。实现与真实 STAR 验证的区别见[验证边界](bridge-session.md#验证边界)。
+版本仍由实际安装决定：目录支持 2602 Build `21.02.007` 和 2510 Build `20.06.007`，运行时发现仅登记前者。结构化接口仍有值类型和操作范围；新增的 `execute_macro` 可在同一会话使用完整 Java 宏 API，记忆接口帮助复用方法。具体契约与实际证据见[通用执行与工作记忆](<generic-execution.md>)；实现与真实 STAR 验证的区别见[验证边界](bridge-session.md#验证边界)。
 
 ## 安装与连接
 
@@ -12,13 +12,13 @@ MCP 和 JSON CLI 共用 Core Service。契约 schema 2 使用 `object_id` 表示
 
 首次需要了解参数时调用 `get_contract` 或读取 `starbridge://contract`，无需先读文档或 Skill。已有有效会话、对象引用和属性契约可以复用。`usage.defaults` 来自 Core 方法签名；默认值是省略参数时的行为，可按任务覆盖。
 
-安装未知时用 `discover_installations` 探测实际程序；用户已指定程序时可直接交给 `open_session`。`get_capabilities()` 只列登记支持范围，不能证明本机安装。指定实际 release/Build 时检查 `supported`，顶层 `ok` 仅表示查询完成。
+安装未知时用 `discover_installations` 探测实际程序；用户已指定程序时可直接交给 `open_session`。`get_capabilities()` 的 `supported`、`catalog_supported` 和 `supported_versions` 只描述结构化目录，不能证明本机安装；通用生命周期与宏另见 `session_lifecycle`、`generic_execution`，发现另查 `runtime_discovery.supported`。顶层 `ok` 仅表示查询完成，不表示未知版本已经验证。
 
-`open_session` 从所选程序检测版本，并核对可选的 `release/build` 预期；不匹配或未适配在加载前拒绝，不自动换安装。需要运行时规则时，`star` 应指向实际安装内启动器，以定位本机 Javadoc。接入、保存与关闭语义见[会话说明](bridge-session.md)。
+`open_session` 从所选程序检测版本，并核对可选的 `release/build` 预期；无法检测或不匹配时在加载前拒绝，不自动换安装。未登记版本可尝试独立通用路径，但须先用所选安装内 JDK／库编译最小生命周期模板，再核对实际 server 版本与加载对象；不借用邻近目录或系统 JDK。返回 `star_version`、`version_source`、编译凭据以及可为 `null` 的 `catalog_target`，不把成功接入推广成全部 API 已验证。需要运行时规则时，还要求已有精确适配与本机 Javadoc。接入、保存与关闭语义见[会话说明](<bridge-session.md>)。
 
 ## 工具与资源
 
-工具前缀为 `starbridge.`，下表省略前缀。除契约、安装发现和能力查询外，均需 `session_id`。`timeout` 单位为秒，会话操作默认 180，安装发现默认 30；客户端超时应更长。超时或断开不证明 STAR 操作已取消。
+工具前缀为 `starbridge.`，下表省略前缀。会话内操作需要 `session_id`；契约、安装发现、能力查询及工作记忆接口不需要。`timeout` 单位为秒，会话操作默认 180，安装发现默认 30；客户端超时应更长。超时或断开不证明 STAR 操作已取消。
 
 | 工具 | 主要参数 | 结果与限制 |
 |---|---|---|
@@ -33,8 +33,16 @@ MCP 和 JSON CLI 共用 Core Service。契约 schema 2 使用 `object_id` 表示
 | `read_properties` | `object_id`、非空 `property_ids` | `properties[id]` 的独立状态和值，必须显式选择 |
 | `modify_property` | `object_id/property_id/expected/value`，可选 `audit` | `before[id]`、`properties[id]`、`change`、`setter_attempts`；修改内存 |
 | `execute_operation` | `object_id/operation_id/expected/arguments`，可选 `audit` | 相同前后属性结果；仅执行已适配的目录结构操作 |
+| `list_recipes` | 无 | 网格、求解和导出的现成方法、参数契约及证据；不连接 STAR |
+| `execute_recipe` | `request_id/recipe_id`，可选 `parameters/expected_revision/project_dir` | 执行内置方法或已审阅的 `memory:ID`；记忆方法必须匹配修订，不自动绑定历史对象 |
+| `execute_macro` | `request_id/steps`，可选 `parameters/object_parameters/imports/declarations/intent` | 同会话集中执行 Java 步骤；显式参数名中的 `{object_id}` 在步骤前绑定当前对象；完整宏权限，不是代码沙箱 |
+| `get_execution` | `request_id` | 查询宏凭据和状态，不重做操作 |
+| `search_memory` | `query`，可选 `context/limit/project_dir` | 返回需审查适用条件的经验与资料候选 |
+| `get_memory` | `memory_id`，可选 `project_dir` | 完整做法、场景和证据范围 |
+| `record_memory` | `entry`，可选 `project_dir` | 记录实际任务已有依据，不额外验证或执行方法 |
+| `update_memory` | `memory_id/expected_revision/changes`，可选 `project_dir` | 乐观并发修订，保留例外与纠正 |
 | `inspect_session` | 可选 `timeout` | Inspector 范围快照，不表示全算例导出 |
-| `open_session` | `input` 或 `port+project_dir`，可选安装、项目和调试参数 | 优先连接匹配的本机 STAR，否则直接加载原文件 |
+| `open_session` | `input`、`port+project_dir` 或 `create=true+project_dir` | 优先连接匹配算例；显式 create 从零创建空算例 |
 | `session_status` | 无其他必填参数 | 状态、进程身份与未确认请求；不启动 Java 客户端 |
 | `save_session` | 可选 `output` | 省略写回，给新路径另存；`output` 为实际绝对路径 |
 | `close_session` | 可选 `discard` | 外部会话断开，自有服务检查修改状态后停止 |
@@ -65,9 +73,9 @@ MCP 和 JSON CLI 共用 Core Service。契约 schema 2 使用 `object_id` 表示
 
 上面的参数用于 `read_properties`。只消费 `status="ok"` 的 `value`；描述、搜索候选和支持标志不能代替当前值。属性结果中的单位、坐标关联、动态范围和局部错误保留各自含义，不由接口猜测。
 
-修改使用 `modify_property`，将成功读取的完整 `value` 原样放入 `expected`，新值按描述中的 `write_contract.value_schema` 提供。新关联使用 `{"object_id":"<find_objects 返回的 ID>"}`，包括静态选择和查询谓词中的关联；旧关联的 `expected` 仍保持原始读取结构。标签集合等数组值可直接作为 `value`，不需要外层请求版本或 `action`。
+修改使用 `modify_property`，将成功读取的完整 `value` 原样放入 `expected`，新值按描述中的 `write_contract.value_schema` 提供。新关联使用 `{"object_id":"<当前返回的 ID>"}`，可来自目录、运行时树或属性关系；具体允许来源与静态／查询格式仍由写入契约决定。通用 Bean selector 当前只接受静态新值，目录已适配的查询另按其契约执行；旧关联的 `expected` 仍保持完整读取结构。标签集合等数组值可直接作为 `value`，不需要外层请求版本或 `action`。
 
-结构操作使用 `execute_operation`：从 `operations[id]` 取得 `state_property`，读取其完整值作为 `expected`；`arguments.method` 选实际可用的 `method_choices.id`。仅目录对象已适配的操作可执行，当前不开放任意创建、删除或 Java 调用。
+结构操作使用 `execute_operation`：从 `operations[id]` 取得 `state_property`，读取其完整值作为 `expected`；`arguments.method` 选实际可用的 `method_choices.id`。该结构化方法只执行目录对象已适配的操作；其他创建、执行或 Java 调用使用独立的[通用宏入口](<generic-execution.md>)，不混用属性赋值契约。
 
 两种写入成功后均返回前后属性结果、必要关联项以及 `change` 标识；`before_complete` 说明前读完整性，`inspection_complete` 说明回读完整性。目录结果保留 `catalog_id/runtime` 供覆盖统计核对来源。`audit=true` 另附 `snapshot`、`snapshot_diff` 和 `property_diff`，普通赋值不强制比较全部 Inspector 字段。
 
@@ -92,8 +100,9 @@ MCP `content` 中只返回一份 Core JSON 文本，不重复提供 `structuredC
 | `busy` | 请求仍在执行，查询状态并等待，不重复提交 |
 | `uncertain` | 写入结果未确认；允许状态与只读核对，不自动重试、回滚或保存 |
 | `error` | 其他执行或生命周期错误，结合状态和诊断判断 |
+| `partial` | 通用宏有已完成步骤和失败／未知步骤；保留未开始项，不重复执行整组任务 |
 
-会话一次只接受一个 Bridge 请求；状态查询可同时读取记录。只读成功不会解除既有 `uncertain_request`。修改仅作用于内存，持久化须显式保存；需要持久化验收时重新加载、定位和读取。保存后仍可能 `modified=true`，不能为关闭而擅自丢弃状态。
+会话一次只接受一个 Bridge 请求；状态查询可同时读取记录。只读成功不会解除既有 `uncertain_request`。结构化修改不保存；通用 Java 及 STAR 既有自动保存可能写文件，现成网格／求解方法会先检查。`save_session` 返回实际 `output` 和保存时的 `session_metadata`，不再附带全量 Inspector 快照；需要审查时单独 `inspect_session`。需要持久化验收时重新加载、定位和读取。保存后仍可能 `modified=true`，不能为关闭而擅自丢弃状态。
 
 ## 迁移与兼容边界
 

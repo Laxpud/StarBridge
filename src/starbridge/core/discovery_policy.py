@@ -5,7 +5,7 @@
 """
 
 TARGET = {'release': '2602', 'build': '21.02.007'}
-POLICY_VERSION = 'discovery-policy-v1'
+POLICY_VERSION = 'discovery-policy-v2'
 PRIMITIVES = {'boolean', 'byte', 'short', 'int', 'long', 'float', 'double', 'char',
               'java.lang.Boolean', 'java.lang.Byte', 'java.lang.Short', 'java.lang.Integer',
               'java.lang.Long', 'java.lang.Float', 'java.lang.Double', 'java.lang.Character', 'java.lang.String'}
@@ -31,6 +31,10 @@ READ_RULES = {
     'primitive': {'id': 'bean-primitive-v1', 'target': TARGET, 'types': sorted(PRIMITIVES),
         'evidence': '公开无参 Bean 属性的 JSON 基础值适配；需逐成员核对官方声明',
         'unsupported': '未声明基础类型或规则禁止项'},
+    **{kind: {'id': 'bean-value-' + kind + '-v1', 'target': TARGET,
+              'evidence': '依据真实声明的继承/接口关系读取对象引用、选择配置或有序值；仍逐成员核对官方声明',
+              'unsupported': '未知运行时值、未知查询谓词或超出集合预算时明确失败，不替换为空值'}
+       for kind in ('reference', 'key_reference', 'selector', 'query', 'sequence', 'enum_name')},
     **{kind: {'id': 'bean-input-' + kind + '-v1', 'target': TARGET,
              'types': sorted(t for t, value in INPUTS.items() if value[0] == kind),
              'evidence': '2602 已登记 input 类型与固定解包成员；执行时先核对包装器精确类型，未知子类拒绝',

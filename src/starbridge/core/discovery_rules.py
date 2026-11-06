@@ -55,6 +55,10 @@ def select_rule(prop):
         return ('primitive', None, None), None
     if kind in INPUTS:
         return INPUTS[kind], None
+    # 机制来自 STAR 实际声明的继承关系，而不是具体对象类或属性名白名单。
+    family = prop.get('value_family')
+    if family in ('reference', 'key_reference', 'selector', 'query', 'sequence', 'enum_name'):
+        return (family, None, None), None
     return None, 'unsupported_value_type'
 
 
@@ -118,7 +122,8 @@ def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):
     if not selected:
         raise ValueError('No supported readable properties on node')
     classes = {'star.base.neo.ClientServerObject', 'star.common.Simulation'}
-    classes.update(s['java_class'].replace('$', '.') for s in node['path'])
+    navigation = [node['path'][-1]] if node.get('binding') else node['path']
+    classes.update(s['java_class'].replace('$', '.') for s in navigation)
     for prop in selected.values():
         classes.add(prop['getter']['owner'].replace('$', '.'))
         adapter, owner, name = select_rule(prop)[0]
@@ -148,10 +153,11 @@ def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):
     presentation = member('star.base.neo.ClientServerObject', 'getPresentationName')
     parent = parent_type = None
     # 根节点使用恒等单对象定位；后续节点沿真实 CSO 父子关系逐级校验身份。
-    for index, step in enumerate(node['path']):
-        type_id = 'node_' + digest([s['java_class'] for s in node['path'][:index + 1]])[:24]
+    for index, step in enumerate(navigation):
+        type_id = 'node_' + digest([s['java_class'] for s in navigation[:index + 1]])[:24]
         rules['types'][type_id] = {'java_class': step['java_class'].replace('$', '.'),
-            'parent_type': parent_type, 'locate_kind': 'object' if index == 0 else 'collection',
+            'parent_type': parent_type, 'locate_kind': ('reference' if node.get('binding')
+                                                       else 'object' if index == 0 else 'collection'),
             'locate': {'root': 'simulation' if index == 0 else 'parent', 'steps': [] if index == 0 else [children]}}
         rules['properties'][type_id] = {'name': {'adapter': 'primitive',
             'read': {'root': 'object', 'steps': [presentation]}, 'writable': False, 'reason': '对象身份读取'}}
@@ -210,4 +216,4 @@ def build_read_plan(session_dir, node, properties, state, *, writer_hook=None):
         plan = deepcopy(_compiled_plans[key])
     return {'plan': plan,
             'target': parent, 'property_map': selected, 'supplemental': supplemental,
-            'binding': {'session_token': state['session_token'], 'path': node['path']}}
+            'binding': node.get('binding') or {'session_token': state['session_token'], 'path': node['path']}}

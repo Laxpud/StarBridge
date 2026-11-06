@@ -17,6 +17,7 @@ from .catalog import CatalogError, _keys, _pinned_member, _require, load, read_j
 
 
 ADAPTERS = {'primitive', 'reference', 'collection', 'quantity', 'vector', 'enum', 'query',
+            'key_reference', 'selector', 'sequence',
             'name', 'type_name', 'names', 'enum_name', 'presence', 'java_class',
             'tensor_profile', 'tensor_basis', 'tensor_method_state',
             'tensor_components', 'tensor_method_basis', 'tensor_layout_valid',
@@ -33,7 +34,14 @@ WRITE_ADAPTERS = {
     'vector_value': {'x', 'y', 'z', 'units'},
     'reference': {'value'},
     'object_selection': {'value'},
+    'selector_static': {'value'},
     'user_tags': {'value'},
+}
+# 这里只限定已核验的输入包装合同，不限制被选择对象的 Java 类型全集。
+SELECTOR_INPUT_TYPES = {
+    'star.coremodule.objectselector.ObjectSelectorInput',
+    'star.coremodule.objectselector.OrderedObjectSelectorInput',
+    'star.common.DynamicQuerySelectorInput',
 }
 # 结构操作的参数只用于其最终调用，不能混入普通属性 writer 的契约。
 OPERATION_ADAPTERS = {'profile_method': {'method'}, 'material_method': {'method'}}
@@ -342,7 +350,11 @@ def compile_execution(catalog, rules):
         _require(rules['schema_version'] >= 8 or 'locate_kind' not in entry,
                  'Single-object locators require execution schema 8')
         locate_kind = entry.get('locate_kind', 'collection')
-        _require(locate_kind in ('collection', 'object'), f'Invalid locator kind: {identifier}')
+        _require(locate_kind in ('collection', 'object', 'reference'), f'Invalid locator kind: {identifier}')
+        if locate_kind == 'reference':
+            # 关系定位由受信会话绑定完成，不允许夹带另一条任意枚举管线。
+            _require(entry['parent_type'] is None and entry['locate'] == {'root': 'simulation', 'steps': []},
+                     'Reference locators require an empty simulation-rooted pipeline')
         _text(entry['java_class'], 'java_class')
         _require(entry['java_class'] in catalog['types'], f'Unknown Java type: {identifier}')
         _require(entry['parent_type'] is None or isinstance(entry['parent_type'], str),
@@ -431,7 +443,7 @@ def compile_execution(catalog, rules):
                                    'scalar_expression': 'quantity', 'scalar_value': 'quantity',
                                    'vector_expression': 'vector', 'vector_value': 'vector',
                                    'enum': 'enum', 'user_tags': 'collection', 'reference': 'reference',
-                                   'object_selection': 'query'}[write['adapter']]
+                                   'object_selection': 'query', 'selector_static': 'selector'}[write['adapter']]
                 _require(entry['adapter'] == expected_reader, 'Read and write adapters do not agree')
                 # 静态选择和动态规则各有一个终点；每个请求只选择一个 setter。
                 pipelines = write['pipelines'] if selection else {'single': write['pipeline']}
@@ -448,6 +460,19 @@ def compile_execution(catalog, rules):
                                  has_parent=types[identifier]['parent_type'] is not None)
                 writer = {**write, 'guards': guards, 'preserved_properties': preserved}
                 writer.update({'pipelines': compiled} if selection else {'pipeline': compiled['single']})
+                if write['adapter'] == 'selector_static':
+                    # Bean 选择替换只允许目标自身的一次 setter，不能混用旧 manager 管线。
+                    _require(rules['schema_version'] >= 8, 'Bean selector writers require execution schema 8')
+                    pipeline = writer['pipeline']
+                    _require(read['root'] == 'object' and len(read['steps']) == 1
+                             and not read['steps'][0]['arguments']
+                             and pipeline['root'] == 'object' and len(pipeline['steps']) == 1,
+                             'Bean selector writes require a direct getter and setter')
+                    setter = pipeline['steps'][0]
+                    _require(len(setter['parameter_types']) == 1
+                             and setter['parameter_types'][0] in SELECTOR_INPUT_TYPES
+                             and setter['arguments'] == [{'context': 'value'}],
+                             'Bean selector setter requires one accepted input wrapper')
                 if 'bounds' in write:
                     bounds = _pipeline(catalog, methods, write['bounds'],
                                        identifier + '.' + name + '.write.bounds')
@@ -489,6 +514,8 @@ def _target(plan, target, depth=0):
     _text(target['type'], 'target.type')
     _text(target['name'], 'target.name')
     _require(target['type'] in plan['types'], f'Unknown target type: {target["type"]}')
+    if plan['types'][target['type']].get('locate_kind') == 'reference':
+        _require('reference' in target, 'Related object location requires a current reference')
     parent_type = plan['types'][target['type']]['parent_type']
     if parent_type is None:
         _require('parent' not in target, 'Target type does not accept a parent')
@@ -686,6 +713,71 @@ def _selection_value(plan, writer, value, *, expected=False):
     return {**value, 'predicate': predicate(value['predicate']), 'modifiers': sorted(modifiers)}
 
 
+def _selector_assignment(value):
+    """静态选择只接受 Core 从本会话 object_id 产生的绑定，不接受裸 key/类路径。
+
+    绑定的实际存活身份、父归属和可选性仍由 Java 重验；此处不把旧 catalog
+    的目标类型列表当作 selector 的所有合法类型，也不允许构造查询写入。
+    """
+    _require(isinstance(value, dict), 'Selector assignment must be an object')
+    _require(value.get('mode') == 'static', 'Selector query assignment is unsupported; use static replacement')
+    _keys(value, 'mode objects', 'static selector assignment')
+    _require(isinstance(value['objects'], list) and len(value['objects']) <= 10000,
+             'Selector objects must be a list of at most 10000 session references')
+    seen = set()
+    for item in value['objects']:
+        _keys(item, 'runtime_reference', 'selector object')
+        binding = item['runtime_reference']
+        _require(isinstance(binding, dict), 'Selector object binding must be an object')
+        if 'path' in binding:
+            _keys(binding, 'session_token path', 'selector path binding')
+            _require(isinstance(binding['path'], list) and len(binding['path']) <= 256
+                     and all(isinstance(step, dict) for step in binding['path']),
+                     'Selector path binding must contain a bounded object path')
+        else:
+            _keys(binding, 'session_token simulation_key object_key java_class', 'selector identity binding')
+            for field in ('simulation_key', 'object_key', 'java_class'):
+                _text(binding[field], 'selector binding.' + field)
+            _require(bool(JAVA_TYPE.fullmatch(binding['java_class'])), 'Invalid selector binding class')
+        _text(binding['session_token'], 'selector binding.session_token')
+        identity = json.dumps(binding, sort_keys=True, separators=(',', ':'))
+        _require(identity not in seen, 'Duplicate selector reference')
+        seen.add(identity)
+    return value
+
+
+def _selector_expected(value):
+    """保留 selector 的原始读取封套与引用身份；不沿用旧选择的名称级归一化。"""
+    _require(isinstance(value, dict), 'Expected selector must be the complete read value')
+    if value.get('mode') == 'static':
+        _keys(value, 'mode objects selection_order', 'expected static selector')
+        _require(value['selection_order'] == 'returned_order', 'Invalid expected selection order')
+        _require(isinstance(value['objects'], list) and len(value['objects']) <= 10000,
+                 'Expected selector objects exceed the read budget')
+        identities = set()
+        for item in value['objects']:
+            _require(isinstance(item, dict) and 'reference' in item
+                     and item.keys() <= {'reference', 'name', 'java_class', 'metadata_state'},
+                     'Expected selector object requires its original reference')
+            reference = item['reference']
+            _keys(reference, 'session_token key', 'expected selector reference')
+            for field in ('session_token', 'key'):
+                _text(reference[field], 'expected selector reference.' + field)
+            identity = (reference['session_token'], reference['key'])
+            _require(identity not in identities, 'Duplicate expected selector identity')
+            identities.add(identity)
+    else:
+        # query 作为 expected 仅参与精确比较，绝不把它解析为可执行新查询。
+        _require(value.get('mode') == 'query', 'Unsupported expected selector mode')
+        _keys(value, 'mode predicate modifiers resolved_selection', 'expected query selector')
+        _require(isinstance(value['predicate'], dict) and isinstance(value['modifiers'], list),
+                 'Expected query must retain its predicate and modifiers')
+        _require(value['resolved_selection'] == {
+            'status': 'not_requested', 'reason': 'Query configuration is not its evaluated result'},
+            'Expected query must retain its unresolved selection marker')
+    return value
+
+
 def _expected_quantity(value, where='expected quantity'):
     """核对完整标量回读值，保留原定义、单位及显式的非有限值字符串。"""
     _keys(value, 'definition unit si_unit raw_value si_value', where)
@@ -872,6 +964,9 @@ def prepare_modification_plan(plan, request):
         request = {**request,
                    'value': _selection_value(plan, prop['write'], value),
                    'expected': _selection_value(plan, prop['write'], request['expected'], expected=True)}
+    elif adapter == 'selector_static':
+        request = {**request, 'value': _selector_assignment(value),
+                   'expected': _selector_expected(request['expected'])}
     elif adapter == 'field_definition':
         _require(isinstance(value, str) and bool(value.strip()), 'Definition must be a non-empty string')
         _require(isinstance(request['expected'], str), 'Expected definition must be a string')

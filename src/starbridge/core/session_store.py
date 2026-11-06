@@ -1,12 +1,19 @@
 """管理会话标识与运行数据位置；项目目录只承载用户生成的报告和导出。"""
 
 from pathlib import Path
+import os
 import re
 import uuid
 
 
 def runtime_root():
-    """返回当前用户的运行目录；不因查询路径而创建任何目录。"""
+    """返回共享运行目录；可显式隔离开发环境，不因查询路径而创建目录。"""
+    configured = os.environ.get('STARBRIDGE_HOME')
+    if configured is not None:
+        path = Path(configured)
+        if not path.is_absolute():
+            raise ValueError('STARBRIDGE_HOME must be an absolute path')
+        return path.resolve()
     return Path.home() / '.starbridge'
 
 
@@ -27,9 +34,23 @@ def session_directory(reference):
     return runtime_root() / 'sessions' / str(reference)
 
 
+def session_version(state):
+    """返回实际版本预期绑定，不把目录默认值或邻近版本当作当前安装。
+
+    新会话使用 star_version；旧会话保留显式 catalog_target 的预期，实际请求仍须
+    核对运行中服务器。显式损坏的新字段不回退；完全没有版本绑定时要求重新连接。
+    """
+    version = state['star_version'] if 'star_version' in state else state.get('catalog_target')
+    if (not isinstance(version, dict) or set(version) != {'release', 'build'}
+            or any(not isinstance(value, str) or not value.strip() for value in version.values())):
+        raise ValueError('Session has no valid explicit STAR version binding; reconnect to inspect the selected installation')
+    return dict(version)
+
+
 def public_session(state):
-    """返回连接所需的状态，避免让调用者管理内部进程、日志和客户端目录。"""
-    keys = ('session_id', 'state', 'ownership', 'catalog_target', 'current_file',
+    """返回连接所需的状态，实际版本与目录适配分别报告，不要求调用者管理内部进程。"""
+    keys = ('session_id', 'state', 'ownership', 'star_version', 'version_source',
+            'catalog_target', 'lifecycle_compilation', 'current_file',
             'project_dir', 'modified', 'session_token', 'server_alive', 'active_request',
             'last_request', 'last_request_status', 'recovery_required', 'uncertain_request')
     return {key: state[key] for key in keys if key in state}

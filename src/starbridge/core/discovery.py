@@ -7,9 +7,8 @@ from contextlib import closing
 import time
 from datetime import datetime, timezone
 
-from .session_store import session_directory
+from .session_store import session_directory, session_version
 from .catalog import read_json
-from .catalog_bundle import session_target
 from .discovery_rules import RULE_VERSION, _write, build_read_plan, digest, property_id, select_rule
 from .execution import prepare_read_plan
 from .discovery_policy import TARGET, rule_evidence
@@ -24,7 +23,7 @@ ALIASES = {'松弛': ['relaxation'], '压力': ['pressure'], '速度': ['velocit
 def _state(session_dir):
     """所有缓存按当前会话 token 隔离；精确版本不支持时在启动客户端前拒绝。"""
     state = reference_state(session_dir)
-    if session_target(state) != TARGET:
+    if session_version(state) != TARGET:
         raise ValueError('Runtime discovery is unsupported for this exact version')
     return state
 
@@ -51,25 +50,31 @@ def _references(state):
 
 
 def _remember_reference(payload, state):
-    """给服务已发现的对象或分页状态分配短 ID；相同会话中的同一内容复用 ID。"""
-    raw = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
-    token, kind = state['session_token'], payload['kind']
-    prefixes = {'node': 'n', 'catalog_object': 'o', 'catalog_cursor': 'p',
+    """给一个已观察对象或分页状态分配短 ID；多个关联使用同一事务批量登记。"""
+    return _remember_references([payload], state)[0]
+
+
+def _remember_references(payloads, state):
+    """批量登记实际观察，不为每个选择对象重新打开 SQLite 和提交磁盘事务。"""
+    token = state['session_token']
+    prefixes = {'node': 'n', 'related_object': 'r', 'catalog_object': 'o', 'catalog_cursor': 'p',
                 'cursor': 'c', 'description_cursor': 'd', 'search_cursor': 's'}
+    result = []
     with closing(_references(state)) as connection, connection:
-        row = connection.execute('SELECT id FROM refs WHERE token=? AND kind=? AND payload=?',
-                                 (token, kind, raw)).fetchone()
-        if row:
-            return row[0]
-        # 唯一约束处理并发生成；极少见的随机 ID 冲突重新分配，不覆盖其他引用。
-        while True:
-            identifier = prefixes[kind] + '_' + uuid.uuid4().hex[:16]
-            connection.execute('INSERT OR IGNORE INTO refs VALUES (?, ?, ?, ?)',
-                               (identifier, token, kind, raw))
+        for payload in payloads:
+            raw = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+            kind = payload['kind']
             row = connection.execute('SELECT id FROM refs WHERE token=? AND kind=? AND payload=?',
                                      (token, kind, raw)).fetchone()
-            if row:
-                return row[0]
+            # 唯一约束处理并发生成；随机碰撞重新分配，绝不覆盖别的引用。
+            while row is None:
+                identifier = prefixes[kind] + '_' + uuid.uuid4().hex[:16]
+                connection.execute('INSERT OR IGNORE INTO refs VALUES (?, ?, ?, ?)',
+                                   (identifier, token, kind, raw))
+                row = connection.execute('SELECT id FROM refs WHERE token=? AND kind=? AND payload=?',
+                                         (token, kind, raw)).fetchone()
+            result.append(row[0])
+    return result
 
 
 def _decode(value, state, kind):
@@ -96,7 +101,7 @@ def _invoke(session_dir, request, timeout, operate):
 def _cache_path(session_dir, state):
     """元数据索引绑定版本、会话和规则，旧会话文件不会成为当前搜索依据。"""
     path = session_directory(session_dir) / 'discovery-cache' / digest(
-        [state['session_token'], session_target(state), RULE_VERSION, 'short-refs-v1'])
+        [state['session_token'], session_version(state), RULE_VERSION, 'short-refs-v1'])
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -104,17 +109,24 @@ def _cache_path(session_dir, state):
 def _decorate(node, state):
     """返回不透明句柄及可审阅的稳定路径，路径只是重定位材料而非当前身份。"""
     result = dict(node)
-    if node.get('kind') == 'proxy':
-        return {**result, 'node_id': None, 'breadcrumbs': node['path']}
     result['breadcrumbs'] = [{'name': p['name'], 'java_class': p['java_class']} for p in node['path']]
-    result['node_id'] = _remember_reference({'kind': 'node', 'session_token': state['session_token'], 'path': node['path']}, state)
-    result['locator'] = [{'name': p['name'], 'java_class': p['java_class']} for p in node['path']]
+    if node.get('kind') == 'proxy':
+        # 有官方显示名称仍不等于存在可绑定的业务身份；代理只保留可读上下文。
+        return {**result, 'node_id': None}
+    if node.get('binding'):
+        result['node_id'] = _remember_reference({'kind': 'related_object', 'binding': node['binding'],
+                                                 'name': node.get('name')}, state)
+        result.pop('locator', None)
+        result['relocation'] = {'available': False, 'reason': 'Resolve the relationship again after reloading'}
+    else:
+        result['node_id'] = _remember_reference({'kind': 'node', 'session_token': state['session_token'], 'path': node['path']}, state)
+        result['locator'] = [{'name': p['name'], 'java_class': p['java_class']} for p in node['path']]
     return result
 
 
 def _remember(session_dir, state, node, properties=None, **coverage):
     """每个节点单独落盘；描述结果覆盖该节点旧 schema，当前值从不写入索引。"""
-    path = _cache_path(session_dir, state) / (digest(node['path']) + '.json')
+    path = _cache_path(session_dir, state) / (digest(node.get('binding') or node['path']) + '.json')
     previous = read_json(path) if path.is_file() else {}
     now = time.time()
     entry = {**previous, 'node': node, 'node_observed_at': now, **coverage}
@@ -132,9 +144,11 @@ def _remember(session_dir, state, node, properties=None, **coverage):
 
 
 def _target(node_id, state):
-    """从会话引用表取得服务已发现的路径；根节点允许省略。"""
+    """从引用表取得真实树路径或已读关系绑定；不从裸 key 构造用户引用。"""
     if node_id is None:
         return None
+    if isinstance(node_id, str) and node_id.startswith('r_'):
+        return _decode(node_id, state, 'related_object')['binding']
     return {'session_token': state['session_token'], 'path': _decode(node_id, state, 'node')['path']}
 
 
@@ -318,14 +332,28 @@ def page_description(description, state, property_ids=None, cursor=None, limit=1
             'selection': property_ids}
 
 
-def prepare_node_read(session_dir, node_id, property_ids, timeout=180, operate=None, writer_hook=None):
-    """读取前刷新描述符与对象身份，并对显式属性集合生成校验后的计划。"""
+def prepare_node_read(session_dir, node_id, property_ids, timeout=180, operate=None, writer_hook=None,
+                      reuse_descriptors=False):
+    """为显式属性准备计划；只读可复用描述，在同一次实际读取内重新核对元数据与身份。"""
     if (not isinstance(property_ids, list) or not 1 <= len(property_ids) <= 500
             or any(not isinstance(p, str) or not p for p in property_ids)
             or len(set(property_ids)) != len(property_ids)):
         raise ValueError('property_ids must contain 1 to 500 unique non-empty IDs')
     started = time.monotonic()
-    description = describe_node(session_dir, node_id, timeout=timeout, operate=operate)
+    state = _state(session_dir)
+    description = None
+    if reuse_descriptors and writer_hook is None:
+        binding = _target(node_id, state)
+        cached_path = _cache_path(session_dir, state) / (digest(binding.get('path') or binding) + '.json')
+        if cached_path.is_file():
+            cached = read_json(cached_path)
+            cached_ids = {entry['property_id'] for entry in cached.get('properties', [])}
+            if (set(property_ids) <= cached_ids and any(
+                    entry['property_id'] in property_ids and entry.get('readable') for entry in cached.get('properties', []))):
+                description = {'node': cached['node'], 'properties': cached['properties'],
+                               'state': cached.get('property_state'), 'cache_state': 'reused_with_runtime_validation'}
+    if description is None:
+        description = describe_node(session_dir, node_id, timeout=timeout, operate=operate)
     if 'node' not in description:
         raise ValueError('Discovery node is unavailable')
     descriptors = {p['property_id']: p for p in description['properties']}
@@ -386,7 +414,7 @@ def _merge_reads(plans):
 def read_node_properties(session_dir, node_id, property_ids, timeout=180, operate=None):
     """只读取显式选择的属性；不支持项单独报告，不把部分成功当成完整结果。"""
     started = time.monotonic()
-    context = prepare_node_read(session_dir, node_id, property_ids, timeout, operate)
+    context = prepare_node_read(session_dir, node_id, property_ids, timeout, operate, reuse_descriptors=True)
     errors = ([{'property_id': p, 'reason': 'unsupported_property'} for p in context['unsupported']]
               + context['compilation_errors'])
     outcomes, values = [], {}
@@ -402,7 +430,11 @@ def read_node_properties(session_dir, node_id, property_ids, timeout=180, operat
             'properties': selected + [extra for p in selected for extra in prepared.get('supplemental', {}).get(p, [])]}
         plan, request = prepare_read_plan(prepared['plan'], request, 'read')
         # 实例绑定不进入可重用类缓存；每次执行重新检查实际父关系和导航路径。
-        plan['discovery_binding'] = prepared['binding']
+        binding_fields = ('name', 'property_type', 'getter', 'setter', 'hidden', 'expert',
+                          'bound', 'constrained', 'editor_class', 'attributes')
+        plan['discovery_binding'] = {**prepared['binding'], 'properties': [
+            {key: descriptor.get(key) for key in binding_fields}
+            for descriptor in context['description']['properties'] if descriptor['property_id'] in property_ids]}
         outcome = operate(str(session_dir), 'read', max(0.1, timeout - (time.monotonic() - started)),
                           catalog_plan=plan, catalog_request=request)
         outcomes.append(outcome)
@@ -438,7 +470,8 @@ def read_node_properties(session_dir, node_id, property_ids, timeout=180, operat
             'properties': properties,
             **execution, 'errors': errors, 'inspection_complete': not errors and complete,
             'observed_at': datetime.now(timezone.utc).isoformat(), 'value_source': 'runtime',
-            'validity': 'Observed during this request; external changes require a new read'}
+            'descriptor_source': context['description'].get('cache_state', 'refreshed'),
+            'validity': 'Values require same-request identity and descriptor validation; external changes require a new read'}
 
 
 def search_settings(session_dir, query, expand=False, max_nodes=100, max_depth=4, scope='simulation',

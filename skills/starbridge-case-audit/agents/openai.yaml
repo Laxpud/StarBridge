@@ -1,4 +1,4 @@
 interface:
-  display_name: "StarBridge 算例审查"
-  short_description: "通过实际对象与属性值只读审查 STAR-CCM+ 算例并说明证据和未覆盖范围"
-  default_prompt: "使用 $starbridge-case-audit 审查我指定的 STAR-CCM+ 算例，核对相关设置并说明证据与未覆盖范围。"
+  display_name: "STAR-CCM+ 算例审查"
+  short_description: "只读检查真实算例，说明设置依据、读取范围和 GUI 位置来源"
+  default_prompt: "使用 $starbridge-case-audit 审查当前 STAR-CCM+ 算例，围绕我给定的工况和问题读取设置，区分实际观察、未知项与 GUI 位置来源，不擅自修改、保存或计算。"

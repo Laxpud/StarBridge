@@ -25,7 +25,8 @@ def java_literal(value):
             raise ValueError('Request numbers must be finite')
         return 'Double.valueOf(' + json.dumps(str(value)) + ')'
     if isinstance(value, list):
-        return 'java.util.Arrays.asList(' + ','.join(java_literal(v) for v in value) + ')'
+        # 显式 Object[] 防止单个 null 被 Java 解释为整个 varargs 数组，确保 [null] 仍是一项列表。
+        return 'java.util.Arrays.asList(new Object[]{' + ','.join(java_literal(v) for v in value) + '})'
     if isinstance(value, dict):
         pairs = [java_literal(item) for pair in value.items() for item in pair]
         return 'fields(' + ','.join(pairs) + ')'

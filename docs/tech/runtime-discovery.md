@@ -16,7 +16,7 @@ MCP 工具使用 `starbridge.` 前缀，JSON CLI 使用下表原名。所有调�
 |---|---|---|
 | `browse_tree` | `object_id=null`、`cursor=null`、`offset=0`、`limit=100`、`scope="simulation"`、`max_nodes=2000` | 从根或指定节点展开一层；不读取属性值 |
 | `describe_object` | `object_id=null`、`scope="simulation"`、`property_ids=null`、`cursor=null`、`limit=100` | 刷新属性描述符并检查规则支持，省略节点表示根 |
-| `read_properties` | 必填 `object_id`、非空且不重复的 `property_ids` | 重新定位和描述后，只读取显式选择的属性 |
+| `read_properties` | 必填 `object_id`、非空且不重复的 `property_ids` | 核对当前身份和所选描述符，只读取显式选择的属性；可复用已有描述计划 |
 | `search_settings` | 必填 `query`；`expand=false`、`max_nodes=100`、`max_depth=4`、`scope="simulation"`、`limit=100`、`cursor=null` | 搜索已有索引；显式扩展时按预算发现更多节点 |
 | `relocate_object` | 必填 `locator` | 保存重载或新会话中按结构化路径重建引用 |
 | `modify_property` | 必填 `object_id`、`property_id`、`expected`、`value`；`audit=false` | 按已接受规则赋值一次并回读目标及必要关联项；可选快照审查，保存单独执行 |
@@ -111,9 +111,49 @@ python3 starbridge.py read_properties --arguments /absolute/read-node.json
 
 隐藏、内部、弃用和未知复杂属性保留元数据及原因；禁止规则优先于通用值规则。单个属性的成员声明缺失会形成局部编译错误，其他可编译项仍可读取。Getter 运行时错误同样属于对应属性。只有服务外层 `status="ok"` 不足以证明全部读取成功。
 
+## GUI 显示名称与位置
+
+非 CSO 虚拟分组如果声明了 `@StarBean`，现在通过当前安装的 `ObjectNameFactory.getPresentationName(Class)` 取得官方本地化类标签，不再一律显示为 `Unsupported proxy`。`presentation` 给出读取状态、`source="star_bean_localization"`、客户端 `locale` 以及 `gui_path_status="not_observed"`；没有声明或标签读取失败时明确保留不可用／错误。该机制不逐个适配功能，不调用未知实例属性 getter，也不按 Java 类名拼造 GUI 名称。
+
+代理的 `breadcrumbs` 包括该分组自身的标签，但只是本次 `getChildren()` 观察上下文，标为 `context_kind="runtime_children_not_gui_path"`。取得名称不等于取得业务身份：`object_id` 仍为 null，展开和属性读取仍是不支持。关联引用的 `ownership_not_gui_path` 同样只表示拥有者链。向用户呈现位置时应说明这些区别，不把它们称为已核实的完整 GUI 路径。
+
+2602 的[公开浏览结果](<../../outputs/requirements-first/final-recovery-workflow/20-browse_tree.json>)已返回 `Fonts`、`Ensemble`、`Cartesian 2D Plots` 和 `Hardcopy`；同次任务的[官方类标签读取](<../../outputs/requirements-first/final-recovery-workflow/11-execute_macro.json>)还取得 `Source Surfaces` 与 `Target Surfaces`，后两者是类元数据，不是当前算例中已观察到的分组。最后补充的 Core 路径投影用这些实际观察[离线核对](<../../outputs/requirements-first/final-recovery-workflow/proxy-projection-final-source.json>)，去除代理上下文中的内部 key，不称作新的 STAR 实跑。更新后的 Java helper 已用2602、2510各自安装的 JDK／库编译；这不扩大运行时发现的版本登记范围。
+
+需要 GUI 对应位置时，可通过 `execute_recipe` 选择 `objects.gui_locations`，一次绑定最多32个当前对象。方法复用已加载的 Simulation，读取官方标准树节点的祖先、可选的属性栏元数据和首层上下文菜单组件文本，不打开视图或显示菜单，也不执行动作。普通宏不会因此加载 GUI 表示辅助类。下面示例的当前对象是表面自定义网格控制，`GeometryObjects` 是其描述给出的属性名称。
+
+```json
+{
+  "session_id": "<当前会话>",
+  "request_id": "<本次稳定标识>",
+  "recipe_id": "objects.gui_locations",
+  "parameters": {
+    "targets": [
+      {"object": {"object_id": "<当前对象引用>"}, "property_name": "GeometryObjects"}
+    ],
+    "include_properties": true,
+    "include_actions": true,
+    "max_items": 128
+  }
+}
+```
+
+每个目标的 `object` 使用当前 `n_`、`o_` 或 `r_` 引用；内置方法与记忆方法一样，按 `object_reference` 契约在所有步骤前核对身份。需要虚拟分组时，在具有业务引用的父目标下给 `child_path`，例如 `[{"java_class":"star.common.XYPlotStyleDefaults"}]`；逐层按实际 GUI 直接子项的 Java 类及可选当前 `name` 唯一匹配，不按旧序号猜测。该定位不为代理创建可修改的业务引用。
+
+读取 `result.execution.steps[].result.presentation` 时，区分以下结果：
+
+- `source="official_gui_node_model"`、`tree_scope="standard_simulation_tree"` 表示本客户端的标准节点模型。`locale` 给出标签语言，`remote_gui_observed=false`：没有观察另一 GUI 的当前选择、自定义布局或窗口状态，也不是原子快照。
+- 只有节点父链实际到达当前官方根节点，才返回 `gui_path_status="resolved"` 与 `path`；否则明确不可用，不回退成拥有者链。`target_index` 对应输入目标，`path[].bean_class` 描述实际 GUI 节点对象。
+- 属性区段是节点属性栏的名称、标签、类型及 GUI 可读写元数据，不是当前值，也不替代 Bridge 的写入契约。可按描述中的属性 `name` 筛选，不使用 `property_id`；找不到时明确 `not_found`。方法不调用 `Node.Property.getValue()`，但原生节点、属性及动作构造可能内部读取所需状态。
+- 菜单标签来自实际轻量弹出组件的文本，而不是把 `Action.NAME` 当作最终文案。菜单不显示、不执行；子菜单明确 `children_state="not_requested"`，不能称为空菜单或完整菜单，也不推断另一窗口中的启用状态。
+- `read_status="partial"` 时逐目标、逐区段检查 `not_found`、`ambiguous`、`unavailable`、`error` 或预算耗尽。一个目标失败不抹掉其他已取得的位置；GUI 的 `AWTError` 在对应区段保留。`max_items` 默认64、最大256，是每目标各区段的检查预算，不是 STAR 内部节点构建的耗时或内存上限。
+
+实际无界面客户端没有现成 GUI 根节点。此前的 [HeadlessException](<../../outputs/requirements-first/gui-location-workflow/02-execute_macro.json>) 已定位为 `RootProcessObject.getRootProcessNode()` 调用 `preLoad()`、继而构造窗口，并非节点模型本身必须有显示器。现在以公开构造器及文档中的 protected `setRootObject` 关联已有 Simulation，直接构造 `SimulationProcessNode`，不调用该预加载路径，也不改 JVM headless 状态或加载副本。
+
+2602 的[最终实现实跑](<../../outputs/requirements-first/gui-location-current/15-execute_recipe.json>)在一次调用中取得区域、自定义表面网格控制、关联 PartSurface 和 `Cartesian 2D Plots` 分组的真实祖先、属性栏及首层菜单。其中 `GeometryObjects` 的 GUI 标签是 `Part Surfaces`；关联面在自建会话中显式改名后，同一个输入引用返回了当前名称和路径。另有[局部缺失](<../../outputs/requirements-first/gui-location-current/08-execute_recipe.json>)、[预算耗尽](<../../outputs/requirements-first/gui-location-current/09-execute_recipe.json>)、[凭据重放](<../../outputs/requirements-first/gui-location-current/10-execute_recipe.json>)与[旧会话引用拒绝](<../../outputs/requirements-first/gui-location-current/11-execute_recipe.json>)的实际结果。任务自建会话已[丢弃临时改名并停止](<../../outputs/requirements-first/gui-location-current/16-close_session.json>)，保存源文件的 SHA-256 未变。辅助类及嵌入方法已分别通过2602、2510安装的静态编译；2510 没有 GUI 模型实跑证据，不扩大结构化引用的版本覆盖。
+
 ## 身份、重定位和缓存
 
-`object_id` 和分页游标是会话内短 ID，服务从 `references.sqlite3` 查找已发现的路径或分页状态，并检查引用种类和会话世代。没有 HMAC 或专用密钥；运行时仍逐层核对 key、名称、类型及实际父身份。旧签名引用需重新浏览取得短 ID，旧搜索索引不跨引用格式复用。调用方应原样保存和传递引用，不解析或构造其内容。名称相同不证明是同一实例；重命名、删除重建、关系变化或换会话都可能使旧引用失效。
+`object_id` 和分页游标是会话内短 ID，服务从会话引用表查找已观察的路径、关系身份或分页状态，并核对种类与会话世代，没有 HMAC 或专用密钥。树路径引用逐层检查 key、名称、类型及实际父身份；属性关系引用使用固定公开 registry 读取接口按已观察 key 取得对象，再检查当前 Simulation、真实类型与拥有者链，不按名称猜测、不创建业务对象。关系引用不因单纯重命名自动失效，但删除、换会话或无法核对归属时拒绝；它的拥有者上下文不等于 GUI 树路径，因此不伪造跨加载 `locator`。旧签名引用需重新浏览取得短 ID。调用方原样传递引用，不解析或构造其内容。
 
 跨加载使用此前返回的 `locator`，调用 `relocate_object`：
 
@@ -133,13 +173,15 @@ python3 starbridge.py read_properties --arguments /absolute/read-node.json
 
 安装 Javadoc 元数据保存在 `~/.starbridge/cache/metadata/`，按安装路径、精确版本、规则版本和所需类集合复用，不在每次读取时重新计算文档内容摘要。内部执行计划直接在内存中编译、裁剪和传递，进程内缓存稳定的类型适配；不再把计划写成 JSON 后读回。原安装路径内修订 Javadoc 时，需要清理对应元数据缓存并重启服务。
 
-普通读取不准备写入计划。部分属性编译失败时，仍会隔离失败项，并将同一对象其余可执行计划合并到一次属性读取请求；描述刷新仍是单独的只读请求。返回的 `properties` 是唯一属性值结果，不再附带重复的底层结果封套。
+普通读取不准备写入计划。已有所选属性描述且至少一项可读时，复用服务端元数据编译计划；同一个 STAR 请求先逐层核对对象身份和全部所选 Bean 声明，再调用 getter，返回 `descriptor_source="reused_with_runtime_validation"`。缓存不足时仍先单独描述。任何绑定声明变化都会拒绝本次计划，不保证与 GUI 并发编辑的事务隔离。部分属性编译失败仍被隔离，其他可执行计划合并读取；`properties` 是唯一属性值结果，不重复附带底层封套。
 
 文档说明属性与操作含义、版本限制和副作用；Skill 组织任务及检查顺序，通过 Bridge 获取实例事实。训练知识只用于提出导航或搜索方向，不能替代真实引用、当前值或已验证的调用规则。缓存保存已有观察及其依据，帮助重复查询，但它不是独立事实来源；使用搜索候选后仍要重新描述或读取。
 
 ## 已实现规则与边界
 
-规则集中在 `src/starbridge/core/discovery_policy.py`，编译器在 `src/starbridge/core/discovery_rules.py`。当前提供 CSO 子对象与 Bean 描述符机制，以及基础值、标量 input、向量 input、枚举 input 的固定解包规则。官方声明证明调用签名，实际规则和限定类型决定是否允许执行；不扫描后调用全部 `get*` 方法，也不因单独存在 Bean 注解就开放任意类型。
+规则集中在 [discovery_policy.py](<../../src/starbridge/core/discovery_policy.py>)，编译器在 [discovery_rules.py](<../../src/starbridge/core/discovery_rules.py>)。除基础值、数量 input 和枚举 input，还按声明类型的继承／接口图识别 CSO 引用、轻量 key 引用、选择输入、查询和序列，不依赖属性名称。官方声明证明调用签名，规则仍限制公开无参 getter，禁止／内部成员优先拒绝；不扫描后调用全部 `get*`。
+
+静态选择返回 `mode=static`、按 API 顺序保留的 `objects`，空选择明确为空数组。动态选择返回查询配置与 `resolved_selection.status=not_requested`，不假装已枚举命中对象。未知元素、过长序列或 null 包装器报错，不冒充空集合。轻量引用只返回实际可得的 key、类和名称，并区分 `metadata_state=key_only`。属性值中的当前会话引用会追加可继续描述、读取及用于已支持赋值契约的 `object_id`，不为发 ID 提前实例化整个选择；真正使用时再核对身份。`reference_registration` 明确报告登记失败，不抹掉已成功读写的 STAR 值。传回完整 `expected` 时，Core 验证并剥离自己追加的 ID，仍按原始 STAR 状态进行比较。实际关联读取、静态替换和动态配置观察见[任务证据](<generic-execution.md#当前实际证据与未完成项>)。
 
 普通有界标量 input 使用已核验的范围适配器。动态范围仅登记 `star.resurfacer.PartsResurfacerAnisotropicSizing.ratioRange()`；其他 `rangeMethod` 注解保留为元数据，不能据方法名自行执行。单位和范围仅按提供器实际结果返回，不推断缺失单位。
 
@@ -153,7 +195,8 @@ python3 starbridge.py read_properties --arguments /absolute/read-node.json
 
 - 特殊规则按完整读取声明匹配原目录 writer，保留其 guards、范围和保持项；只迁移已接受的普通赋值，不移植依赖旧父级定位的条件。全局标量／向量参数的 quantity input 可映射到已有数量 writer，写前确认读取数量与 setter 接收对象的 key 相同；名称和维度等保持项继续读取验证。
 - 通用标量仅接受已支持的 `BoundedScalarInput` 常量，使用实际 input 范围及单位检查；通用向量仅接受 `VectorPhysicalQuantityInput` 常量，完整描述中存在未处理的坐标、方向或模型／方法上下文时拒绝。向量保留原始分量，不转换或归一化。
-- 隐藏、只读、未知注解、未知编辑器、跨属性通知关联、库资源以及规则不完整的属性不开放自动写入。创建删除、模型启停、方法切换及复杂查询不作为通用属性赋值。
+- 通用静态选择接受已核验的 `ObjectSelectorInput`、`OrderedObjectSelectorInput`、`DynamicQuerySelectorInput` 与普通 `SelectorDescriptor`。新值为 `{"mode":"static","objects":[{"object_id":"<当前ID>"}]}`，表示完整替换，也可显式清除原查询。保持原 descriptor 约束，用其完整可选域验证候选；不先塞入候选再“自证合法”。预算为10,000项，超限拒绝。setter 前重验最新 descriptor、身份与可选域；不保证不透明隐藏状态的原子 CAS 或 GUI 锁定。Ordered 按身份列表回读，其余按无重复身份集合回读。未知 descriptor 子类、新查询值仍不开放此规则。
+- 隐藏、只读、未知注解、未知编辑器、跨属性通知关联、库资源以及规则不完整的属性不开放自动写入。创建删除、模型启停、方法切换及复杂查询不作为通用属性赋值；明确任务可使用[通用宏](<generic-execution.md>)调用当前安装的公开 API。
 
 先描述并读取目标，再把返回的完整 `value` 原样作为 `expected`。以下示例假设本次实际读取恰为 `0 m`，不能将示例值替代真实读取：
 

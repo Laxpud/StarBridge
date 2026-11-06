@@ -863,6 +863,7 @@ public class CatalogRuntime {
         private final java.util.Map<String, Object> writer;
         private final java.util.List<ReferenceBinding> bindings;
         private final ScalarBoundsCheck boundsCheck;
+        private final SelectorWriteCheck selectorCheck;
         private final java.util.Map<String, Object> quantityRead;
         private final String quantityKey;
         private boolean applied;
@@ -883,12 +884,14 @@ public class CatalogRuntime {
                 String adapter, Object value, Invocation invocation,
                 java.util.Map<String, Object> writer, java.util.Map<String, Object> before,
                 java.util.List<ReferenceBinding> bindings, ScalarBoundsCheck boundsCheck,
+                SelectorWriteCheck selectorCheck,
                 java.util.Map<String, Object> quantityRead, String quantityKey) {
             this.sim = sim; this.plan = plan; this.readRequest = readRequest; this.token = token;
             this.property = property; this.adapter = adapter; this.value = value;
             this.invocation = invocation; this.writer = writer; this.before = before;
             this.bindings = java.util.List.copyOf(bindings);
             this.boundsCheck = boundsCheck;
+            this.selectorCheck = selectorCheck;
             this.quantityRead = quantityRead; this.quantityKey = quantityKey;
         }
 
@@ -925,7 +928,11 @@ public class CatalogRuntime {
                         "Write quantity identity changed before setter");
             }
             if (boundsCheck != null) boundsCheck.check(sim, current);
+            // 选择值相同不代表过滤上下文没变；重新解析所有会话引用并从最新 input
+            // 克隆替代值。只更新尚未调用的参数，不在 live manager 上提前清 query。
+            if (selectorCheck != null) selectorCheck.refresh(sim, current, invocation);
             invocation.invoke();
+            if (selectorCheck != null) selectorCheck.verifyConstraints(sim, current);
             java.util.Map<String, Object> after = inspect(sim, plan, readRequest, token);
             if (!Boolean.TRUE.equals(after.get("inspection_complete")))
                 throw new IllegalStateException("Modification readback is incomplete");
@@ -1001,6 +1008,7 @@ public class CatalogRuntime {
         java.util.List<ReferenceBinding> bindings = new java.util.ArrayList<>();
         java.util.Map<String, Object> writePipeline = null;
         ScalarBoundsCheck boundsCheck = null;
+        SelectorWriteCheck selectorCheck = null;
         Object wantedReadback = value;
         String quantityKey = null;
         java.util.Map<String, Object> quantityRead = null;
@@ -1124,6 +1132,17 @@ public class CatalogRuntime {
                 ReferenceBinding binding = bindings.get(bindings.size() - 1);
                 before.put("value_checks", java.util.List.of(fields(
                         "target", reference(referenced.object, token), "checks", binding.checks)));
+            } else if (adapter.equals("selector_static")) {
+                java.util.Map<String, Object> read = object(entry.get("read"), "property.read");
+                selectorCheck = new SelectorWriteCheck(sim, resolved, read, value, actual, token);
+                values.put("value", selectorCheck.prepared);
+                wantedReadback = fields("mode", "static", "identities", selectorCheck.identities,
+                        "ordered", selectorCheck.ordered);
+                before.put("selector_check", fields("status", "passed", "mode", "static",
+                        "ordered", selectorCheck.ordered, "selection_count", selectorCheck.identities.size(),
+                        "available_domain_budget", SELECTOR_WRITE_BUDGET,
+                        "context_validation", "fresh_descriptor_available_domain",
+                        "hidden_state_cas", "not_provided"));
             } else if (adapter.equals("object_selection")) {
                 java.util.Map<String, Object> input = object(value, "object selection");
                 String mode = string(input.get("mode"), "selection.mode");
@@ -1178,9 +1197,210 @@ public class CatalogRuntime {
             fixedTarget.put("reference", identity(resolved.object, token));
             java.util.Map<String, Object> fixedRead = fields("schema_version", 1L, "action", "read", "target", fixedTarget);
             return new PreparedModification(sim, plan, fixedRead, token, property, adapter, wantedReadback,
-                    setter, writer, before, bindings, boundsCheck, quantityRead, quantityKey);
+                    setter, writer, before, bindings, boundsCheck, selectorCheck, quantityRead, quantityKey);
         } catch (Exception error) {
             throw new IllegalArgumentException("Modification preparation failed: " + errorText(error), error);
+        }
+    }
+
+    private static final int SELECTOR_WRITE_BUDGET = 10000;
+
+    /** 选择引用按真实 key 保留列表顺序；去重和集合比较由调用方按语义执行。 */
+    private static java.util.List<String> selectorKeys(
+            java.util.Collection<? extends star.base.neo.CsoKeyProvider> source) {
+        require(source != null && source.size() <= SELECTOR_WRITE_BUDGET,
+                "Selector collection is unavailable or exceeds the selection budget");
+        java.util.List<String> result = new java.util.ArrayList<>();
+        for (star.base.neo.CsoKeyProvider item : source) {
+            require(item != null && result.size() < SELECTOR_WRITE_BUDGET, "Invalid or oversized selector collection");
+            result.add(string(item.getObjectKeyAsString(), "selector object key"));
+        }
+        return result;
+    }
+
+    /**
+     * 冻结公开可观察的 descriptor 约束；不枚举 Internal NeoProperty 成员。
+     * 不透明 contextMap 不提供可靠的跨时间快照：setter 前必须基于最新
+     * descriptor 重求完整可选域并克隆输入，不能宣称隐藏状态的原子 CAS。
+     */
+    private static java.util.Map<String, Object> selectorDescriptorState(
+            star.coremodule.objectselector.ModelDescriptor descriptor) {
+        // 自定义 descriptor 子类可能含额外条件；没有独立保持证据时严格拒绝，
+        // 不把其 cloneBuilder/equals 的通用签名当作隐藏状态已被覆盖的证明。
+        require(descriptor != null && descriptor.getClass() == star.coremodule.objectselector.SelectorDescriptor.class,
+                "Selector descriptor subtype has no accepted preservation rule");
+        require(descriptor.getRootObject() != null && descriptor.getSelectionType() != null && descriptor.getModel() != null,
+                "Selector descriptor is incomplete");
+        java.util.List<String> context = descriptor.getContext();
+        require(context == null || context.size() <= SELECTOR_WRITE_BUDGET, "Selector context exceeds item budget");
+        // 2602真实输入与其clone均可返回null filters，虽Javadoc写non-null。
+        // 保留这个原始状态，不把它解释为空筛选；完整可选域仍交给原descriptor的公开提供器计算。
+        java.util.Collection<? extends star.base.neo.CsoKeyProvider> filters = descriptor.getSelectedFilters();
+        return fields("descriptor_class", descriptor.getClass().getName(),
+                "root_key", descriptor.getRootObject().getObjectKeyAsString(),
+                "model", descriptor.getModel().name(), "selection_type", descriptor.getSelectionType().name(),
+                "multi_select", descriptor.isMultiSelect(),
+                "validation_required", descriptor.isSelectionValidationRequired(),
+                "context", context == null ? null : new java.util.ArrayList<>(context),
+                "filters", filters == null ? null : selectorKeys(filters));
+    }
+
+    /** 克隆必须保留具体 descriptor 与所有约束；公开 equalsIgnoreSelection 本身不比较基数。 */
+    private static void requireSelectorDescriptorPreserved(
+            star.coremodule.objectselector.ModelDescriptor before,
+            star.coremodule.objectselector.ModelDescriptor after) {
+        require(before != after && before.getClass() == after.getClass(),
+                "Selector descriptor clone did not preserve its subtype");
+        require(before.equalsIgnoreSelection(after) && after.equalsIgnoreSelection(before)
+                && sameValue(selectorDescriptorState(before), selectorDescriptorState(after))
+                && java.util.Objects.equals((Object) before.getContextMap(), (Object) after.getContextMap())
+                && java.util.Objects.equals(before.getNameResolver(), after.getNameResolver()),
+                "Selector descriptor clone changed constraints or metadata");
+    }
+
+    /**
+     * 准备并重验静态 Bean selector 替换。这里只构造临时 input：所有 live 变更
+     * 仍由 PreparedModification 中唯一的 Bean setter 完成，失败不回滚或重试。
+     */
+    private static final class SelectorWriteCheck {
+        final java.util.Map<String, Object> read;
+        final String token;
+        final Class<?> inputClass;
+        final star.coremodule.objectselector.ModelDescriptor originalDescriptor;
+        final java.util.Map<String, Object> descriptorState;
+        final Object originalValue;
+        final java.util.List<java.util.Map<String, Object>> references = new java.util.ArrayList<>();
+        final java.util.List<Object> identities = new java.util.ArrayList<>();
+        final boolean ordered;
+        final star.coremodule.objectselector.ObjectSelectorInput prepared;
+
+        SelectorWriteCheck(star.common.Simulation sim, Resolved target, java.util.Map<String, Object> read,
+                Object value, Object expectedRead, String token) throws Exception {
+            this.read = read;
+            this.token = token;
+            java.util.Map<String, Object> assignment = object(value, "selector assignment");
+            require("static".equals(assignment.get("mode")),
+                    "Selector query assignment is unsupported; use static replacement");
+            require(assignment.keySet().equals(java.util.Set.of("mode", "objects")),
+                    "Invalid static selector assignment fields");
+            java.util.List<?> items = list(assignment.get("objects"), "selector objects");
+            require(items.size() <= SELECTOR_WRITE_BUDGET, "Selector assignment exceeds selection budget");
+            for (Object item : items) {
+                java.util.Map<String, Object> reference = object(item, "selector reference");
+                require(reference.keySet().equals(java.util.Set.of("runtime_reference")),
+                        "Selector assignment requires a current-session object reference");
+                references.add(new java.util.LinkedHashMap<>(object(reference.get("runtime_reference"), "selector binding")));
+            }
+            star.coremodule.objectselector.ObjectSelectorInput current = readInput(sim, target);
+            inputClass = current.getClass();
+            ordered = inputClass == star.coremodule.objectselector.OrderedObjectSelectorInput.class;
+            originalValue = selector(current, token);
+            require(sameValue(expectedRead, originalValue), "Selector state changed during preparation");
+            originalDescriptor = current.getModelDescriptor();
+            descriptorState = selectorDescriptorState(originalDescriptor);
+            java.util.List<star.base.neo.ClientServerObject> objects = resolve(sim);
+            for (star.base.neo.ClientServerObject selected : objects) identities.add(identity(selected, token));
+            prepared = replacement(sim, current, objects);
+        }
+
+        private star.coremodule.objectselector.ObjectSelectorInput readInput(
+                star.common.Simulation sim, Resolved target) throws Exception {
+            Object raw = pipeline(sim, target.object, target.parent, read);
+            require(raw != null && (raw.getClass() == star.coremodule.objectselector.ObjectSelectorInput.class
+                    || raw.getClass() == star.coremodule.objectselector.OrderedObjectSelectorInput.class
+                    || raw.getClass() == star.common.DynamicQuerySelectorInput.class),
+                    "Unsupported selector input subtype");
+            return (star.coremodule.objectselector.ObjectSelectorInput) raw;
+        }
+
+        /** 绑定包含路径或锚定身份；不按旧 catalog 的 value_types 限制候选对象。 */
+        private java.util.List<star.base.neo.ClientServerObject> resolve(star.common.Simulation sim) {
+            java.util.List<star.base.neo.ClientServerObject> objects = new java.util.ArrayList<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (java.util.Map<String, Object> reference : references) {
+                star.base.neo.ClientServerObject selected = DiscoveryRuntime.resolveObject(sim, reference, token);
+                require(selected != null && selected.getServer() == sim.getServer(), "Selector reference belongs to another session");
+                require(seen.add(selected.getObjectKeyAsString()), "Duplicate selected object identity");
+                objects.add(selected);
+            }
+            return objects;
+        }
+
+        private void checkConstraints(star.common.Simulation sim,
+                star.coremodule.objectselector.ObjectSelectorInput current) {
+            require(current.getClass() == inputClass, "Selector input type changed");
+            star.coremodule.objectselector.ModelDescriptor descriptor = current.getModelDescriptor();
+            require(sameValue(descriptorState, selectorDescriptorState(descriptor)), "Selector descriptor constraints changed");
+            require(descriptor.getRootObject().getServer() == sim.getServer()
+                    && descriptor.getRootObject().getObjectKeyAsString().equals(sim.getObjectKeyAsString()),
+                    "Selector descriptor belongs to another simulation");
+            require(originalDescriptor.equalsIgnoreSelection(descriptor)
+                    && descriptor.equalsIgnoreSelection(originalDescriptor), "Selector model context changed");
+        }
+
+        private star.coremodule.objectselector.ObjectSelectorInput replacement(star.common.Simulation sim,
+                star.coremodule.objectselector.ObjectSelectorInput current,
+                java.util.List<star.base.neo.ClientServerObject> objects) {
+            checkConstraints(sim, current);
+            star.coremodule.objectselector.ModelDescriptor descriptor = current.getModelDescriptor();
+            descriptor.getSelectionType().validateSelection(objects);
+            java.util.List<String> wanted = selectorKeys(objects);
+            if (!objects.isEmpty()) {
+                // 必须基于原 descriptor 求完整可选域。validation=false 会把已选例外
+                // 加回 available；若先塞入候选再查询，将把非法新对象也误当成可选。
+                int count = star.coremodule.objectselector.FilterModelSupport.getAvailableCountForModel(descriptor);
+                require(count >= 0 && count <= SELECTOR_WRITE_BUDGET, "Selector available domain exceeds budget");
+                star.coremodule.objectselector.SelectorItemCollection available =
+                        star.coremodule.objectselector.FilterModelSupport.getAvailableForModel(descriptor);
+                java.util.Set<String> availableKeys = new java.util.HashSet<>(selectorKeys(available.getAvailable()));
+                require(availableKeys.containsAll(wanted), "Object is not selectable in the current descriptor");
+                java.util.Collection<? extends star.base.neo.CsoKeyProvider> prior = descriptor.getSelected();
+                java.util.Set<String> priorKeys = prior == null ? java.util.Set.of() : new java.util.HashSet<>(selectorKeys(prior));
+                java.util.List<star.base.neo.ClientServerObject> toMatch = new java.util.ArrayList<>();
+                for (star.base.neo.ClientServerObject selected : objects)
+                    if (descriptor.isSelectionValidationRequired() || !priorKeys.contains(selected.getObjectKeyAsString()))
+                        toMatch.add(selected);
+                require(toMatch.isEmpty() || star.coremodule.objectselector.FilterModelSupport.matchByModel(descriptor, toMatch),
+                        "Object does not match the current selector filter model");
+            }
+            star.coremodule.objectselector.ModelDescriptor replacement = descriptor.cloneBuilder().selected(objects).build();
+            requireSelectorDescriptorPreserved(descriptor, replacement);
+            star.coremodule.objectselector.ObjectSelectorInput result;
+            if (inputClass == star.common.DynamicQuerySelectorInput.class) {
+                star.common.DynamicQuerySelectorInput before = (star.common.DynamicQuerySelectorInput) current;
+                star.common.DynamicQuerySelectorInput next = star.common.DynamicQuerySelectorInput.builder(before)
+                        .descriptor(replacement).query(null).build();
+                require(next.getQuery() == null && java.util.Objects.equals(
+                        before.getDefaultCriteriaDescriptor(), next.getDefaultCriteriaDescriptor()),
+                        "Dynamic selector metadata was not preserved");
+                result = next;
+            } else if (ordered) {
+                result = new star.coremodule.objectselector.OrderedObjectSelectorInput(replacement);
+            } else {
+                result = new star.coremodule.objectselector.ObjectSelectorInput(replacement);
+            }
+            require(wanted.equals(selectorKeys(result.getSelected())), "Selector replacement changed object order");
+            return result;
+        }
+
+        /** 紧贴 setter 重验身份与可选域，并刷新临时参数，避免复用过期上下文。 */
+        void refresh(star.common.Simulation sim, Resolved target, Invocation invocation) throws Exception {
+            star.coremodule.objectselector.ObjectSelectorInput current = readInput(sim, target);
+            require(sameValue(originalValue, selector(current, token)), "Selector value changed before setter");
+            java.util.List<star.base.neo.ClientServerObject> objects = resolve(sim);
+            java.util.List<Object> currentIdentities = new java.util.ArrayList<>();
+            for (star.base.neo.ClientServerObject selected : objects) currentIdentities.add(identity(selected, token));
+            require(sameValue(identities, currentIdentities), "Selected object identity changed before setter");
+            require(invocation.receiver instanceof star.base.neo.ClientServerObject
+                    && sameValue(identity((star.base.neo.ClientServerObject) invocation.receiver, token), identity(target.object, token))
+                    && ((star.base.neo.ClientServerObject) invocation.receiver).getServer() == sim.getServer()
+                    && invocation.arguments.length == 1, "Selector setter is not bound to the current target");
+            invocation.arguments[0] = convert(replacement(sim, current, objects), invocation.method.getParameterTypes()[0]);
+        }
+
+        /** 写后仍要保留原 descriptor；选择结果和 query 清除由独立回读验收。 */
+        void verifyConstraints(star.common.Simulation sim, Resolved target) throws Exception {
+            checkConstraints(sim, readInput(sim, target));
         }
     }
 
@@ -1538,6 +1758,23 @@ public class CatalogRuntime {
             java.util.Map<String, Object> output = object(actual, "enum output");
             matches = sameValue(wanted, output.get("selected"))
                     && list(output.get("allowed"), "enum allowed").contains(wanted);
+        } else if (adapter.equals("selector_static")) {
+            java.util.Map<String, Object> input = object(wanted, "selector expected result");
+            java.util.Map<String, Object> output = object(actual, "selector readback");
+            require("static".equals(output.get("mode")), "Selector readback retained a query");
+            java.util.List<Object> actualIdentities = new java.util.ArrayList<>();
+            for (Object item : list(output.get("objects"), "selector readback objects")) {
+                java.util.Map<String, Object> reference = object(object(item, "selector readback item").get("reference"),
+                        "selector readback identity");
+                require(reference.keySet().equals(java.util.Set.of("session_token", "key")),
+                        "Selector readback identity is incomplete");
+                actualIdentities.add(reference);
+            }
+            java.util.List<?> expectedIdentities = list(input.get("identities"), "selector requested identities");
+            require(new java.util.HashSet<>(actualIdentities).size() == actualIdentities.size(),
+                    "Selector readback contains duplicate identities");
+            matches = Boolean.TRUE.equals(input.get("ordered")) ? sameValue(expectedIdentities, actualIdentities)
+                    : new java.util.HashSet<>(expectedIdentities).equals(new java.util.HashSet<>(actualIdentities));
         } else if (adapter.equals("reference") || adapter.equals("object_selection")) {
             // 新关联按准备阶段的规范结果完整核对，包含本会话 key，不能只比较名称。
             matches = sameValue(wanted, actual);
@@ -1570,6 +1807,14 @@ public class CatalogRuntime {
         String typeId = string(target.get("type"), "target.type");
         String name = string(target.get("name"), "target.name");
         java.util.Map<String, Object> type = object(types.get(typeId), "target type " + typeId);
+        if ("reference".equals(type.get("locate_kind"))) {
+            java.util.Map<String, Object> reference = object(target.get("reference"), "target.reference");
+            java.util.Map<String, Object> binding = fields("session_token", reference.get("session_token"),
+                    "simulation_key", sim.getObjectKeyAsString(), "object_key", reference.get("key"),
+                    "java_class", type.get("java_class"));
+            star.base.neo.ClientServerObject related = DiscoveryRuntime.resolveObject(sim, binding, sessionToken);
+            return new Resolved(related, related.getParent());
+        }
         star.base.neo.ClientServerObject parent = null;
         Object parentType = type.get("parent_type");
         if (parentType != null) {
@@ -1834,6 +2079,7 @@ public class CatalogRuntime {
     /** 按值种类序列化，不依据对象类名猜测未实现的数据格式。 */
     private static Object encode(Object value, String adapter, String sessionToken) {
         require(java.util.List.of("primitive", "reference", "collection", "quantity", "vector", "enum", "query",
+                "key_reference", "selector", "sequence",
                 "name", "type_name", "java_class", "names", "enum_name", "presence", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state", "scalar_bounds", "scalar_range")
                 .contains(adapter), "Unsupported value adapter: " + adapter);
         // presence 必须先于 null 分支处理，缺失对象明确编码成 false。
@@ -1841,7 +2087,7 @@ public class CatalogRuntime {
         // 类型、枚举和名称集合必须有实际值；空集合与缺失集合不能混为一谈。
         // 单对象 name 仍允许 null，以表示报告等对象尚未设置可选单位。
         if (value == null) {
-            require(!java.util.List.of("type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state", "scalar_bounds", "scalar_range").contains(adapter),
+            require(!java.util.List.of("selector", "sequence", "query", "type_name", "java_class", "names", "enum_name", "tensor_profile", "tensor_basis", "tensor_method_state", "tensor_method_basis", "tensor_components", "tensor_axes", "tensor_axis_basis", "tensor_layout_valid", "material_coefficient_basis", "material_coefficient_state", "material_method_state", "scalar_bounds", "scalar_range").contains(adapter),
                     "Metadata adapter requires a non-null value: " + adapter);
             return null;
         }
@@ -1868,6 +2114,13 @@ public class CatalogRuntime {
             case "reference":
                 require(value instanceof star.base.neo.ClientServerObject, "Reference adapter requires a STAR object");
                 return reference((star.base.neo.ClientServerObject) value, sessionToken);
+            case "key_reference":
+                require(value instanceof star.base.neo.CsoKeyProvider, "Key reference adapter requires a CsoKeyProvider");
+                return keyReference((star.base.neo.CsoKeyProvider) value, sessionToken);
+            case "selector": return selector(value, sessionToken);
+            case "sequence":
+                require(value instanceof java.util.Collection<?>, "Sequence adapter requires a collection");
+                return sequence((java.util.Collection<?>) value, sessionToken);
             case "collection":
                 require(value instanceof java.util.Collection<?>, "Collection adapter requires a collection");
                 return collection((java.util.Collection<?>) value, sessionToken);
@@ -2275,6 +2528,56 @@ public class CatalogRuntime {
             components.add(item);
         }
         result.put("components", components);
+        return result;
+    }
+
+    /** 读取所有 Bean 选择输入的共同合同；动态规则和静态对象绝不相互替代。 */
+    private static Object selector(Object value, String token) {
+        require(value instanceof star.coremodule.objectselector.ObjectSelectorInput,
+                "Selector adapter requires an ObjectSelectorInput");
+        if (value instanceof star.common.DynamicQuerySelectorInput) {
+            star.base.query.Query query = ((star.common.DynamicQuerySelectorInput) value).getQuery();
+            if (query != null) {
+                java.util.Map<String, Object> result = new java.util.LinkedHashMap<>(
+                        (java.util.Map<String, Object>) queryDefinition(query, token));
+                result.put("resolved_selection", fields("status", "not_requested",
+                        "reason", "Query configuration is not its evaluated result"));
+                return result;
+            }
+        }
+        // getSelected 返回轻量引用，不为展示整个选择而实例化所有服务对象。
+        // 保留返回顺序；这同时适用于有序选择，不将普通输入的顺序解释为执行顺序。
+        star.coremodule.objectselector.ObjectSelectorInput input = (star.coremodule.objectselector.ObjectSelectorInput) value;
+        return fields("mode", "static", "objects", sequence(input.getSelected(), token),
+                      "selection_order", "returned_order");
+    }
+
+    /** 轻量引用只报告实际可用元数据；包装类不是被引用对象的 Java 类型。 */
+    private static java.util.Map<String, Object> keyReference(star.base.neo.CsoKeyProvider value, String token) {
+        if (value instanceof star.base.neo.ClientServerObject)
+            return reference((star.base.neo.ClientServerObject) value, token);
+        java.util.Map<String, Object> result = fields("reference", fields("session_token", token,
+                "key", value.getObjectKeyAsString()), "metadata_state", "key_only");
+        if (value instanceof star.common.ObjectInfo) {
+            star.common.ObjectInfo info = (star.common.ObjectInfo) value;
+            result.put("name", info.getPresentationName());
+            result.put("java_class", info.getObjectClassName());
+            result.put("metadata_state", "lightweight");
+        }
+        return result;
+    }
+
+    /** 有界集合保留 API 顺序；未知项明确失败，不过滤掉后伪装完整选择或空集合。 */
+    private static java.util.List<Object> sequence(java.util.Collection<?> source, String token) {
+        require(source != null, "Selection collection is unavailable, not an empty selection");
+        require(source.size() <= 10000, "Selection exceeds the 10000-item read budget; use a scoped macro read");
+        java.util.List<Object> result = new java.util.ArrayList<>();
+        for (Object value : source) {
+            require(result.size() < 10000, "Selection changed beyond the read budget");
+            if (value instanceof star.base.neo.CsoKeyProvider) result.add(keyReference((star.base.neo.CsoKeyProvider) value, token));
+            else if (value instanceof Enum<?>) result.add(((Enum<?>) value).name());
+            else result.add(primitive(value));
+        }
         return result;
     }
 

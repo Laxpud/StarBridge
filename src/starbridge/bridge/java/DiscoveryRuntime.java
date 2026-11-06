@@ -5,15 +5,45 @@
 public class DiscoveryRuntime {
     /**
      * 在执行计划进入读取或修改管线前重新核对发现时的完整身份绑定。
-     * 只走身份与子对象枚举，不读取描述符或属性；不经 CatalogRuntime 回调，避免版本校验递归。
+     * 核对对象路径；携带缓存描述时，在同一请求内重新核对选中 Bean 声明，不调用属性 getter。
+     * 不经 CatalogRuntime 回调，避免版本校验递归，也不需要单独启动一次描述客户端。
      */
     public static void checkBinding(star.common.Simulation sim, java.util.Map<String, Object> binding, String token) {
         require("2602".equals(sim.getCurrentVersion()) && "21.02.007".equals(sim.getReleaseNumber()),
                 "Discovery binding version is unsupported");
         require(binding != null && token != null && !token.isEmpty(), "Discovery binding and session token are required");
         Budget budget = new Budget(fields("max_nodes", 20000, "timeout_ms", 30000));
-        resolve(sim, binding, token, false, new java.util.ArrayList<>(), budget);
+        star.base.neo.ClientServerObject target = resolve(sim, binding, token, false, new java.util.ArrayList<>(), budget);
         require(!budget.expired(), "Discovery binding resolution timed out");
+        if (binding.containsKey("properties")) {
+            // 缓存只提供预期声明，不提供当前值。任何声明变化都在执行计划的 getter 前拒绝。
+            java.util.List<Object> actual = new java.util.ArrayList<>();
+            for (String provider : java.util.Arrays.asList("bean", "linked")) {
+                java.beans.PropertyDescriptor[] descriptors;
+                try {
+                    descriptors = "bean".equals(provider) ? target.getBeanPropertyDescriptors() : target.getLinkedBeanPropertyDescriptors();
+                } catch (RuntimeException error) {
+                    // 无关提供器失败不取消已找到的声明；缺失的目标仍将在逐项匹配时明确拒绝。
+                    continue;
+                }
+                if (descriptors == null) continue;
+                for (java.beans.PropertyDescriptor item : descriptors) {
+                    require(!budget.expired(), "Discovery descriptor validation timed out");
+                    try { actual.add(descriptor(item)); }
+                    catch (Exception error) { /* 无法读取的声明不会匹配任何缓存项；其他独立声明仍可核对。 */ }
+                }
+            }
+            for (Object item : (java.util.List<?>) binding.get("properties")) {
+                java.util.Map<String, Object> expected = map(item);
+                boolean matched = false;
+                for (Object candidate : actual) {
+                    java.util.Map<String, Object> selected = new java.util.LinkedHashMap<>();
+                    for (String key : expected.keySet()) selected.put(key, map(candidate).get(key));
+                    if (metadataEquivalent(expected, selected)) { matched = true; break; }
+                }
+                require(matched, "Discovery property descriptor changed or is unavailable: " + expected.get("name"));
+            }
+        }
     }
 
     /** 核对版本、会话和完整父路径后执行一次有界发现；局部元数据错误保留成功项。 */
@@ -31,6 +61,14 @@ public class DiscoveryRuntime {
         if ("browse".equals(action)) browse(target, path, request, result, budget);
         else if ("describe".equals(action)) describe(target, result, budget);
         else throw new IllegalArgumentException("Unsupported discovery action");
+        if (request.get("target") instanceof java.util.Map<?, ?> && map(request.get("target")).containsKey("object_key")) {
+            // 关系对象的拥有者链只是上下文，不假装是可逐层 getChildren 的 GUI 导航路径。
+            bindRelatedNode(map(result.get("node")), sim, token);
+            if (result.get("children") instanceof java.util.List<?>) {
+                for (Object child : (java.util.List<?>) result.get("children"))
+                    if ("object".equals(map(child).get("kind"))) bindRelatedNode(map(child), sim, token);
+            }
+        }
         result.put("elapsed_ms", (System.nanoTime() - budget.started) / 1000000L);
         return result;
     }
@@ -45,6 +83,10 @@ public class DiscoveryRuntime {
         if (raw == null) { actualPath.add(identity(current)); return current; }
         java.util.Map<String, Object> target = map(raw);
         require(relocate || token.equals(target.get("session_token")), "Stale discovery session token");
+        if (target.containsKey("object_key")) {
+            require(!relocate, "Related references cannot be relocated by an old key");
+            return resolveRelated(sim, target, actualPath, budget);
+        }
         java.util.List<?> path = (java.util.List<?>) target.get("path");
         require(path != null && !path.isEmpty() && path.size() <= 64, "Invalid discovery path");
         // 显式跨加载重定位以当前 Simulation 为锚点；保存副本可能更改根显示名称。
@@ -71,7 +113,59 @@ public class DiscoveryRuntime {
         return current;
     }
 
-    /** 单层枚举只接受 star.base.neo.ClientServerObject 的已核验接口；其他元素返回不可展开代理，不调用其方法。 */
+    /** 供读取、赋值及宏绑定共用的当前对象解析；仅接收 Core 引用表生成的绑定。 */
+    public static star.base.neo.ClientServerObject resolveObject(star.common.Simulation sim,
+            java.util.Map<String, Object> binding, String token) {
+        require(binding != null && token != null && !token.isEmpty(), "Object binding is required");
+        return resolve(sim, binding, token, false, new java.util.ArrayList<>(),
+                new Budget(fields("max_nodes", 20000, "timeout_ms", 30000)));
+    }
+
+    /** 通过公开 registry 批量读取接口取得一个已知 key，不按名称猜对象或调用创建业务对象的方法。 */
+    private static star.base.neo.ClientServerObject resolveRelated(star.common.Simulation sim,
+            java.util.Map<String, Object> binding, java.util.List<Object> path, Budget budget) {
+        require(sim.getObjectKeyAsString().equals(binding.get("simulation_key")), "Related reference simulation changed");
+        Object rawKey = binding.get("object_key");
+        require(rawKey instanceof String && !((String) rawKey).isEmpty(), "Related object key is required");
+        java.util.Collection<Object> found = new java.util.ArrayList<>();
+        try {
+            // 使用固定公开签名；反射避免给只使用树路径的安装强加 registry 的静态链接依赖。
+            Object registry = sim.getClass().getMethod("getObjectRegistry").invoke(sim);
+            java.util.Vector<String> keys = new java.util.Vector<>();
+            keys.add((String) rawKey);
+            registry.getClass().getMethod("getMultipleObjects", java.util.Vector.class, java.util.Collection.class)
+                    .invoke(registry, keys, found);
+        } catch (Exception error) {
+            throw new IllegalArgumentException("Related object retrieval failed: " + error, error);
+        }
+        require(found.size() == 1, "Related object is missing or retrieval is incomplete");
+        Object value = found.iterator().next();
+        require(value instanceof star.base.neo.ClientServerObject, "Related object is not a STAR object");
+        star.base.neo.ClientServerObject object = (star.base.neo.ClientServerObject) value;
+        require(rawKey.equals(object.getObjectKeyAsString()), "Related object key mismatch");
+        require(binding.get("java_class") == null || object.getClass().getName().equals(binding.get("java_class")),
+                "Related object class changed");
+        // 根身份是生命周期绑定；向上读取真实拥有者，拒绝其他 Simulation 或未知归属。
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        star.base.neo.ClientServerObject current = object;
+        while (current != null) {
+            require(path.size() < 64 && !budget.expired() && seen.add(current.getObjectKeyAsString()),
+                    "Related object ownership is cyclic or exceeds the budget");
+            path.add(0, identity(current));
+            if (current.getObjectKeyAsString().equals(sim.getObjectKeyAsString())) return object;
+            current = current.getParent();
+        }
+        throw new IllegalArgumentException("Related object is outside the current simulation ownership tree");
+    }
+
+    /** 仅为已经实际返回的对象补充内部绑定；Core 隐藏绑定并分配会话短 ID。 */
+    private static void bindRelatedNode(java.util.Map<String, Object> node, star.common.Simulation sim, String token) {
+        node.put("binding", fields("session_token", token, "simulation_key", sim.getObjectKeyAsString(),
+                "object_key", node.get("key"), "java_class", node.get("java_class")));
+        node.put("context_kind", "ownership_not_gui_path");
+    }
+
+    /** 单层枚举服务对象；其他元素只取官方类标签，保持无业务身份、不可展开，不调用其属性方法。 */
     private static void browse(star.base.neo.ClientServerObject target, java.util.List<Object> path, java.util.Map<String, Object> request,
             java.util.Map<String, Object> result, Budget budget) {
         java.util.List<Object> items = new java.util.ArrayList<>();
@@ -89,10 +183,7 @@ public class DiscoveryRuntime {
                 int ordinal = inspected++;
                 try {
                     if (!(child instanceof star.base.neo.ClientServerObject)) {
-                        items.add(fields("kind", "proxy", "key", null, "name", "Unsupported proxy", "label", "Unsupported proxy",
-                                "java_class", child == null ? null : child.getClass().getName(), "proxy_ordinal", ordinal,
-                                "path", path, "children_state", "unsupported", "property_state", "unsupported",
-                                "reason", "No verified provider for non-star.base.neo.ClientServerObject child", "relations", new java.util.ArrayList<>()));
+                        items.add(proxyNode(child, path, ordinal));
                         continue;
                     }
                     star.base.neo.ClientServerObject object = (star.base.neo.ClientServerObject) child;
@@ -123,6 +214,34 @@ public class DiscoveryRuntime {
         map(result.get("node")).put("children_state", complete ? "complete" : "partial");
         result.put("filtered_count", filtered); result.put("scope", scope);
         page(result, "children", items, complete, budget);
+    }
+
+    /** 给虚拟分组保留官方本地化标签与观察位置；显示名称不被当成业务身份或 GUI 路径证据。 */
+    private static java.util.Map<String, Object> proxyNode(Object child, java.util.List<Object> parentPath, int ordinal) {
+        String label = "Unsupported proxy";
+        String className = child == null ? null : child.getClass().getName();
+        java.util.Map<String, Object> presentation = fields("status", "unavailable", "source", "no_verified_label",
+                "locale", java.util.Locale.getDefault().toLanguageTag(), "gui_path_status", "not_observed");
+        try {
+            // 只接受 STAR 自身声明的类标签；不拆分 Java 类名猜 GUI 文案，也不调用未知实例 getter。
+            if (child != null && child.getClass().isAnnotationPresent(star.locale.annotation.StarBean.class)) {
+                String localized = star.common.ObjectNameFactory.getInstance().getPresentationName(child.getClass());
+                if (localized != null && !localized.isBlank()) {
+                    label = localized;
+                    presentation.put("status", "ok"); presentation.put("source", "star_bean_localization");
+                }
+            }
+        } catch (RuntimeException | LinkageError error) {
+            presentation.put("status", "error");
+            presentation.put("error", error.getClass().getName() + ": " + error.getMessage());
+        }
+        java.util.List<Object> path = new java.util.ArrayList<>(parentPath);
+        path.add(fields("kind", "proxy", "name", label, "java_class", className));
+        return fields("kind", "proxy", "key", null, "name", label, "label", label, "java_class", className,
+                "proxy_ordinal", ordinal, "path", path, "context_kind", "runtime_children_not_gui_path",
+                "presentation", presentation, "children_state", "unsupported", "property_state", "unsupported",
+                "reason", "No verified identity or property provider for non-star.base.neo.ClientServerObject child",
+                "relations", new java.util.ArrayList<>());
     }
 
     /** 分别读取普通和 linked 描述符；按 getter 声明、签名和完整描述上下文去重。 */
@@ -173,6 +292,7 @@ public class DiscoveryRuntime {
         }
         return fields("name", p.getName(), "display_name", p.getDisplayName(), "description", p.getShortDescription(),
                 "property_type", p.getPropertyType() == null ? null : p.getPropertyType().getName(),
+                "value_family", valueFamily(p.getPropertyType()),
                 "getter", method(p.getReadMethod()), "setter", method(p.getWriteMethod()),
                 "hidden", p.isHidden(), "expert", p.isExpert(), "bound", p.isBound(), "constrained", p.isConstrained(),
                 "editor_class", p.getPropertyEditorClass() == null ? null : p.getPropertyEditorClass().getName(), "attributes", attrs);
@@ -263,6 +383,24 @@ public class DiscoveryRuntime {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) result.add(current.getName());
         return result;
     }
+    /** 只根据声明的继承/接口关系标记可编码机制；不按字段名适配，也不执行属性 getter。 */
+    private static String valueFamily(Class<?> type) {
+        if (type == null) return null;
+        java.util.Set<String> types = new java.util.HashSet<>();
+        typeGraph(type, types);
+        if (types.contains("star.coremodule.objectselector.ObjectSelectorInput")) return "selector";
+        if (types.contains("star.base.query.ManagerWithQuery")) return "query";
+        if (types.contains("star.base.neo.ClientServerObject")) return "reference";
+        if (types.contains("star.base.neo.CsoKeyProvider")) return "key_reference";
+        if (types.contains("java.util.Collection")) return "sequence";
+        if (types.contains("java.lang.Enum")) return "enum_name";
+        return null;
+    }
+    private static void typeGraph(Class<?> type, java.util.Set<String> result) {
+        if (type == null || !result.add(type.getName())) return;
+        typeGraph(type.getSuperclass(), result);
+        for (Class<?> contract : type.getInterfaces()) typeGraph(contract, result);
+    }
     private static String sortKey(Object raw) {
         java.util.Map<String, Object> item = map(raw);
         return canonical(java.util.Arrays.asList(item.get("name"), item.get("java_class"), item.get("key"), item.get("proxy_ordinal")));
@@ -277,6 +415,36 @@ public class DiscoveryRuntime {
         java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
         for (int i = 0; i < pairs.length; i += 2) result.put((String) pairs[i], pairs[i + 1]);
         return result;
+    }
+
+    /** 比较经 JSON 往返的元数据：整型宽度不属于属性语义，布尔值仍严格区别于数值。 */
+    private static boolean metadataEquivalent(Object left, Object right) {
+        if (left == null || right == null) return left == right;
+        // BridgeFileMacro 保留 Integer/Long，其余数值先转 double，非有限值写成字符串。
+        // 按同一传输语义归一化，既不误拒绝 Infinity，也不丢失大整数的声明差异。
+        if (left instanceof Number) left = metadataNumber((Number) left);
+        if (right instanceof Number) right = metadataNumber((Number) right);
+        if (left instanceof java.math.BigDecimal && right instanceof java.math.BigDecimal)
+            return ((java.math.BigDecimal) left).compareTo((java.math.BigDecimal) right) == 0;
+        if (left instanceof java.util.Map<?, ?> && right instanceof java.util.Map<?, ?>) {
+            java.util.Map<?, ?> a = (java.util.Map<?, ?>) left, b = (java.util.Map<?, ?>) right;
+            if (!a.keySet().equals(b.keySet())) return false;
+            for (Object key : a.keySet()) if (!metadataEquivalent(a.get(key), b.get(key))) return false;
+            return true;
+        }
+        if (left instanceof java.util.List<?> && right instanceof java.util.List<?>) {
+            java.util.List<?> a = (java.util.List<?>) left, b = (java.util.List<?>) right;
+            if (a.size() != b.size()) return false;
+            for (int i = 0; i < a.size(); i++) if (!metadataEquivalent(a.get(i), b.get(i))) return false;
+            return true;
+        }
+        return left.equals(right);
+    }
+
+    private static Object metadataNumber(Number value) {
+        if (value instanceof Integer || value instanceof Long) return new java.math.BigDecimal(value.toString());
+        double number = value.doubleValue();
+        return Double.isFinite(number) ? new java.math.BigDecimal(Double.toString(number)) : Double.toString(number);
     }
 
     /** 指纹编码使用长度前缀和有序键，避免名称分隔符及哈希碰撞造成静默翻页。 */

@@ -1,7 +1,7 @@
 """从用户指定的程序或有界本机搜索中读取 STAR 版本，不按目录名或支持清单猜版本。
 
-版本探测只调用程序的 -version，不加载算例或创建管理会话。发现安装、具备适配、
-成功打开算例是三个不同状态；精确版本是否可执行仍由目录规则和运行中 server 核验。
+版本探测只调用程序的 -version，不加载算例或创建管理会话。发现安装、具备结构化适配、
+通用生命周期预编译与成功接入是不同状态；未登记版本也可检测，但不冒充已受支持。
 """
 
 import os
@@ -31,7 +31,9 @@ def inspect_installation(star, timeout):
     executable = shutil.which(star)
     result = {'requested_star': star, 'executable': None, 'status': 'not_found',
               'version': None, 'catalog_supported': False, 'runtime_discovery_supported': False,
-              'javadoc_root': None, 'runtime_state': 'not_checked'}
+              'javadoc_root': None, 'runtime_state': 'not_checked',
+              'generic_lifecycle': {'preflight': 'not_checked', 'registered_catalog_required': False,
+                                    'requires': ['selected_installation_JDK_compilation', 'server_identity_check']}}
     if executable is None:
         result['reason'] = 'Executable was not found or is not executable'
         return result

@@ -83,10 +83,11 @@ public class BridgeFileMacro extends StarMacro {
             if (!List.of("inspect", "save").contains(ACTION)) {
                 throw new IllegalArgumentException("Unknown action: " + ACTION);
             }
-            Map<String, Object> before = snapshot(sim);
-            Map<String, Object> after = before;
             if (ACTION.equals("save")) {
-                // 当前加载路径允许显式覆盖；另存为仍要求新文件，避免覆盖无关算例。
+                // 保存只需要身份、路径和修改标志，不为保存遍历整个算例或创建惰性属性对象。
+                // 全量审查仍由显式 inspect 请求完成；保存后的元数据不冒充 Inspector 快照。
+                Map<String, Object> before = fields("session_path", sim.getSessionPath(),
+                        "modified", sim.isModified(), "simulation_key", sim.getObjectKeyAsString());
                 boolean current = sim.getSessionPath() != null && !sim.getSessionPath().isEmpty() && !OUTPUT.isEmpty()
                         && Path.of(OUTPUT).toAbsolutePath().normalize().equals(
                             Path.of(sim.getSessionPath()).toAbsolutePath().normalize());
@@ -94,9 +95,13 @@ public class BridgeFileMacro extends StarMacro {
                     throw new IllegalArgumentException("Save-as requires a new output file");
                 }
                 sim.saveState(OUTPUT);
-                after = snapshot(sim);
+                Map<String, Object> after = fields("session_path", sim.getSessionPath(),
+                        "modified", sim.isModified(), "simulation_key", sim.getObjectKeyAsString());
+                writeResult("ok", before, after, null);
+                return;
             }
-            writeResult("ok", before, after, null);
+            Map<String, Object> observed = snapshot(sim);
+            writeResult("ok", observed, observed, null);
         } catch (Exception error) {
             throw new RuntimeException("StarBridge macro failed: " + error, error);
         }

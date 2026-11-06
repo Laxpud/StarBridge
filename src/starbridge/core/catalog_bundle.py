@@ -46,8 +46,21 @@ def check_plan_targets(*plans, target=None):
 
 
 def session_target(state):
-    """旧会话没有版本字段时沿用原固定 2602 契约；显式字段损坏或未知时拒绝。"""
-    target = state.get('catalog_target', bundle_target())
+    """仅为结构化目录操作选择精确适配，绝不把通用会话的实际版本当作已有目录。
+
+    没有任何新版本字段的旧结构化会话保留原2602默认契约；新会话必须明确声明
+    catalog_target，且它必须等于实际版本。通用生命周期和宏应使用 session_version。
+    """
+    if 'star_version' in state:
+        from .session_store import session_version
+        actual = session_version(state)
+        target = state.get('catalog_target')
+        if target is None:
+            raise CatalogError(f'No registered structured catalog for session STAR version: {actual}')
+        if target != actual:
+            raise CatalogError(f'Session catalog target differs from actual STAR version: {target} != {actual}')
+    else:
+        target = state.get('catalog_target', bundle_target())
     if target is None:
         raise CatalogError('Session catalog_target must not be null')
     bundle_root(target)
