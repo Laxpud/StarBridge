@@ -37,7 +37,7 @@ MCP 和 JSON CLI 共用 Core Service。正常任务以实际版本的 Java API�
 | `execute_operation` | `object_id/operation_id/expected/arguments`，可选 `audit` | 相同前后属性结果；仅执行已适配的目录结构操作 |
 | `list_recipes` | 无 | 网格、求解和导出的现成方法、参数契约及证据；不连接 STAR |
 | `execute_recipe` | `request_id/recipe_id`，可选 `parameters/expected_revision/project_dir` | 执行内置方法或已审阅的 `memory:ID`；记忆方法必须匹配修订，不自动绑定历史对象 |
-| `execute_macro` | `request_id/steps`，可选 `parameters/object_parameters/imports/declarations/intent` | 同会话集中执行 Java 步骤；显式参数名中的 `{object_id}` 在步骤前绑定当前对象；完整宏权限，不是代码沙箱 |
+| `execute_macro` | `request_id/steps`，可选 `parameters/object_parameters/imports/declarations/intent/working_directory` | 同会话组合 `code` 与完整源码 `macro` 步骤；原宏、辅助源码和显式 JAR 原样编译；[路径及结果边界](<generic-execution.md#原样复用完整宏与辅助源码>)；完整宏权限，不是代码沙箱 |
 | `get_execution` | `request_id` | 原宏凭据、读取诊断、活动状态及可用的审阅 token；不重做操作 |
 | `reconcile_execution` | `request_id/expected_review_token/assessment` | 根据已有依据显式接受当前状态；不重放、不保存、不追认旧任务完成，见[接受条件与边界](<generic-execution.md#根据已有观察接受当前状态>) |
 | `search_memory` | `query`，可选 `context/limit/project_dir` | 返回需审查适用条件的经验与资料候选 |

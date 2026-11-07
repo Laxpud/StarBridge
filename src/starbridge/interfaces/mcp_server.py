@@ -280,11 +280,18 @@ def execute_macro(session_id: StrictStr, request_id: StrictStr, steps: list[dict
                   parameters: dict | None = None, imports: list[StrictStr] | None = None,
                   declarations: StrictStr = '', intent: StrictStr = 'execute',
                   timeout: StrictFloat = 180,
-                  object_parameters: list[StrictStr] | None = None) -> types.CallToolResult:
+                  object_parameters: list[StrictStr] | None = None,
+                  working_directory: StrictStr | None = None) -> types.CallToolResult:
     """用当前安装的完整 Java 宏 API 集中完成明确步骤，不受目录适配白名单限制。
 
-    steps 每项必须有 id/code/effect/scope；effect=read 或 mutate，导出/保存/计算均为 mutate。
-    code 是 Java 方法体，访问 sim、parameters、shared、result；把明确 JSON 值放入 result。
+    steps 每项有 id/effect/scope，code与macro二选一；effect=read或mutate，导出/保存/计算均为mutate。
+    code是方法体，访问sim/parameters/shared/result。macro={entry_source,entry_class,sources?,classpath?}
+    原样编译已有完整Java宏与明确helpers/JAR，在同一会话调用公开execute，不拆写私有方法或package。
+    完整宏不自动获得包装器参数/result；成功仅entrypoint_returned，未提供业务结果会明确标记。
+    可与普通回读步骤组合；来源/依赖字节纳入指纹，原文件变更后查询旧结果用get_execution。
+    working_directory作用于整个客户端；完整宏的resolvePath仍基于各自原文件目录。
+    不自动复制资源；支持JAR内资源；重名类、非空Manifest Class-Path和旧式JAR索引当前拒绝。
+    整个请求共用类命名空间；STAR只编译薄启动宏，用户程序不再二次编译。
     object_parameters 显式列出需绑定的参数名；其中精确的 {object_id:当前ID}（含嵌套数组）
     在全部步骤前替换为 STAR 对象，其他参数仍为 JSON。绑定失败拒绝整个请求，不执行用户步骤。
     imports 是不含 import/分号的类或通配名称，declarations 可定义字段、辅助方法与内部类。

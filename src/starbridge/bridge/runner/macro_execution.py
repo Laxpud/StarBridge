@@ -5,6 +5,7 @@
 会话运行目录，用于结果恢复和方法复用，不能用客户端退出码代替任务完成状态。
 """
 
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import zipfile
 
 from .java_runtime import _installation, source_text
 from .modifier import java_literal
@@ -26,6 +28,56 @@ def declared_effect(request):
     该规则必须与会话的 active_mutating 一致，不分析 Java，也不证明源码没有副作用。
     """
     return 'mutate' if any(step['effect'] == 'mutate' for step in request['steps']) else 'read'
+
+
+def program_class(request):
+    """完整源码使用本请求独有的包装类名，避免与已有宏或依赖中的常见类名碰撞。"""
+    return ('StarBridgeProgram_' + request['fingerprint'][:20]
+            if request.get('source_bundle') else 'StarBridgeProgram')
+
+
+def step_body(step, classes):
+    """代码步骤保持原方法体；源码步骤直接构造原宏，不抽取方法、不使用吞异常的 play。"""
+    if 'code' in step:
+        return step['code']
+    entry = step['macro']
+    source = java_literal(entry['entry_source'])
+    name = entry['entry_class']
+    # 此处生成的来源类构造位于本步骤 running 凭据之后；用户其他代码仍可能先主动引用它。
+    # 原宏构造期间的 active simulation 遵循官方语义（尚未绑定），不伪称能在任意 Java
+    # 构造器执行前注入实例上下文。
+    return '\n'.join([
+        'result.put("entry_class", ' + java_literal(name) + ');',
+        'result.put("entry_source", ' + source + ');',
+        'result.put("completion_basis", "entrypoint_returned");',
+        'result.put("reported_results", "not_provided");',
+        'result.put("entrypoint_returned", false);',
+        'result.put("phase", "checking_class_origin");',
+        'java.security.CodeSource sourceOrigin = ' + name + '.class.getProtectionDomain().getCodeSource();',
+        'if (sourceOrigin == null || !"file".equals(sourceOrigin.getLocation().getProtocol()) ||',
+        '        !Files.isSameFile(Path.of(sourceOrigin.getLocation().toURI()), Path.of(' + java_literal(str(classes)) + ')))',
+        '    throw new IllegalStateException("Entry class did not load from this request source compilation");',
+        'result.put("class_origin", sourceOrigin.getLocation().toString());',
+        'result.put("phase", "constructing");',
+        'star.common.StarMacro sourceMacro = new ' + name + '();',
+        'result.put("phase", "binding_context");',
+        'sourceMacro.setActiveSimulation(sim);',
+        'sourceMacro.savePath(new star.base.neo.NeoScriptFile(new java.io.File(' + source + ')));',
+        'result.put("phase", "executing");',
+        'sourceMacro.execute();',
+        'result.put("phase", "entrypoint_returned");',
+        'result.put("entrypoint_returned", true);',
+    ])
+
+
+def step_metadata(step):
+    """源码步骤的完成依据是入口返回，不把没有结构化业务输出当成完整读取。"""
+    metadata = {key: step[key] for key in ('id', 'scope', 'effect')}
+    metadata['status'] = 'not_started'
+    if 'macro' in step:
+        metadata.update(program_kind='source_macro', completion_basis='entrypoint_returned',
+                        entry_class=step['macro']['entry_class'], entry_source=step['macro']['entry_source'])
+    return metadata
 
 
 def render(state, request, result):
@@ -50,16 +102,17 @@ def render(state, request, result):
             'bindParameter(' + java_literal(entry['path']) + ', DiscoveryRuntime.resolveObject(sim, '
             + java_literal(entry['binding']) + ', ' + java_literal(state['session_token']) + '));'
             for entry in request.get('object_bindings', [])),
-        'STEP_METADATA': '\n'.join('steps.add(' + java_literal({
-            'id': step['id'], 'scope': step['scope'], 'effect': step['effect'], 'status': 'not_started'})
-            + ');' for step in request['steps']),
+        'STEP_METADATA': '\n'.join('steps.add(' + java_literal(step_metadata(step))
+                                  + ');' for step in request['steps']),
         'STEP_CASES': '\n'.join(f'case {index}: step{index}(result); break;'
                                 for index in range(len(request['steps']))),
         'STEP_METHODS': '\n'.join(
-            f'private void step{index}(Map<String, Object> result) throws Exception {{\n{step["code"]}\n}}'
+            f'private void step{index}(Map<String, Object> result) throws Exception {{\n{step_body(step, Path(result).parent / "classes")}\n}}'
             for index, step in enumerate(request['steps'])),
     }
-    text = re.sub(r'__([A-Z_]+)__', lambda match: values[match.group(1)], source_text(template))
+    # 只重命名受信模板中的包装类，不触碰原宏源码、普通步骤代码或任何参数文本。
+    skeleton = source_text(template).replace('StarBridgeProgram', program_class(request))
+    text = re.sub(r'__([A-Z_]+)__', lambda match: values[match.group(1)], skeleton)
     if request.get('object_bindings'):
         # 仅对象参数需要公共身份解析器。无绑定的通用宏仍不依赖结构化发现辅助类。
         # 此处只调用不设精确版本门槛的 resolveObject；安装JDK校验直接引用，固定registry签名在运行时检查。
@@ -68,24 +121,123 @@ def render(state, request, result):
     return text
 
 
-def compile_program(star, macro, directory, timeout):
-    """能定位当前安装 JDK 时先编译，语法错误在连接客户端前拒绝，不冒用其他版本库。"""
+def render_launch(request, directory):
+    """生成不含用户类型编译引用的启动宏，STAR 不再二次编译混合步骤或用户声明。"""
+    name = 'StarBridgeLaunch_' + request['fingerprint'][:20]
+    values = {'LAUNCH_CLASS': name, 'PROGRAM_CLASS': java_literal(program_class(request)),
+              'PROGRAM_SOURCE': java_literal(str(directory / (program_class(request) + '.java'))),
+              'CLASSES': java_literal(str(directory / 'classes'))}
+    template = Path(__file__).resolve().parents[1] / 'java' / 'StarBridgeLaunch.java'
+    return name, re.sub(r'__([A-Z_]+)__', lambda match: values[match.group(1)], source_text(template))
+
+
+def jar_classes(path):
+    """只索引二进制类型，不将资源重名当成冲突；多版本 JAR 映射到其实际类名。"""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            result = set()
+            for name in archive.namelist():
+                if name.startswith('META-INF/versions/'):
+                    parts = name.split('/', 3)
+                    name = parts[3] if len(parts) == 4 and parts[2].isdigit() else ''
+                if name.endswith('.class') and not name.startswith('META-INF/') and name != 'module-info.class':
+                    result.add(name)
+            return result
+    except (OSError, zipfile.BadZipFile) as error:
+        raise ValueError(f'Cannot inspect Java class names in {path}: {error}') from error
+
+
+@lru_cache(maxsize=4)
+def installed_classes(signature):
+    """缓存少量实际安装的类索引，任一库文件身份或内容相关元数据变化即重新读取。"""
+    result = {}
+    for path, *_ in signature:
+        for name in jar_classes(path):
+            result.setdefault(name, path)
+    return result
+
+
+def check_class_conflicts(jars, classpath, classes):
+    """拒绝来源间重复类，避免 javac、STAR 编译器与运行类加载器选择不同定义。
+
+    不提供覆盖安装类或逐步骤切换库版本的语义。即使重复定义当前字节相同也拒绝，
+    以免把类所属 JAR、资源或后续升级顺序隐式当成可交换；错误指出类型及两侧路径。
+    """
+    signature = []
+    for path in jars:
+        info = path.stat()
+        signature.append((str(path), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns))
+    installed = installed_classes(tuple(signature))
+    selected = {}
+
+    def register(name, source):
+        previous = installed.get(name) or selected.get(name)
+        if previous is not None:
+            raise ValueError(f'Conflicting Java class {name}: {previous} and {source}; use one compatible definition')
+        selected[name] = str(source)
+
+    for path in classpath:
+        for name in sorted(jar_classes(path)):
+            register(name, path)
+    for path in sorted(classes.rglob('*.class')):
+        register(path.relative_to(classes).as_posix(), path)
+
+
+def compile_program(star, macro, directory, timeout, *, sources=(), classpath=()):
+    """用同安装 JDK 统一编译入口与明确源码，不改包名或借邻近版本补齐依赖。
+
+    仅旧的代码步骤保留交给 STAR 编译的兼容路径；多文件模式缺工具链必须拒绝。
+    编译器禁止注解处理器，依赖只取准备阶段已冻结的显式 JAR，不递归添加原源码目录。
+    """
     executable = shutil.which(star)
     installation = _installation(str(Path(executable).resolve())) if executable else None
     if installation is None:
+        if sources or classpath:
+            raise ValueError('Full-source macros require the selected installation JDK and libraries before dispatch')
         # 包装脚本不解析内容；由 STAR 自己编译，但此时编译失败不能预先证明没有运行。
         return {'status': 'deferred_to_star', 'reason': 'Installation JDK was not located'}
     root, compiler, jars = installation
     classes = directory / 'classes'
     classes.mkdir()
-    process = subprocess.run([str(compiler), '-proc:none', '-encoding', 'UTF-8',
-        '-cp', os.pathsep.join(map(str, jars)), '-d', str(classes), str(macro)],
+    dependencies = list(jars) + list(classpath)
+    if any(os.pathsep in str(path) for path in dependencies):
+        raise ValueError('Classpath file paths must not contain the platform classpath separator')
+    source_options = []
+    if sources or classpath:
+        empty_sourcepath = directory / 'empty-sourcepath'
+        empty_sourcepath.mkdir()
+        # 完整源码只编译显式单元，不让 javac 从工作目录或依赖 JAR 隐式找另一份 .java。
+        source_options = ['-sourcepath', str(empty_sourcepath), '-implicit:none']
+    process = subprocess.run([str(compiler), '-proc:none', '-encoding', 'UTF-8', *source_options,
+        '-cp', os.pathsep.join(map(str, dependencies)), '-d', str(classes), str(macro), *map(str, sources)],
         capture_output=True, text=True, timeout=timeout,
         env=dict(os.environ, LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8'))
     (directory / 'compile.log').write_text(process.stdout + process.stderr)
     if process.returncode:
         raise ValueError('Macro compilation rejected before execution: ' + process.stderr[-6000:])
-    return {'status': 'compiled', 'installation': str(root)}
+    if sources or classpath:
+        check_class_conflicts(jars, classpath, classes)
+    return {'status': 'compiled', 'installation': str(root),
+            **({'source_lookup': 'explicit_units_only', 'class_conflicts': 'none_observed'}
+               if sources or classpath else {})}
+
+
+def check_source_entries(request, directory):
+    """入口必须在本请求源码的编译输出中，不能仅由依赖 JAR 的同名类满足引用。
+
+    javac 支持静态内部入口类；Java 源码中的 Outer.Inner 与 class 文件的 Outer$Inner
+    不同，因此枚举包／嵌套边界，并拒绝多个实际候选，不自行猜测歧义入口。
+    """
+    for step in request['steps']:
+        if 'macro' not in step:
+            continue
+        name = step['macro']['entry_class']
+        parts = name.split('.')
+        candidates = [directory / 'classes' / Path(*parts[:index], '$'.join(parts[index:]) + '.class')
+                      for index in range(len(parts))]
+        matches = [path for path in candidates if path.is_file()]
+        if len(matches) != 1:
+            raise ValueError(f'Entry class must be produced unambiguously by the source bundle: {name}')
 
 
 def final_receipt(path):
@@ -102,14 +254,28 @@ def execute(state, directory, request, timeout, on_client_start, *, on_client_la
     result = directory / 'result.json'
     # 渲染校验在占用 ID 之前完成，确定的本地数据错误不会留下无终态的请求目录。
     text = render(state, request, result)
+    launch_name, launch_text = render_launch(request, directory) if request.get('source_bundle') else (None, None)
     directory.parent.mkdir(parents=True, exist_ok=True)
     # 请求和源码先在临时目录完整准备，再原子发布 ID；中断不能占用一个缺少请求内容的 ID。
     with tempfile.TemporaryDirectory(prefix='.preparing-', dir=directory.parent) as temporary:
         pending = Path(temporary)
         (pending / 'macro-request.json').write_text(json.dumps(request, ensure_ascii=False, indent=2) + '\n')
-        (pending / 'StarBridgeProgram.java').write_text(text)
+        (pending / (program_class(request) + '.java')).write_text(text)
+        if launch_name is not None:
+            (pending / (launch_name + '.java')).write_text(launch_text)
+        source_paths, dependencies = [], []
+        if request.get('source_bundle'):
+            from starbridge.core.macro_sources import materialize_bundle
+            sources, jars = materialize_bundle(request['source_bundle'], pending)
+            source_paths = [path.relative_to(pending) for path in sources]
+            dependencies = [path.relative_to(pending) for path in jars]
         pending.rename(directory)
-    macro = directory / 'StarBridgeProgram.java'
+    macro = directory / (program_class(request) + '.java')
+    sources = [directory / path for path in source_paths]
+    batch = directory / (launch_name + '.java') if launch_name is not None else macro
+    if launch_name is not None:
+        sources.append(batch)
+    classpath = [directory / path for path in dependencies]
 
     def reject(error):
         """记录已知未派发的准备或启动失败，不把本地错误升级为未知算例修改。"""
@@ -119,18 +285,24 @@ def execute(state, directory, request, timeout, on_client_start, *, on_client_la
                 'status': 'rejected', 'uncertain': False,
                 'initialization': {'status': 'not_started', 'effect': declared_effect(request),
                                    'scope': 'Caller declarations and payload construction; effect aggregates all declared steps'},
-                'steps': [dict(id=step['id'], scope=step['scope'], effect=step['effect'], status='not_started')
-                          for step in request['steps']], 'reason': str(error)}}
+                'steps': [step_metadata(step) for step in request['steps']], 'reason': str(error)}}
         temporary = result.with_suffix('.tmp')
         temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
         temporary.replace(result)
         return data
 
     try:
-        compilation = compile_program(state['star'], macro, directory, min(timeout, 90))
+        compilation = compile_program(state['star'], macro, directory, min(timeout, 90),
+                                      sources=sources, classpath=classpath)
+        check_source_entries(request, directory)
         (directory / 'compilation.json').write_text(json.dumps(compilation) + '\n')
-        command = [state['star'], '-noretry', '-nbuserdir', str(directory.parent.parent / 'client-settings'),
-                   '-host', state['host'], '-port', str(state['port']), '-batch', str(macro), '-noexit']
+        command = [state['star'], '-noretry', '-nbuserdir', str(directory.parent.parent / 'client-settings')]
+        if request.get('source_bundle'):
+            runtime_classpath = [directory / 'classes', *classpath]
+            if any(os.pathsep in str(path) for path in runtime_classpath):
+                raise ValueError('Runtime classpath paths must not contain the platform classpath separator')
+            command += ['-classpath', os.pathsep.join(map(str, runtime_classpath))]
+        command += ['-host', state['host'], '-port', str(state['port']), '-batch', str(batch), '-noexit']
         (directory / 'command.json').write_text(json.dumps(command) + '\n')
         environment = dict(os.environ, LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8')
         log = (directory / 'star.log').open('w')
@@ -143,7 +315,8 @@ def execute(state, directory, request, timeout, on_client_start, *, on_client_la
             if on_client_launch is not None:
                 on_client_launch('attempted')
             try:
-                process = subprocess.Popen(command, cwd=directory, env=environment, stdin=subprocess.DEVNULL,
+                process = subprocess.Popen(command, cwd=request.get('working_directory', directory),
+                                           env=environment, stdin=subprocess.DEVNULL,
                                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             except (OSError, ValueError) as error:
                 if on_client_launch is not None:

@@ -88,7 +88,12 @@ public class StarBridgeProgram extends StarMacro {
                 } catch (Throwable error) {
                     boolean uncertain = "mutate".equals(step.get("effect"));
                     step.put("status", uncertain ? "uncertain" : "failed");
-                    step.put("error", fields("type", error.getClass().getName(), "message", String.valueOf(error.getMessage())));
+                    Throwable cause = error.getCause();
+                    step.put("error", fields("type", error.getClass().getName(), "message", String.valueOf(error.getMessage()),
+                            "cause", cause == null ? null : fields("type", cause.getClass().getName(),
+                                    "message", String.valueOf(cause.getMessage()))));
+                    // 完整宏的静态初始化异常常没有顶层消息；结构化结果保留原因，客户端日志保留堆栈。
+                    error.printStackTrace();
                     // 异常前已写入的观察仍有价值；只保留可序列化的冻结快照，不据此确认步骤完成。
                     try {
                         Object partialResult = freeze(result);

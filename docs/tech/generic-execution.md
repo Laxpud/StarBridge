@@ -64,7 +64,7 @@ AI 直接使用实际版本的 Java API 编写、组合和执行任务宏，这�
 }
 ```
 
-每个步骤必须有 `id`、`effect`、`scope` 和 `code`：
+每个步骤必须有 `id`、`effect`、`scope`，并在 `code` 与下文的 `macro` 中二选一；两类步骤可在同一请求中混用：
 
 - `code` 是 Java 方法体。可访问当前 `Simulation sim`、JSON 参数 `parameters`、步骤间的活对象容器 `shared`、本步输出容器 `result`。
 - `parameters` 的整数是 Java `Long`，小数是 `Double`，普通对象和数组分别为 `Map`、`List`。参数按数据注入，不执行字符串模板替换。
@@ -74,7 +74,39 @@ AI 直接使用实际版本的 Java API 编写、组合和执行任务宏，这�
 - `scope` 说明实际目标和范围。代码须将缺失、不支持和错误明确放入结果或抛出异常，不能用空集合替代未读取。结果容器只接受有限 JSON 值，不隐式序列化 STAR 对象。
 - 一个请求最多 200 步、源请求 2 MB。已明确且相关的步骤可集中执行；不为了减少往返扩大范围。前一步失败后，其余步骤保持 `not_started`。
 
-新会话在接入前必须用所选安装 JDK 预编译生命周期模板；宏源码同样在客户端启动前编译，编译拒绝意味着用户步骤尚未开始。旧会话兼容路径仍可能将无法定位 JDK 的宏交由 STAR 编译，这种情况下缺少凭据的失败不能推断为未执行。
+新会话在接入前必须用所选安装 JDK 预编译生命周期模板；宏源码同样在客户端启动前编译，编译拒绝意味着用户步骤尚未开始。仅纯代码步骤的旧会话兼容路径可能将无法定位 JDK 的宏交由 STAR 编译；完整源码模式此时明确拒绝，不派发缺少辅助类的包装器。
+
+### 原样复用完整宏与辅助源码
+
+已有 `StarMacro` 可以直接作为一个步骤，不必拆写 `execute0()`、删除包名或改写 `getActiveSimulation()`：
+
+```json
+{
+  "session_id": "<current session_id>",
+  "request_id": "reuse-recorded-work-01",
+  "working_directory": "/absolute/project",
+  "steps": [{
+    "id": "recorded-work",
+    "effect": "mutate",
+    "scope": "当前任务明确选择的原宏操作范围",
+    "macro": {
+      "entry_source": "/absolute/project/macros/Recorded.java",
+      "entry_class": "macro.Recorded",
+      "sources": ["/absolute/project/macros/Helper.java"],
+      "classpath": []
+    }
+  }]
+}
+```
+
+- `entry_source` 是原 UTF-8 Java 文件，`entry_class` 是 Java 源码形式的完整类名，须可公开无参数构造并继承 `StarMacro`。`sources` 和 `classpath` 分别明确列出辅助 Java 文件和依赖 JAR，省略为空；不隐式寻找或递归复制工程。源文件保持原字节，按当前安装 JDK 统一编译，禁止隐式寻找其他源文件。STAR 仅编译不含用户代码的薄启动宏，随后加载预编译程序，避免不同编译路径改变用户代码或内联常量；启动宏和包装器使用请求独有类名。入口必须产自本请求源码，调用前还核对实际加载目录。
+- 顶层 `working_directory` 是整个客户端的工作目录，影响普通 Java 相对文件路径。完整宏省略时采用共同入口目录；各入口目录不同则要求明确指定。每个宏的 `resolvePath()` 仍按各自原 `entry_source` 位置解析，**不会因源码快照改到请求目录**。纯代码请求省略工作目录时保持原请求目录行为。
+- 宏、辅助源码和显式 JAR 字节进入请求指纹，执行使用冻结副本；源码和 JAR 改变后，不能用原请求标识提交新操作。查询旧结果用 `get_execution`，不要求原文件仍存在。全请求最多200个源路径、32个依赖 JAR，完整 JSON 请求仍受2 MB限制；大 JAR 流式摘要／复制的时间和空间计入本次准备成本。
+- 原宏的构造和静态初始化遵循普通 Java 语义：框架在对应步骤的 `running` 凭据后检查入口、构造宏，再绑定当前 Simulation 和原路径，直接调用 `execute()`。原宏构造期间不保证 `getActiveSimulation()` 非空；这不同于包装器 `declarations` 已提供上下文的实例字段。整个请求共用类命名空间和静态状态，用户先前的代码也可能主动初始化来源类；不提供逐步骤类版本隔离。显式 JAR、源码产物与安装库之间重名的类在派发前拒绝，即使字节相同也不隐式选择来源；MR-JAR 按各版本类名保守检查，可能多拒绝当前 JDK 不会使用的定义。
+- 包装器不会自动把 `parameters/shared/result` 注入原宏，也不解析任意宏内部的业务操作。来源步骤的成功依据是 `entrypoint_returned`，`reported_results=not_provided` 明确表示没有直接取得业务结果；需要时在同请求加入普通回读步骤或读取宏自身产物。宏内部吞异常、嵌套播放、异步任务及交互行为不能由最外层返回值证明完成。
+- 冻结 JAR 内的资源可随 JAR 使用；源码旁的 classpath 资源不会自动复制，也不将可变源码目录加入运行 classpath。非空 JAR Manifest `Class-Path` 及旧式 JAR 索引当前拒绝，避免间接查找未冻结依赖；不改写第三方 JAR。原位置的数据文件、原生库及用户代码自行读取的外部内容不在代码快照范围。
+
+来源步骤的结构化结果在可捕获异常后保留 `phase` 和根因，完整堆栈写客户端日志；进程直接中止时，只能依赖此前落盘的状态，不能推断内存阶段已经持久化。`execute_macro`／`get_execution` 的 `artifacts` 返回请求、编译信息、编译日志及客户端日志的路径、大小和可用状态，不默认返回完整日志；路径读取与日志分页入口仍需后续完善。
 
 ## 完成与恢复
 
@@ -149,6 +181,7 @@ reconcile_execution(session_id, request_id, expected_review_token, assessment)
 
 | 实际任务 | 结果与证据 |
 | --- | --- |
+| 原样完整宏与批量工况 | 2602 在已有通道中[混合执行](<../../outputs/requirements-first/inlet-study/execution.json>)基线读取、带包名／私有方法的完整宏及辅助 Java、产物读取，约6.47秒生成0.02／0.04 m/s两个[工况文件记录](<../../outputs/requirements-first/inlet-study/variants/cases.csv>)；保留基线第5次迭代，没有清除数据、重新求解或重载产物。原入口目录的 CSV 与显式 cwd 均按预期使用；[MCP 重放](<../../outputs/requirements-first/inlet-study/mcp-replay.json>)约0.019秒只返回原凭据。最终薄启动宏通过同会话的[只读清点](<../../outputs/requirements-first/inlet-study/inventory.json>)运行，当前入口实读0.04 m/s，实际内容见[客户端日志](<../../outputs/requirements-first/runtime/sessions/6e54569858b244c0aace25e7e066a301/requests/macro-inlet-study-inventory/star.log>)；最终源码／启动宏也通过[2602](<../../outputs/requirements-first/inlet-study/final-source-build-tped7bzp/21.02.007/compilation.json>)和[2510](<../../outputs/requirements-first/inlet-study/final-source-build-tped7bzp/20.06.007/compilation.json>)编译。本次无额外 JAR，依赖冲突和异常恢复不是本次实跑覆盖；自有服务已停止，基线[前](<../../outputs/requirements-first/inlet-study/source-before.json>)、[后](<../../outputs/requirements-first/inlet-study/source-after.json>)摘要一致。 |
 | 当前初始化与已有算例审查 | 2602 在已保存通道中[集中读取边界、材料、迭代状态并导出已有报告](<../../outputs/requirements-first/channel-current-audit/audit.json>)，实例字段初始化使用当前 `sim` 和 `getActiveSimulation()`，初始化及三个步骤均完成。读取入口0.01 m/s、密度1000 kg/m³、黏度0.001 Pa·s；以明确的名义水力直径1 mm推得 Re=10，[出口报告](<../../outputs/requirements-first/channel-current-audit/outlet-current.txt>)为1.016045×10⁻⁵ kg/s。没有新求解，迭代仍为5，不声称收敛；新接入约80.52秒、同会话三步约6.58秒，仅是这次任务观察。自有会话已停止，原算例[前](<../../outputs/requirements-first/channel-current-audit/source-before.json>)、[后](<../../outputs/requirements-first/channel-current-audit/source-after.json>)摘要一致。两安装 JDK 另编译通过现有状态、求解和 GUI 定位方法各三份；初始化异常与显式接受流程未实际触发。 |
 | 几何、区域、物理与网格 | 宏创建6面几何和模型；`mesh.generate` 实际运行 parts-based 操作，得到909个单元；用位置报告测得两端面而非猜测面序号。见[网格执行](<../../outputs/requirements-first/channel-workflow/12-execute_recipe.json>)、[测量与配置](<../../outputs/requirements-first/channel-workflow/13-execute_macro.json>)。 |
 | 求解 | `solver.step(iterations=5)` 的实际计数从0到5；密度1000 kg/m³、动力黏度0.001 Pa·s、入口0.01 m/s、出口表压0 Pa。见[求解凭据](<../../outputs/requirements-first/channel-workflow/14-execute_recipe.json>)。只验证通路，不证明收敛或工程精度。 |

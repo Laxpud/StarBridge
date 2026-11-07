@@ -130,7 +130,8 @@ PARAMETER_DESCRIPTIONS = {
     'request_id': '1–80 个 ASCII 字母、数字、下划线或短横线的稳定任务标识；同会话重复内容仅返回旧凭据，不重新执行。',
     'expected_review_token': 'get_execution.result.review.token 的当前值；绑定原请求、凭据摘要、会话及最近请求。证据或会话改变后须重新审阅，不凭旧标识解除限制。',
     'assessment': '调用者根据已有依据作出的明确判断，含 observations、accepted_scope、remaining_scope 和 evidence；只接受当前状态继续，不认证任务完成，不要求为确认另跑验证。',
-    'steps': '1–200 个有序步骤，每项含 id/code/effect/scope；code 是 Java 方法体，effect=read|mutate，scope 说明实际目标与范围。失败后剩余步骤不执行。',
+    'steps': '1–200个有序步骤，每项id/effect/scope，code与macro二选一。code是Java方法体；macro含entry_source/entry_class，可明确sources辅助Java和classpath JAR。两种步骤可混用；effect=read|mutate覆盖所有来源代码，失败后剩余步骤不执行。',
+    'working_directory': '宏客户端的绝对工作目录，作用于普通Java相对文件路径。完整宏省略时用共同entry_source父目录，来源目录不同时必须明确；纯code省略沿用请求目录。完整宏resolvePath仍绑定各自原入口文件，不复制资源或算例目录。',
     'parameters': 'Java 方法体可访问的 JSON 参数对象；数值对应 Long/Double，字符串按数据传递，不作代码模板替换。显式 object_parameters 或记忆契约 object_reference 可在步骤前将 {object_id} 包装绑定为当前 STAR 对象。',
     'object_parameters': 'execute_macro 中需绑定对象的参数名数组；仅这些参数内精确的 {object_id:当前ID} 包装（含嵌套数组/对象）转换为 STAR 对象。省略不转换；全部绑定通过后才开始用户步骤。',
     'imports': 'Java 导入名称数组，如 star.common.*，不含 import 和分号；使用所选 STAR 版本的 API。',
@@ -199,8 +200,17 @@ def tool_input_schema(method, schema):
                          'items': object_schema({'source': TEXT, 'description': TEXT})}}))
     if method == 'execute_macro':
         parameters['intent']['enum'] = ['execute', 'explore']
-        parameters['steps'].update(minItems=1, maxItems=200, items=object_schema({
-            'id': TEXT, 'code': TEXT, 'effect': {'enum': ['read', 'mutate']}, 'scope': TEXT}))
+        common = {'id': TEXT, 'effect': {'enum': ['read', 'mutate']}, 'scope': TEXT}
+        source = object_schema({
+            'entry_source': {**TEXT, 'description': '原UTF-8 Java文件的绝对路径，保持package和原宏位置。'},
+            'entry_class': {**TEXT, 'description': '公开无参数构造的StarMacro完整Java类名。'},
+            'sources': {'type': 'array', 'items': TEXT, 'maxItems': 200,
+                        'description': '明确的辅助Java绝对路径；不递归发现文件，省略为空。'},
+            'classpath': {'type': 'array', 'items': TEXT, 'maxItems': 32,
+                          'description': '明确的JAR绝对路径；冻结字节，非空Manifest Class-Path、旧式JAR索引或重复类当前拒绝，省略为空。'}},
+            ['entry_source', 'entry_class'])
+        parameters['steps'].update(minItems=1, maxItems=200, items={'oneOf': [
+            object_schema({**common, 'code': TEXT}), object_schema({**common, 'macro': source})]})
     if method == 'find_objects':
         parameters['offset']['maximum'] = 2147483647
     if 'property_ids' in parameters:
@@ -374,7 +384,7 @@ def usage_contract():
             'save_session': 'result.output 是实际绝对路径；session_metadata 为保存时元数据，不是全量快照或独立重载验证。',
             'list_recipes': 'result.recipes[] 包含参数、适用范围和证据；不连接 STAR。',
             'execute_recipe': 'result.recipe 保存方法来源；检查 result.execution 的逐步状态和各步骤返回的实际状态。',
-            'execute_macro': 'result.execution.status/steps；completed 仅证明程序返回及凭据记录。',
+            'execute_macro': 'result.execution.status/steps；来源步骤仅证明entrypoint_returned，reported_results标明未提供业务结果。artifacts提供编译与客户端日志路径/大小，不把completed等同任务完成。',
             'get_execution': '读取原凭据和receipt_read诊断；缺失、损坏与读取失败不冒充未执行。review提供当前审阅token/can_accept，reconciliation与原execution状态分开，evidence_current指出依据是否变化；不重新执行。',
             'reconcile_execution': 'result.reconciliation记录调用者接受的当前状态与依据，不证明原任务完成；检查session_state是否还有其他uncertain_request/pending_reconciliations。'},
         'prepared_methods': {
@@ -400,14 +410,17 @@ def usage_contract():
             'close': '保存后仍可能 modified=true；不能为关闭而擅自 discard。'},
         'generic_execution': {
             'method': 'execute_macro', 'recovery_method': 'get_execution',
-            'step': {'id': 'stable step identifier', 'code': 'Java method body',
-                     'effect': 'read | mutate', 'scope': 'actual objects, values and outputs covered'},
+            'step': {'id': 'stable step identifier', 'code': 'Java方法体，与macro二选一',
+                     'macro': '原样完整宏：entry_source/entry_class及可选sources/classpath；可与code步骤混用',
+                     'effect': 'read | mutate', 'scope': '调用者声明的目标、值与输出范围，不自动认证覆盖'},
+            'source_execution': '所选安装JDK统一编译冻结源码/JAR，拒绝安装库/依赖/源码间重名类；STAR只编译无用户代码的薄启动宏，不二次编译用户程序，不抽取方法或删除package。运行时核对入口类来源后构造、绑定Simulation/原路径、直接execute。原构造器不保证已有Simulation；单请求共享类命名空间和静态状态，不自动注入包装器参数或业务结果。',
+            'source_paths': 'working_directory作用于整个客户端；来源宏resolvePath各自沿用原文件位置。不复制算例/资源目录；支持JAR内资源，非空Manifest Class-Path和旧式JAR索引拒绝，外部数据与原生依赖不冻结。',
             'context': {'sim': '当前 Simulation', 'parameters': 'Map<String,Object>；普通值为 JSON，显式引用位置绑定当前 STAR 对象',
                         'shared': '同请求步骤间共享 Java 对象的 Map', 'result': '本步 JSON 输出 Map'},
             'extensions': 'imports指定类或通配导入，declarations定义字段、辅助方法和内部类；身份及全部对象绑定通过、initialization.running落盘后才初始化。任一步mutate则初始化也声明mutate，全read则初始化声明read。声明覆盖全部用户源码，不是沙箱或副作用检测。',
             'receipt': 'execution.status 与 steps[].status；partial 保留完成项与未开始项，uncertain 标记本请求未知副作用。结果中的 active_request／uncertain_request（存在时）另表示当前会话限制；本次读取完成不解除先前未知写入。',
             'completion': '步骤返回并写入 JSON 只证明程序完成；不能推断读取覆盖、求解收敛或物理有效性。',
-            'idempotency': '同会话 request_id 与请求内容绑定；相同内容返回原凭据，不再执行。',
+            'idempotency': '同会话request_id与请求内容及显式源代码/JAR字节绑定；相同内容只返回原凭据。源文件改变或删除后查询旧结果使用get_execution，不重做操作。',
             'intent': 'execute 为明确任务，explore 为探索。两者均不自动获取试改或覆盖权限。'},
         'working_memory': {
             'methods': ['search_memory', 'get_memory', 'record_memory', 'update_memory'],

@@ -21,11 +21,13 @@ def request_identifier(value):
 
 
 def prepare(request_id, steps, parameters=None, imports=None, declarations='', intent='execute',
-            *, object_bindings=None):
+            *, object_bindings=None, working_directory=None):
     """校验并冻结有序 Java 步骤；参数作为数据注入，不对代码作字符串模板替换。
 
-    code 是 execute 内的方法体，能访问 sim、parameters、shared 与 result。
-    shared 只在本次步骤之间传递 Java 对象；result 只能存储明确的 JSON 值。
+    步骤选择 code 方法体或 macro 完整源码，两者互斥。code 能访问 sim、parameters、
+    shared 与 result；完整宏保持自身类和方法，绑定当前算例后调用公开 execute，
+    不会自动获得包装器的参数或输出容器。shared 只在本次代码步骤之间传递 Java 对象，
+    result 只能存储明确的 JSON 值；完整宏未报告结果时明确保留这一边界。
     declarations 支持共享方法、内部类和字段，imports 支持当前安装的任意宏 API。
     用户声明的初始化在身份与对象绑定通过后才开始，并单独记录 initialization；
     任一步声明 mutate 时整个初始化阶段按 mutate 处理，全 read 则初始化也声明只读。
@@ -38,15 +40,16 @@ def prepare(request_id, steps, parameters=None, imports=None, declarations='', i
         raise ValueError('steps must contain 1-200 explicit operations')
     seen = set()
     for step in steps:
-        if not isinstance(step, dict) or set(step) != {'id', 'code', 'effect', 'scope'}:
-            raise ValueError('Each step requires exactly id, code, effect and scope')
+        if not isinstance(step, dict) or set(step) not in (
+                {'id', 'code', 'effect', 'scope'}, {'id', 'macro', 'effect', 'scope'}):
+            raise ValueError('Each step requires id, effect, scope and exactly one of code or macro')
         request_identifier(step['id'])
         if step['id'] in seen:
             raise ValueError('Step ids must be unique')
         seen.add(step['id'])
         if step['effect'] not in ('read', 'mutate'):
             raise ValueError('Step effect must be read or mutate; export, save and execution are mutations')
-        for name in ('code', 'scope'):
+        for name in ('scope', 'code') if 'code' in step else ('scope',):
             if not isinstance(step[name], str) or not step[name].strip():
                 raise ValueError(f'Step {name} must be non-empty text')
     imports = [] if imports is None else imports
@@ -59,8 +62,22 @@ def prepare(request_id, steps, parameters=None, imports=None, declarations='', i
     parameters = {} if parameters is None else parameters
     if not isinstance(parameters, dict):
         raise ValueError('parameters must be a JSON object')
-    request = dict(request_id=request_id, steps=steps, parameters=parameters,
+    request = dict(request_id=request_id, steps=[dict(step) for step in steps], parameters=parameters,
                    imports=imports, declarations=declarations, intent=intent)
+    source_steps = [step for step in request['steps'] if 'macro' in step]
+    if source_steps:
+        from .macro_sources import prepare_bundle
+        bundle = prepare_bundle([step['macro'] for step in source_steps], working_directory)
+        for step, entry in zip(source_steps, bundle['entries']):
+            step['macro'] = entry
+        request['source_bundle'] = bundle
+        request['working_directory'] = bundle['working_directory']
+    elif working_directory is not None:
+        if not isinstance(working_directory, str) or not working_directory or not Path(working_directory).is_absolute():
+            raise ValueError('working_directory must be an absolute directory path')
+        if not Path(working_directory).is_dir():
+            raise ValueError('working_directory must be an existing directory')
+        request['working_directory'] = str(Path(working_directory))
     # 空绑定不进入旧请求指纹，保持无对象参数的既有请求可重放。
     if object_bindings:
         if not isinstance(object_bindings, list):
@@ -131,6 +148,27 @@ def execution_result(directory, request_id, state=None):
         result['reconciliation'] = {**recorded,
             'evidence_current': evidence_current(recorded, state, identifier, digest, observed['read_status'])}
         result['previous_reconciliation_count'] = len(state.get('execution_review_history', {}).get(identifier, []))
+    # 只返回诊断产物的位置与大小，不把完整源码或客户端日志重复塞进模型上下文。
+    artifacts = {}
+    for kind, filename in (('request', 'macro-request.json'), ('compiler_log', 'compile.log'),
+                           ('client_log', 'star.log'), ('compilation', 'compilation.json')):
+        path = run / filename
+        try:
+            artifacts[kind] = {'path': str(path), 'status': 'available', 'bytes': path.stat().st_size}
+        except FileNotFoundError:
+            artifacts[kind] = {'path': str(path), 'status': 'missing'}
+        except OSError as error:
+            artifacts[kind] = {'path': str(path), 'status': 'unreadable', 'error': str(error)}
+    result['artifacts'] = artifacts
+    if request.get('source_bundle'):
+        result['source_programs'] = [{'step_id': step['id'], 'entry_class': step['macro']['entry_class'],
+                                     'entry_source': step['macro']['entry_source']}
+                                    for step in request['steps'] if 'macro' in step]
+        result['working_directory'] = request['working_directory']
+        result['source_snapshot'] = {'manifest': str(run / 'macro-request.json'),
+            'source_files': len(request['source_bundle']['files']),
+            'dependency_jars': len(request['source_bundle']['dependencies']),
+            'scope': 'Explicit source and JAR bytes only; external data and native dependencies are not frozen'}
     # 本次读取成功不等于先前写入已确认；重放与新调用都显式保留当前会话的限制。
     for key in ('active_request', 'uncertain_request'):
         if state.get(key):

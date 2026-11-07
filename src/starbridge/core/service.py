@@ -467,9 +467,12 @@ class Service:
         return {**result, 'recipe': provenance}
 
     def execute_macro(self, session_id, request_id, steps, parameters=None, imports=None,
-                      declarations='', intent='execute', timeout=180, object_parameters=None):
-        """一次连接执行明确的 Java 步骤，返回持久逐步凭据；同一请求标识不会重复执行。
+                      declarations='', intent='execute', timeout=180, object_parameters=None,
+                      working_directory=None):
+        """一次连接组合代码方法体和原样完整宏，返回持久逐步凭据；相同标识不重复执行。
 
+        macro 步骤显式选择入口、辅助源码及 JAR，保持原宏自身上下文与路径语义；
+        working_directory 作用于整个客户端，不自动复制工程或把来源文件当作数据目录快照。
         方法体可访问 sim、parameters、shared、result；imports 和 declarations 允许
         使用当前 STAR 宏 API 的完整能力。effect 和 scope 是调用者的影响及读取范围声明，
         不是代码沙箱或自动覆盖保证。explore 不授予试改当前用户算例的额外权限。
@@ -477,15 +480,16 @@ class Service:
         parameters = {} if parameters is None else parameters
         paths = objects.parameter_reference_paths(parameters, object_parameters)
         return self._execute_bound_macro(session_id, request_id, steps, parameters, imports,
-                                         declarations, intent, timeout, paths)
+                                         declarations, intent, timeout, paths, working_directory)
 
     def _execute_bound_macro(self, session_id, request_id, steps, parameters=None, imports=None,
-                             declarations='', intent='execute', timeout=180, binding_paths=None):
+                             declarations='', intent='execute', timeout=180, binding_paths=None,
+                             working_directory=None):
         """统一准备参数绑定及请求凭据；本地 ID 校验不执行 STAR，实际解析先于所有用户步骤。"""
         from .macros import prepare
         bindings = objects.bind_parameters(session_id, parameters, binding_paths or [])
         request = prepare(request_id, steps, parameters, imports, declarations, intent,
-                          object_bindings=bindings)
+                          object_bindings=bindings, working_directory=working_directory)
         return self._operate(session_id, 'macro', _timeout(timeout), macro_request=request)
 
     def get_execution(self, session_id, request_id):
