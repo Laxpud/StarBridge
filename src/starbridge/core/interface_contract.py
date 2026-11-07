@@ -8,6 +8,15 @@ from copy import deepcopy
 
 
 SERVER_INSTRUCTIONS = (
+    'StarBridge 帮助 AI 使用实际版本的 STAR-CCM+ Java API 编写、复用和执行宏，'
+    '接手已有 GUI 算例或在后台连续工作，并按需获取 API 资料、执行依据与工作记忆。'
+    '宏是正常操作方式，不以结构化适配清单限定能力。相关任务需要详细说明时主动调用 '
+    'starbridge.get_contract；已有有效会话、资料和代码可直接复用。'
+    '未读取不等于未设置，宏返回不等于任务完成；结果未知时先查凭据，不盲目重复执行。'
+)
+
+
+USAGE_INSTRUCTIONS = (
     '当前实现优先连接本机 Linux STAR GUI／服务器，没有匹配会话时直接加载原算例。'
     '需要完整调用格式时可调用 starbridge.get_contract（也可读取 starbridge://contract），'
     '取得流程、对象定位格式、结果位置和恢复约定，无需读取项目文档或 Skill。'
@@ -18,8 +27,10 @@ SERVER_INSTRUCTIONS = (
     '通用入口可用与预编译通过不代表该版本全部API或任务行为已验证；每个用户宏仍单独编译。'
     '运行时发现要求 runtime_discovery.supported=true；属性读取与写入规则编译还需对应安装的本机 Javadoc。'
     '需要这些规则时 open_session.star 优先指向安装目录内的实际程序，安装目录外的包装脚本无法据路径定位文档。'
-    '按目标和已知信息查找对象：未知对象可用 browse_tree/search_settings，已知目录类型可用 find_objects；均返回 object_id。'
-    '用 describe_object 获取属性契约，再按需读取；已有同会话有效定位和契约时可直接复用。'
+    '正常工作以实际版本 Java API 和宏为主，按任务直接定位对象并组织读取、条件判断、修改和回读。'
+    '需要补查调用依据时用 search_api/read_api 取得实际安装的签名、说明及继承来源；已有可靠写法可直接复用。'
+    '结构化接口是可选辅助：未知对象可用 browse_tree/search_settings，已知目录类型可用 find_objects；均返回 object_id。'
+    '选用结构化属性接口时用 describe_object 获取属性契约，再按需读取；已有同会话有效定位和契约时可直接复用。'
     '流程示例不是每次调用的固定前置步骤；已有可用会话无需重新发现安装或打开会话。'
     '参数 default 是省略时的行为，可按任务覆盖；schema 的范围和枚举是当前服务校验边界，不是 STAR 的通用限制。'
     '搜索默认只覆盖缓存，空命中不表示算例不存在目标；检查分页、覆盖范围和逐项错误。'
@@ -73,6 +84,10 @@ TARGET_DEFS['catalog_target']['description'] = (
 
 # 参数类型仍由 SDK 从函数签名生成；这里只补充业务含义和已有 Core 的结构约束。
 PARAMETER_DESCRIPTIONS = {
+    'installation': '实际 STAR 安装根目录的绝对路径，即包含 star/ 与 doc/ 的目录；可取 discover_installations 的 javadoc_root，与 session_id 二选一。仅绑定所选安装资料，不自动换版本。',
+    'java_class': '官方索引返回的完整 Java 类名，包含包名；嵌套类型保留点号。',
+    'member': '可选成员简单名或官方完整锚点；简单名返回同名重载并追溯本地继承声明，省略只展开本类成员。',
+    'kind': 'API 索引查询范围：all、type 或 member；不搜索未加载正文或外部宏库。',
     'release': '用户指定或 discover_installations 实际返回的 STAR release，不限于固定枚举；能力查询决定是否支持，open_session 中作为可选预期值核对。',
     'build': '用户指定或实际检测的 STAR Build 字符串；get_capabilities 可精确查询，open_session 中作为可选预期值核对。',
     'search_roots': '可选的绝对安装根目录列表，替换默认搜索根；空数组只查 PATH。当前最多 20 个根、仅有限层级搜索，不能和 star 同时提供。',
@@ -113,6 +128,8 @@ PARAMETER_DESCRIPTIONS = {
     'create': '显式从零创建空算例，须给 project_dir 且不能给 input；不加载、复制或保存文件。',
     'recipe_id': 'list_recipes 返回的内置方法 ID，或 memory: 加已审阅的记忆 ID；记忆方法须提供 expected_revision 与原读取范围的 project_dir。',
     'request_id': '1–80 个 ASCII 字母、数字、下划线或短横线的稳定任务标识；同会话重复内容仅返回旧凭据，不重新执行。',
+    'expected_review_token': 'get_execution.result.review.token 的当前值；绑定原请求、凭据摘要、会话及最近请求。证据或会话改变后须重新审阅，不凭旧标识解除限制。',
+    'assessment': '调用者根据已有依据作出的明确判断，含 observations、accepted_scope、remaining_scope 和 evidence；只接受当前状态继续，不认证任务完成，不要求为确认另跑验证。',
     'steps': '1–200 个有序步骤，每项含 id/code/effect/scope；code 是 Java 方法体，effect=read|mutate，scope 说明实际目标与范围。失败后剩余步骤不执行。',
     'parameters': 'Java 方法体可访问的 JSON 参数对象；数值对应 Long/Double，字符串按数据传递，不作代码模板替换。显式 object_parameters 或记忆契约 object_reference 可在步骤前将 {object_id} 包装绑定为当前 STAR 对象。',
     'object_parameters': 'execute_macro 中需绑定对象的参数名数组；仅这些参数内精确的 {object_id:当前ID} 包装（含嵌套数组/对象）转换为 STAR 对象。省略不转换；全部绑定通过后才开始用户步骤。',
@@ -152,6 +169,16 @@ def tool_input_schema(method, schema):
             parameters[name].update(bounds)
     if 'scope' in parameters:
         parameters['scope']['enum'] = ['simulation', 'all']
+    if method in ('search_api', 'read_api'):
+        result['oneOf'] = [
+            {'required': ['installation'], 'properties': {'installation': {'type': 'string'}, 'session_id': {'type': 'null'}}},
+            {'required': ['session_id'], 'properties': {'session_id': {'type': 'string'}, 'installation': {'type': 'null'}}},
+        ]
+        parameters['limit'].update(maximum=100, description='资料页面大小，允许 1–100；默认20，按 next_offset 继续。')
+        parameters['session_id']['description'] = '可选已有会话标识；只读取绑定安装与版本，不连接 STAR。与 installation 二选一。'
+        if method == 'search_api':
+            parameters['query']['description'] = '非空索引关键词；按空白分词且全部匹配类名／成员标签，支持类名和方法名组合，不保证自然语言召回。'
+            parameters['kind']['enum'] = ['all', 'type', 'member']
     if method == 'search_memory':
         parameters['query']['description'] = '经验或资料关键词，可为空以浏览；结果只是候选，不能推断条件已满足。'
         parameters['limit'].update(maximum=200, description='返回候选数，允许 1–200；检查 truncated。')
@@ -164,6 +191,12 @@ def tool_input_schema(method, schema):
         parameters['parameters']['description'] = '按所选方法的 parameters 契约填写当前任务参数；不从历史记忆自动补对象、路径或单位。'
         parameters['expected_revision']['description'] = 'memory:ID 方法必须填写已审阅的正整数修订；内置方法不提供。'
         parameters['project_dir']['description'] = '仅用于 memory:ID，必须沿用 get_memory 的相同项目范围；内置方法不提供。'
+    if method == 'reconcile_execution':
+        parameters['expected_review_token'].update(pattern='^[0-9a-f]{64}$')
+        parameters['assessment'].update(object_schema({
+            'observations': TEXT, 'accepted_scope': TEXT, 'remaining_scope': TEXT,
+            'evidence': {'type': 'array', 'minItems': 1, 'maxItems': 50,
+                         'items': object_schema({'source': TEXT, 'description': TEXT})}}))
     if method == 'execute_macro':
         parameters['intent']['enum'] = ['execute', 'explore']
         parameters['steps'].update(minItems=1, maxItems=200, items=object_schema({
@@ -287,7 +320,7 @@ def usage_contract():
     defaults = {name: {p.name: p.default for p in inspect.signature(getattr(Service, name)).parameters.values()
                        if p.default is not inspect.Parameter.empty} for name in METHODS}
     return {
-        'instructions': SERVER_INSTRUCTIONS, 'defaults': defaults,
+        'instructions': USAGE_INSTRUCTIONS, 'defaults': defaults,
         'contract_scope': {
             'defaults': '省略参数时的当前行为，可按任务覆盖；不是固定配置。',
             'limits': '当前服务校验边界，不是 STAR 的通用限制。',
@@ -302,12 +335,24 @@ def usage_contract():
             'version_selection': 'open_session 核对实际检测与可选预期；未知登记版本只可尝试独立通用预编译/身份握手，不切换安装或冒用目录。',
             'platform': '管理会话要求 Linux、许可证、可定位的所选安装JDK/库及匹配的运行时版本；目录适配并非通用入口前提。',
             'discovery_javadoc': '运行时规则要求安装内 doc/client/html/type-search-index.js；star 应指向实际安装内启动器，不能靠外部包装脚本定位 Javadoc。'},
+        'documentation': {
+            'selection': 'installation 取实际安装根目录，或 session_id 使用会话绑定安装；二选一。会话版本与安装资料不符时拒绝，不替换版本。',
+            'search': 'search_api 查询官方类名和成员索引，不受结构化适配清单限制；按任务关键词缩小范围后 read_api。',
+            'read': 'read_api 获取签名、说明、参数约定、文中代码和来源；member 可选简单名称或完整锚点，保留重载与本地继承声明。',
+            'coverage': 'read_status、coverage.errors、next_offset 区分缺失、外部资料未读和成员分页；类链接另查 links_next_offset/links_coverage，使用相同 offset 参数续页。长类注记摘录在 content_truncations 明示并提供完整来源；不能冒充全文。查询不到不是 API 不存在。当前不检索正文、独立宏示例库或社区资料。',
+            'reuse': '返回实际版本、来源路径和内容摘要；进程内有界缓存按安装和文件身份失效。已获取且适用的资料不必重复查询。'},
         'workflow': {
-            'read': ['需要新会话时确定实际安装并 open_session；已有会话沿用 session_id',
+            'task': ['明确本次任务范围与探索/执行意图；复用已知会话、对象访问方法和相关资料',
+                     '按已知项目背景检索工作记忆，审阅条件与依据；可靠代码可直接复用，有疑问再补查实际版本 API',
+                     '用 Java API 编写或组合任务宏；将明确读取、判断、修改和回读集中到适当步骤，不逐功能等待适配',
+                     '需要新会话时再 open_session；同一算例连续操作沿用 session_id，不默认复制或每步重载',
+                     'execute_macro 使用稳定 request_id；检查每步结果、缺失范围及未知状态，失败先 get_execution',
+                     '按任务决定暂停、计算、另存或覆盖；只将自然任务中已有依据写入或更新记忆'],
+            'structured_read': ['需要新会话时确定实际安装并 open_session；已有会话沿用 session_id',
                      '已知目录类型用 find_objects；发现能力可用时可用 browse_tree/search_settings',
                      '将返回 object_id 交给 describe_object，选择 property_id',
                      'read_properties(object_id, property_ids)，检查逐项 status 与完整性'],
-            'write': ['从 describe_object 获取 write_contract，从 read_properties 复制完整 value 为 expected',
+            'structured_write': ['选用结构化辅助接口时，从 describe_object 获取 write_contract，从 read_properties 复制完整 value 为 expected',
                       'modify_property 修改一个属性；结构操作另用 execute_operation',
                       '检查 before/properties 回读，成功只表示内存修改'],
             'persist': ['显式 save_session；省略 output 写回，指定新路径另存',
@@ -330,7 +375,8 @@ def usage_contract():
             'list_recipes': 'result.recipes[] 包含参数、适用范围和证据；不连接 STAR。',
             'execute_recipe': 'result.recipe 保存方法来源；检查 result.execution 的逐步状态和各步骤返回的实际状态。',
             'execute_macro': 'result.execution.status/steps；completed 仅证明程序返回及凭据记录。',
-            'get_execution': '读取指定请求原凭据；方法或记忆修订变化后也不重新执行。'},
+            'get_execution': '读取原凭据和receipt_read诊断；缺失、损坏与读取失败不冒充未执行。review提供当前审阅token/can_accept，reconciliation与原execution状态分开，evidence_current指出依据是否变化；不重新执行。',
+            'reconcile_execution': 'result.reconciliation记录调用者接受的当前状态与依据，不证明原任务完成；检查session_state是否还有其他uncertain_request/pending_reconciliations。'},
         'prepared_methods': {
             'discovery': 'list_recipes 取得内置方法与参数；记忆方法先 get_memory 审阅适用范围、源码和依据。',
             'execution': 'execute_recipe 使用稳定 request_id 和实际参数；memory:ID 必须 expected_revision 与相同 project_dir。',
@@ -348,6 +394,7 @@ def usage_contract():
                        'search_settings': '用 next_cursor，保持 query/scope，expand=false；元数据变化后重新搜索。'},
         'recovery': {
             'uncertain': '查询 session_status/uncertain_request；允许只读核对，不自动重试、回滚或保存；读取成功不解除未确认状态。',
+            'reconcile_execution': '通用宏结果未知时，依据已有观察明确说明observations/accepted_scope/remaining_scope/evidence，用get_execution.review.token显式接受当前状态。can_accept=false时不得强制继续；活动未知、不可读取或旧记录缺停止依据均不等于已停止。不额外运行验证，不重放、不回滚、不保存；原凭据及历史unknown保留。接受后凭据改变会重新提示审阅，其他未知请求不会被解除。',
             'client_timeout': '取消不撤销 STAR 操作；查询状态确认 active_request/last_request。',
             'busy': '等待当前请求结束，不重复提交。',
             'close': '保存后仍可能 modified=true；不能为关闭而擅自 discard。'},
@@ -357,7 +404,7 @@ def usage_contract():
                      'effect': 'read | mutate', 'scope': 'actual objects, values and outputs covered'},
             'context': {'sim': '当前 Simulation', 'parameters': 'Map<String,Object>；普通值为 JSON，显式引用位置绑定当前 STAR 对象',
                         'shared': '同请求步骤间共享 Java 对象的 Map', 'result': '本步 JSON 输出 Map'},
-            'extensions': 'imports 指定类或通配导入，declarations 定义辅助方法和内部类；完整宏权限，不是沙箱。',
+            'extensions': 'imports指定类或通配导入，declarations定义字段、辅助方法和内部类；身份及全部对象绑定通过、initialization.running落盘后才初始化。任一步mutate则初始化也声明mutate，全read则初始化声明read。声明覆盖全部用户源码，不是沙箱或副作用检测。',
             'receipt': 'execution.status 与 steps[].status；partial 保留完成项与未开始项，uncertain 标记本请求未知副作用。结果中的 active_request／uncertain_request（存在时）另表示当前会话限制；本次读取完成不解除先前未知写入。',
             'completion': '步骤返回并写入 JSON 只证明程序完成；不能推断读取覆盖、求解收敛或物理有效性。',
             'idempotency': '同会话 request_id 与请求内容绑定；相同内容返回原凭据，不再执行。',

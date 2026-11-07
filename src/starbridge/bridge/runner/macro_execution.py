@@ -19,8 +19,21 @@ from .modifier import java_literal
 from starbridge.core.session_store import session_version
 
 
+def declared_effect(request):
+    """聚合调用者对整个程序的影响声明；同样覆盖用户声明和类／实例初始化。
+
+    任一步为 mutate，则初始化按 mutate 处理；全部步骤为 read 才声明整个初始化只读。
+    该规则必须与会话的 active_mutating 一致，不分析 Java，也不证明源码没有副作用。
+    """
+    return 'mutate' if any(step['effect'] == 'mutate' for step in request['steps']) else 'read'
+
+
 def render(state, request, result):
-    """将数据与源码分别填入固定入口；仅替换原模板，参数文本不会再次被解释为占位符。"""
+    """将数据与源码分别填入入口和延迟初始化的 Payload，不把用户声明放入入口类。
+
+    只替换原模板，参数文本不会再次解释为占位符。身份与全部对象参数绑定通过后，
+    Java 入口先写初始化凭据再创建 Payload；源码完整权限不因移动类位置变成沙箱。
+    """
     template = Path(__file__).resolve().parents[1] / 'java' / 'StarBridgeProgram.java'
     version = session_version(state)
     values = {
@@ -29,6 +42,7 @@ def render(state, request, result):
         'RELEASE': java_literal(version['release']),
         'BUILD': java_literal(version['build']),
         'REQUEST_ID': java_literal(request['request_id']),
+        'INITIALIZATION_EFFECT': java_literal(declared_effect(request)),
         'PARAMETERS': java_literal(request['parameters']),
         'IMPORTS': '\n'.join('import ' + item + ';' for item in request['imports']),
         'DECLARATIONS': request['declarations'],
@@ -75,17 +89,12 @@ def compile_program(star, macro, directory, timeout):
 
 
 def final_receipt(path):
-    """只接受原子落盘的明确终态；中间 running 凭据保留步骤信息，但不能解除未知写入。"""
-    try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, ValueError):
-        return None
-    if (data.get('status') not in ('ok', 'rejected', 'partial', 'uncertain', 'error')
-            or data.get('execution', {}).get('status') not in
-            ('completed', 'partial', 'failed', 'uncertain', 'rejected')
-            or not isinstance(data.get('after'), dict)):
-        return None
-    return data
+    """只接受属于本请求的有效明确终态；损坏或中间凭据不能解除未知写入。"""
+    from starbridge.core.execution_receipt import load_receipt, final_document
+    path = Path(path)
+    identifier = path.parent.name
+    expected = identifier[len('macro-'):] if identifier.startswith('macro-') else None
+    return final_document(load_receipt(path, expected))
 
 
 def execute(state, directory, request, timeout, on_client_start, *, on_client_launch=None):
@@ -108,6 +117,8 @@ def execute(state, directory, request, timeout, on_client_start, *, on_client_la
         data = {'status': 'rejected', 'after': {'session_path': state['current_file'],
                 'modified': state['modified']}, 'execution': {'request_id': request['request_id'],
                 'status': 'rejected', 'uncertain': False,
+                'initialization': {'status': 'not_started', 'effect': declared_effect(request),
+                                   'scope': 'Caller declarations and payload construction; effect aggregates all declared steps'},
                 'steps': [dict(id=step['id'], scope=step['scope'], effect=step['effect'], status='not_started')
                           for step in request['steps']], 'reason': str(error)}}
         temporary = result.with_suffix('.tmp')

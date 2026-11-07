@@ -120,14 +120,24 @@ def client_running(state):
 
 
 def finish_request(directory, state, status, *, uncertain=False):
-    """结束已停止的请求，单独保留未确认写入，后续成功读取不会抹掉它。"""
+    """收尾控制端已结束的调用，分别保留未知写入与客户端活动依据，后续读取不能抹掉它们。"""
     identifier = state.get('active_request') or state.get('last_request')
+    if state.get('active_action') == 'macro':
+        # 控制端在 Popen 与登记 PID 之间崩溃时，不能把“没有活动记录”当成客户端已退出。
+        # 保留当时的派发依据，后续显式接受只允许已有确定停止／未派发依据的请求。
+        phase, identity = state.get('client_launch_state'), state.get('client_process')
+        activity = ('not_started' if phase in ('preparing', 'not_started') else
+                    'stopped' if identity is not None and not client_running(state) else 'unknown')
+        state.setdefault('execution_activity', {})[identifier] = {
+            'state': activity, 'launch_state': phase, 'client_process': identity,
+            'request_owner': state.get('request_owner')}
     state.update(last_request=identifier, last_request_status=status, active_request=None)
     if uncertain:
         state['uncertain_request'] = identifier
     for key in ('client_process', 'client_launch_state', 'request_owner', 'active_action', 'active_mutating'):
         state.pop(key, None)
     state['state'] = 'uncertain' if state.get('uncertain_request') else 'ready'
+    state['recovery_required'] = bool(state.get('uncertain_request'))
     write_json(directory / 'session.json', state)
 
 
@@ -141,15 +151,21 @@ def refresh_request(directory, state):
             return
         identifier = state['active_request']
         result = directory / 'requests' / identifier / 'result.json'
-        try:
-            data = json.loads(result.read_text())
-        except (OSError, ValueError):
-            data = {}
+        is_macro = state.get('active_action') == 'macro'
+        if is_macro:
+            from starbridge.bridge.runner.macro_execution import final_receipt
+            data = final_receipt(result) or {}
+        else:
+            try:
+                data = json.loads(result.read_text())
+            except (OSError, ValueError):
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
         mutating = state.get('active_mutating', True)
-        # 通用步骤凭据在每步结束后原子写入；终态可恢复，不能因控制端断开而重做。
+        # 通用步骤凭据必须通过结构与请求身份检查，不能用缺字段的 false 默认值解除限制。
         # 原目录写入仍可能缺少 Python 回读检查，只有 rejected 能证明未赋值。
-        final_macro = (state.get('active_action') == 'macro' and data.get('execution', {}).get('status')
-                       in ('completed', 'partial', 'failed', 'uncertain', 'rejected'))
+        final_macro = is_macro and bool(data)
         # 启动前持久记录阶段，PID未登记不再等于未派发。旧记录缺少阶段时按未知处理。
         dispatched = state.get('client_launch_state') not in ('preparing', 'not_started')
         uncertain = (data['execution'].get('uncertain', False) if final_macro
@@ -178,17 +194,20 @@ def refresh_request(directory, state):
             if data is not None and data['execution'].get('uncertain') is False:
                 # 客户端超时后服务端可能稍后才写入终态。只依据本次明确凭据恢复，
                 # 普通成功读取仍不能解除未知写入；没有终态就继续保留限制。
-                state.pop('uncertain_request', None)
+                from starbridge.core.execution_review import clear_restriction
+                clear_restriction(state, identifier)
                 state['resolved_request'] = identifier
                 if state.get('last_request') == identifier:
                     state['last_request_status'] = data['status']
                     state['current_file'] = data['after']['session_path']
                     state['modified'] = data['after']['modified']
-                if state.get('state') == 'uncertain':
+                if state.get('state') == 'uncertain' and not state.get('uncertain_request'):
                     state['state'] = 'ready'
-                if state.get('state') == 'disconnected':
-                    state['recovery_required'] = False
+                state['recovery_required'] = bool(state.get('uncertain_request'))
                 write_json(directory / 'session.json', state)
+    from starbridge.core.execution_review import refresh_reviews
+    if refresh_reviews(directory, state):
+        write_json(directory / 'session.json', state)
 
 
 def terminate_owned(state):
@@ -617,6 +636,16 @@ def operate(args, directory):
             raise RuntimeError('Managed server is not running')
         if state.get('active_request'):
             raise OperationBusy('Request is still running; query session_status')
+        if args.action == 'reconcile':
+            # 只提交调用者已经作出的判断，不运行宏、保存算例或替调用者认证业务结果。
+            # 持锁与进程身份检查防止接受另一个会话的状态；原执行凭据保持不变。
+            from starbridge.core.execution_review import reconcile
+            record, replayed = reconcile(directory, state, args.request_id,
+                                          args.expected_review_token, args.assessment)
+            if not replayed:
+                write_json(directory / 'session.json', state)
+            return {'reconciliation': record, 'replayed': replayed,
+                    'session_state': public_session(dict(state, server_alive=True))}
         macro_mutating = (args.action == 'macro' and
                           any(step['effect'] == 'mutate' for step in args.macro_request['steps']))
         if args.action == 'macro':

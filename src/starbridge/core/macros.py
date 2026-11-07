@@ -26,7 +26,10 @@ def prepare(request_id, steps, parameters=None, imports=None, declarations='', i
 
     code 是 execute 内的方法体，能访问 sim、parameters、shared 与 result。
     shared 只在本次步骤之间传递 Java 对象；result 只能存储明确的 JSON 值。
-    declarations 支持共享方法和内部类，imports 支持当前安装的任意宏 API。
+    declarations 支持共享方法、内部类和字段，imports 支持当前安装的任意宏 API。
+    用户声明的初始化在身份与对象绑定通过后才开始，并单独记录 initialization；
+    任一步声明 mutate 时整个初始化阶段按 mutate 处理，全 read 则初始化也声明只读。
+    effect 覆盖全部用户源码，不是执行器自动检测出的权限或副作用保证。
     """
     request_identifier(request_id)
     if intent not in ('execute', 'explore'):
@@ -94,21 +97,40 @@ def execution_result(directory, request_id, state=None):
         state = json.loads((Path(directory) / 'session.json').read_text())
     # 会话层已核对活动进程；外部GUI断开后，原客户端仍可能执行，不能把断开当成停止。
     active = state.get('active_request') == identifier
-    if receipt.is_file():
-        data = json.loads(receipt.read_text())
+    from .execution_receipt import load_receipt
+    observed = load_receipt(receipt, request_id)
+    # 原变更请求的未知影响属于历史执行结果，不能因接受当前状态继续而改成 false。
+    mutating = any(step['effect'] == 'mutate' for step in request['steps'])
+    if observed['read_status'] == 'valid':
+        data = observed['document']
         execution = data['execution']
         if execution['status'] == 'running' and not active:
             execution = {**execution, 'status': 'uncertain',
-                         'uncertain': state.get('uncertain_request') == identifier,
+                         'uncertain': mutating,
                          'steps': [{**step, 'status': 'uncertain'} if step.get('status') == 'running' else step
                                    for step in execution.get('steps', [])],
                          'reason': 'No confirmed final receipt; completed steps remain recorded, do not infer rollback'}
+            if execution.get('initialization', {}).get('status') == 'running':
+                execution['initialization'] = {**execution['initialization'], 'status': 'uncertain'}
     else:
         execution = {'status': 'running' if active else 'uncertain', 'steps': [],
-                     'uncertain': state.get('uncertain_request') == identifier,
-                     'reason': 'No execution receipt; inspect session status before any retry'}
+                     'uncertain': mutating,
+                     'reason': 'No valid execution receipt; inspect receipt_read and session status before any retry'}
+    from .execution_review import review_context, evidence_current
+    digest = observed['sha256']
     result = {'request_id': request_id, 'fingerprint': request['fingerprint'],
-              'execution': execution, 'receipt': str(receipt)}
+              'execution': execution, 'receipt': str(receipt), 'receipt_sha256': digest,
+              'request_activity': state.get('execution_activity', {}).get(identifier, {'state': 'unknown'}),
+              'receipt_read': {key: value for key, value in observed.items() if key != 'document'}}
+    review = review_context(request, state, digest, observed['read_status'])
+    if review is not None:
+        result['review'] = review
+    recorded = state.get('execution_reviews', {}).get(identifier)
+    if recorded is not None:
+        # 历史未知结果保持原样；确认只是接受当前状态继续，不将旧任务追认成 completed。
+        result['reconciliation'] = {**recorded,
+            'evidence_current': evidence_current(recorded, state, identifier, digest, observed['read_status'])}
+        result['previous_reconciliation_count'] = len(state.get('execution_review_history', {}).get(identifier, []))
     # 本次读取成功不等于先前写入已确认；重放与新调用都显式保留当前会话的限制。
     for key in ('active_request', 'uncertain_request'):
         if state.get(key):

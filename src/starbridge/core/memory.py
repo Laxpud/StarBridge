@@ -87,7 +87,7 @@ def _seed():
         'source': {'description': '用户在需求讨论中明确提供的规则与纠正。',
                    'location': 'StarBridge.md#已讨论的经验示例'},
         'evidence': [{'description': '需求文档明确列出正确示例 <1 deg> 和错误示例 1 <deg>。',
-                      'location': 'StarBridge.md', 'lines': [194, 202]}],
+                      'location': 'StarBridge.md#已讨论的经验示例'}],
         'evidence_scope': '依据仅为需求文档中的用户规则；没有独立软件验证、版本覆盖或普遍性证明。',
         'certainty': 'user_rule',
         'tags': ['STAR-CCM+', '单位', '表达式', '参数', '场函数', 'units', 'expression', 'deg'],

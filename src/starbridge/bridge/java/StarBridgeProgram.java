@@ -14,21 +14,25 @@ public class StarBridgeProgram extends StarMacro {
     private static final String RELEASE = __RELEASE__;
     private static final String BUILD = __BUILD__;
     private static final String REQUEST_ID = __REQUEST_ID__;
+    private static final String INITIALIZATION_EFFECT = __INITIALIZATION_EFFECT__;
     private final Map<String, Object> parameters = __PARAMETERS__;
     private final Map<String, Object> shared = new LinkedHashMap<>();
     private final List<Map<String, Object>> steps = new ArrayList<>();
     private Simulation sim;
-    __DECLARATIONS__
 
     @Override
     public void execute() {
         Map<String, Object> before = new LinkedHashMap<>();
+        Map<String, Object> initialization = fields("status", "not_started", "effect", INITIALIZATION_EFFECT,
+                "scope", "Caller declarations and payload construction; effect aggregates all declared steps");
         Map<String, Object> execution = fields("request_id", REQUEST_ID, "status", "running",
-                "steps", steps, "uncertain", false, "completion_basis", "step_return_and_serializable_result");
+                "initialization", initialization, "steps", steps, "uncertain", false,
+                "completion_basis", "initialization_and_step_return_with_serializable_result");
         try {
+            __STEP_METADATA__
             sim = getActiveSimulation();
             before = sessionInfo();
-            // 1. 先检查实际版本和对象身份；拒绝发生在任何用户步骤之前。
+            // 1. 入口类中没有用户声明。先核对实际版本和对象身份，不触发 Payload 的类／实例初始化。
             if (!EXPECTED_KEY.equals(sim.getObjectKeyAsString())
                     || !RELEASE.equals(sim.getCurrentVersion()) || !BUILD.equals(sim.getReleaseNumber())) {
                 execution.put("status", "rejected");
@@ -36,8 +40,7 @@ public class StarBridgeProgram extends StarMacro {
                 checkpoint("rejected", before, execution);
                 return;
             }
-            __STEP_METADATA__
-            // 对象参数是当前会话的受信引用；全部解析成功后才允许任何用户步骤开始。
+            // 对象参数是当前会话的受信引用；全部解析成功后才允许用户初始化或步骤开始。
             try {
                 __OBJECT_BINDING_SETUP__
             } catch (Exception error) {
@@ -46,15 +49,38 @@ public class StarBridgeProgram extends StarMacro {
                 checkpoint("rejected", before, execution);
                 return;
             }
+            // 2. 先持久记录初始化已开始，再首次主动使用 Payload。加载／链接可能更早发生，
+            // 但初始化外层类不会初始化静态嵌套类；下面的 new 才触发 Payload 静态块、字段和实例块。
+            // effect 沿用整个请求的声明：任一步 mutate 则初始化也按 mutate；不是副作用分析或沙箱。
+            initialization.put("status", "running");
             checkpoint("running", before, execution);
-            // 2. 只有前一步完成才开始下一步；失败后保留未开始项，不自动继续或重试。
+            Payload payload;
+            try {
+                payload = new Payload(this, sim, parameters, shared);
+            } catch (Throwable error) {
+                boolean uncertain = "mutate".equals(INITIALIZATION_EFFECT);
+                initialization.put("status", uncertain ? "uncertain" : "failed");
+                Throwable cause = error.getCause();
+                // 静态初始化失败通常被 ExceptionInInitializerError 包装；保留直接原因，不能只留下空消息。
+                initialization.put("error", fields("type", error.getClass().getName(),
+                        "message", String.valueOf(error.getMessage()), "cause", cause == null ? null :
+                        fields("type", cause.getClass().getName(), "message", String.valueOf(cause.getMessage()))));
+                execution.put("status", uncertain ? "uncertain" : "failed");
+                execution.put("uncertain", uncertain);
+                execution.put("reason", "Payload initialization failed; user declarations may have partially executed");
+                checkpoint(uncertain ? "uncertain" : "error", before, execution);
+                return;
+            }
+            initialization.put("status", "completed");
+            checkpoint("running", before, execution);
+            // 3. 只有初始化和前一步完成才开始下一步；失败后保留未开始项，不自动继续或重试。
             for (int index = 0; index < steps.size(); index++) {
                 Map<String, Object> step = steps.get(index);
                 Map<String, Object> result = new LinkedHashMap<>();
                 step.put("status", "running");
                 checkpoint("running", before, execution);
                 try {
-                    runStep(index, result);
+                    payload.runStep(index, result);
                     // 先验证输出能够无歧义地序列化；不能把 Java 对象的 toString 当成读取值。
                     json(result);
                     step.put("result", freeze(result));
@@ -63,6 +89,16 @@ public class StarBridgeProgram extends StarMacro {
                     boolean uncertain = "mutate".equals(step.get("effect"));
                     step.put("status", uncertain ? "uncertain" : "failed");
                     step.put("error", fields("type", error.getClass().getName(), "message", String.valueOf(error.getMessage())));
+                    // 异常前已写入的观察仍有价值；只保留可序列化的冻结快照，不据此确认步骤完成。
+                    try {
+                        Object partialResult = freeze(result);
+                        json(partialResult);
+                        step.put("result", partialResult);
+                    } catch (Throwable serializationError) {
+                        // 快照失败单独记录，不能覆盖执行异常，也不能让不可序列化值破坏最终凭据。
+                        step.put("serialization_error", fields("type", serializationError.getClass().getName(),
+                                "message", String.valueOf(serializationError.getMessage())));
+                    }
                     execution.put("uncertain", uncertain);
                     execution.put("status", index > 0 ? "partial" : uncertain ? "uncertain" : "failed");
                     checkpoint(index > 0 ? "partial" : uncertain ? "uncertain" : "error", before, execution);
@@ -92,14 +128,60 @@ public class StarBridgeProgram extends StarMacro {
         else ((List<Object>) container).set(((Number) key).intValue(), value);
     }
 
-    /** 根据序号调用独立方法，避免把前一步的局部变量意外暴露为复用约定。 */
-    private void runStep(int index, Map<String, Object> result) throws Exception {
-        switch (index) {
-            __STEP_CASES__
-            default: throw new IllegalArgumentException("Unknown step index");
+    /**
+     * 在用户实例字段初始化前提供同一组上下文，并保留 StarMacro 的常用辅助方法。
+     * Payload 的父类构造先完成，因此用户字段／实例块可以读取 sim、parameters、shared，
+     * getActiveSimulation() 也已有目标；静态字段不能访问实例上下文，仍遵循普通 Java 规则。
+     */
+    private abstract static class PayloadContext extends StarMacro {
+        protected Simulation sim;
+        protected final Map<String, Object> parameters;
+        protected final Map<String, Object> shared;
+        private final StarBridgeProgram owner;
+
+        protected PayloadContext(StarBridgeProgram owner, Simulation sim,
+                Map<String, Object> parameters, Map<String, Object> shared) {
+            this.owner = owner;
+            this.sim = sim;
+            this.parameters = parameters;
+            this.shared = shared;
+            // 使用父类 setter 初始化实际宏上下文；不是把一个没有 active simulation 的新宏交给用户。
+            super.setActiveSimulation(sim);
+        }
+
+        // 脚本路径由 STAR 交给外层入口。路径辅助方法复用该入口，不能以新对象的空路径代替。
+        @Override public String resolvePath(String path) { return owner.resolvePath(path); }
+        @Override protected String resolveDataPath(String path) { return owner.resolveDataPath(path); }
+        @Override protected String resolveWorkPath() { return owner.resolveWorkPath(); }
+        @Override public void savePath(star.base.neo.NeoScriptFile path) { owner.savePath(path); }
+
+        @Override public final void execute() {
+            throw new IllegalStateException("Payload steps must be invoked by the execution wrapper");
         }
     }
-    __STEP_METHODS__
+
+    /**
+     * 唯一承载用户声明及步骤的类。不得在入口字段、身份检查或对象绑定中主动使用此类；
+     * new Payload 必须位于 initialization.running 凭据写出之后，才能保留初始化未知结果。
+     * fields 等外层静态 JSON 辅助方法仍可直接使用；这不是限制任意 Java 代码的安全沙箱。
+     */
+    private static class Payload extends PayloadContext {
+        private Payload(StarBridgeProgram owner, Simulation sim,
+                Map<String, Object> parameters, Map<String, Object> shared) {
+            super(owner, sim, parameters, shared);
+        }
+
+        __DECLARATIONS__
+
+        /** 根据序号调用独立方法；步骤共享的是明确上下文，不是前一步的局部变量。 */
+        private void runStep(int index, Map<String, Object> result) throws Exception {
+            switch (index) {
+                __STEP_CASES__
+                default: throw new IllegalArgumentException("Unknown step index");
+            }
+        }
+        __STEP_METHODS__
+    }
 
     /** 只读会话身份和脏标记，不做全量快照，也不隐式保存或复制算例。 */
     private Map<String, Object> sessionInfo() {
@@ -128,7 +210,7 @@ public class StarBridgeProgram extends StarMacro {
         return result;
     }
 
-    /** 冻结已完成步骤的 JSON 值；后续 shared 中的活集合不能改写先前观察结果。 */
+    /** 冻结步骤完成或异常前已写入的 JSON 观察；后续 shared 中的活集合不能改写快照。 */
     private static Object freeze(Object value) {
         if (value == null || value instanceof String || value instanceof Boolean) return value;
         if (value instanceof Number) return new java.math.BigDecimal(value.toString());

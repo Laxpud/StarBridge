@@ -2,7 +2,7 @@
 
 [项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md)
 
-MCP 和 JSON CLI 共用 Core Service。契约 schema 2 使用 `object_id` 表示当前会话对象，统一以 `property_id` 选择属性；类型查找和对象树导航取得的对象均交给同一组描述、读取和修改方法。结构操作有独立入口，不作为普通属性赋值。
+MCP 和 JSON CLI 共用 Core Service。正常任务以实际版本的 Java API／宏为主：按需取得资料和可靠代码，在同一已加载会话组织读取、判断、修改与回读，再检查逐步凭据和实际结果。结构化对象接口是可选辅助；它们使用契约 schema 2 的 `object_id` 与 `property_id`，结构操作有独立入口，不作为普通属性赋值。
 
 版本仍由实际安装决定：目录支持 2602 Build `21.02.007` 和 2510 Build `20.06.007`，运行时发现仅登记前者。结构化接口仍有值类型和操作范围；新增的 `execute_macro` 可在同一会话使用完整 Java 宏 API，记忆接口帮助复用方法。具体契约与实际证据见[通用执行与工作记忆](<generic-execution.md>)；实现与真实 STAR 验证的区别见[验证边界](bridge-session.md#验证边界)。
 
@@ -10,7 +10,7 @@ MCP 和 JSON CLI 共用 Core Service。契约 schema 2 使用 `object_id` 表示
 
 三端使用[插件安装入口](../distribution.md#三端插件安装)，源码与通用 stdio 接入见[独立安装说明](../distribution.md#源码与通用接入)。stdout 仅承载协议消息；算例与输出路径均指 MCP 进程所在机器的绝对路径。
 
-首次需要了解参数时调用 `get_contract` 或读取 `starbridge://contract`，无需先读文档或 Skill。已有有效会话、对象引用和属性契约可以复用。`usage.defaults` 来自 Core 方法签名；默认值是省略参数时的行为，可按任务覆盖。
+首次需要了解参数时调用 `get_contract` 或读取 `starbridge://contract`，无需先读文档或 Skill。已有有效会话、对象引用、资料和代码可以复用。初始化只提供简短能力说明；当前仍一次发布全部工具、返回完整契约，尚未实现按主题展开操作入口，不能将资料按需读取当成该要求已完成。`usage.workflow.task` 描述正常宏任务路径，`structured_read/structured_write` 只描述可选结构化流程。`usage.defaults` 来自 Core 方法签名；默认值是省略参数时的行为，可按任务覆盖。
 
 安装未知时用 `discover_installations` 探测实际程序；用户已指定程序时可直接交给 `open_session`。`get_capabilities()` 的 `supported`、`catalog_supported` 和 `supported_versions` 只描述结构化目录，不能证明本机安装；通用生命周期与宏另见 `session_lifecycle`、`generic_execution`，发现另查 `runtime_discovery.supported`。顶层 `ok` 仅表示查询完成，不表示未知版本已经验证。
 
@@ -25,6 +25,8 @@ MCP 和 JSON CLI 共用 Core Service。契约 schema 2 使用 `object_id` 表示
 | `get_contract` | 无 | schema 2 调用流程、默认值、结果位置与恢复约定 |
 | `discover_installations` | `star` 或 `search_roots`，可选 `timeout` | 有界探测实际版本，不加载算例、不自动选择 |
 | `get_capabilities` | 可选 `release/build` | 目录类型、执行和发现能力；不是当前实例条件 |
+| `search_api` | `query`；`installation` 或 `session_id`，可选 `kind/offset/limit` | 官方类／成员索引候选及来源；不搜索正文，不连接 STAR |
+| `read_api` | `java_class`；`installation` 或 `session_id`，可选 `member/offset/limit` | 签名、说明、文中代码及真实继承声明；检查 `read_status/coverage/next_offset`，见[资料使用](<generic-execution.md#按任务取得实际版本的-api-资料>) |
 | `find_objects` | `type_id`，可选 `name/parent_id/offset/limit` | `objects[]`；名称精确匹配，子类型使用父对象 ID |
 | `browse_tree` | 可选 `object_id/cursor/offset/limit/scope/max_nodes` | `object` 与 `objects[]`；展开树的一层，不读取属性值 |
 | `search_settings` | `query`，可选 `expand/max_nodes/max_depth/scope/limit/cursor` | `matches[].object/property` 与覆盖信息；默认仅搜索缓存 |
@@ -36,7 +38,8 @@ MCP 和 JSON CLI 共用 Core Service。契约 schema 2 使用 `object_id` 表示
 | `list_recipes` | 无 | 网格、求解和导出的现成方法、参数契约及证据；不连接 STAR |
 | `execute_recipe` | `request_id/recipe_id`，可选 `parameters/expected_revision/project_dir` | 执行内置方法或已审阅的 `memory:ID`；记忆方法必须匹配修订，不自动绑定历史对象 |
 | `execute_macro` | `request_id/steps`，可选 `parameters/object_parameters/imports/declarations/intent` | 同会话集中执行 Java 步骤；显式参数名中的 `{object_id}` 在步骤前绑定当前对象；完整宏权限，不是代码沙箱 |
-| `get_execution` | `request_id` | 查询宏凭据和状态，不重做操作 |
+| `get_execution` | `request_id` | 原宏凭据、读取诊断、活动状态及可用的审阅 token；不重做操作 |
+| `reconcile_execution` | `request_id/expected_review_token/assessment` | 根据已有依据显式接受当前状态；不重放、不保存、不追认旧任务完成，见[接受条件与边界](<generic-execution.md#根据已有观察接受当前状态>) |
 | `search_memory` | `query`，可选 `context/limit/project_dir` | 返回需审查适用条件的经验与资料候选 |
 | `get_memory` | `memory_id`，可选 `project_dir` | 完整做法、场景和证据范围 |
 | `record_memory` | `entry`，可选 `project_dir` | 记录实际任务已有依据，不额外验证或执行方法 |

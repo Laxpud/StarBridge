@@ -23,11 +23,11 @@ from .session_store import new_session_directory, session_directory, public_sess
 
 
 METHODS = (
-    'get_contract', 'discover_installations', 'get_capabilities',
+    'get_contract', 'discover_installations', 'get_capabilities', 'search_api', 'read_api',
     'find_objects', 'browse_tree', 'search_settings', 'relocate_object',
     'describe_object', 'read_properties', 'modify_property', 'execute_operation',
     'inspect_session', 'open_session', 'session_status', 'save_session', 'close_session',
-    'execute_macro', 'get_execution', 'list_recipes', 'execute_recipe',
+    'execute_macro', 'get_execution', 'reconcile_execution', 'list_recipes', 'execute_recipe',
     'search_memory', 'get_memory', 'record_memory', 'update_memory',
 )
 
@@ -114,6 +114,16 @@ class Service:
         """探测用户指定程序或有界环境候选的实际版本；不加载算例、不自动选择安装。"""
         from .environment import discover_installations
         return discover_installations(star, search_roots, _timeout(timeout))
+
+    def search_api(self, query, installation=None, session_id=None, kind='all', offset=0, limit=20):
+        """在所选安装的官方索引中找类／成员，不要求目录适配或运行 STAR。"""
+        from .api_docs import documentation
+        return documentation(installation, session_id).search(query, kind, offset, limit)
+
+    def read_api(self, java_class, installation=None, session_id=None, member=None, offset=0, limit=20):
+        """按需读取签名、说明、文中代码及继承来源，缺失资料不是 API 不存在。"""
+        from .api_docs import documentation
+        return documentation(installation, session_id).read(java_class, member, offset, limit)
 
     def get_capabilities(self, release=None, build=None):
         """查询注册能力，版本由调用者或安装探测提供；未知版本作为查询结果返回。
@@ -481,10 +491,19 @@ class Service:
     def get_execution(self, session_id, request_id):
         """读取宏执行凭据和当前会话状态，断开后仍可查询，不启动客户端或重复执行。"""
         from .macros import execution_result
-        state = self.session_status(session_id)
+        state = self._operate(session_id, 'status')
         result = execution_result(session_directory(session_id), request_id, state)
-        result['session_state'] = state
+        result['session_state'] = public_session(state)
         return result
+
+    def reconcile_execution(self, session_id, request_id, expected_review_token, assessment):
+        """根据调用者对已有依据的判断接受当前状态，不重做宏、不改变原任务完成状态。
+
+        token 来自 get_execution；新请求、迟到凭据或会话变化后必须重新审阅。
+        仅处理当前未确认的通用宏；活动请求、版本/身份不明及历史不同确认均拒绝。
+        """
+        return self._operate(session_id, 'reconcile', request_id=request_id,
+                             expected_review_token=expected_review_token, assessment=assessment)
 
     def inspect_session(self, session_id, timeout=180):
         """读取既有 Inspector 快照范围；与按需属性读取共用目录，不表示全配置导出。"""

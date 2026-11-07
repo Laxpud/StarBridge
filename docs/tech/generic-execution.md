@@ -2,7 +2,22 @@
 
 [接口入口](<mcp.md>) · [会话管理](<bridge-session.md>) · [需求](<../../StarBridge.md>) · [当前工作](<../../TODO.md>)
 
-结构化属性接口适合已有契约的读取和赋值；`execute_macro` 用于这些接口尚未覆盖的操作，或需要在一次客户端连接内集中执行的明确步骤。两者使用同一个已加载会话。通用入口不要求逐功能添加目录适配，也不创建算例副本；生命周期与宏已脱离目录的精确版本名单，但仍要求真实安装检测、所选安装 JDK 预编译和运行时版本／对象身份匹配。未登记版本可尝试通用路径，不因此获得结构化支持或全部 API 已验证的声明。
+AI 直接使用实际版本的 Java API 编写、组合和执行任务宏，这是正常操作方式，不必先尝试结构化接口。已有可靠代码、工作记忆和参数化方法适用时优先复用；需要补查时通过 `search_api`／`read_api` 获取官方资料。结构化属性接口仅在已有契约确实节省成本时作为可选辅助。两者使用同一个已加载会话。通用入口不要求逐功能添加目录适配，也不创建算例副本；生命周期与宏已脱离目录的精确版本名单，但仍要求真实安装检测、所选安装 JDK 预编译和运行时版本／对象身份匹配。未登记版本可尝试通用路径，不因此获得结构化支持或全部 API 已验证的声明。
+
+## 按任务取得实际版本的 API 资料
+
+`search_api(query, installation=...)` 搜索指定安装的官方类名／成员索引，`read_api(java_class, member=..., installation=...)` 读取选中成员的签名、说明、参数／返回约定、弃用信息、文中代码及相关链接。`installation` 是含 `star/` 和 `doc/` 的实际安装根目录，可取安装发现结果的 `javadoc_root`；也可改传已有 `session_id`，此时只读取绑定的安装和版本，不启动客户端。两种来源二选一；会话绑定版本与安装版本材料冲突时拒绝，不使用邻近版本。
+
+例如，任务需要按名称查找场函数时，先以 `FieldFunctionManager getFunction` 查询；选中后读取 `star.common.FieldFunctionManager` 的 `getFunction`。正文明确该方法在未找到时可能创建派生场函数，不能凭方法名把它当成无副作用的读取。继续读取同一类的 `hasObject` 时，返回真实声明类 `star.base.neo.ClientServerObjectManager`，保留其“按显示名称查找、无匹配返回 null”的说明。这是沿官方继承链接取得的依据，不是新增一种场函数专用适配。
+
+- 查询词按空白分词且全部匹配类名和成员标签；不是全文检索、中文语义搜索或独立宏示例库检索。
+- `member` 可用简单名称保留重载，也可使用搜索返回的完整签名锚点。指定成员时只返回相关正文；不指定则读取类说明和本类成员的一页，不默认展开全部父类。
+- `limit` 默认20、上限100，成员按 `next_offset` 继续。未指定成员时，类级关联链接另按 `links_next_offset` 继续，同样传入 `offset`；两份列表的结束位置须分别判断。
+- 类注记可能包含上千个已知子类。超出4000字符的单条类注记返回明确摘录，`content_truncations` 列出原长度、返回长度及完整来源，`read_status=partial`；关联链接按页返回，不再把整个列表塞入每个响应。成员正文不采用这种摘录，资料响应的总字节预算仍未完成。
+- `read_status`、`coverage.errors` 及类级 `links_coverage/content_truncations` 区分索引缺失、局部失败、未返回全文、外部资料未读以及没有匹配。未找到不能推断 API 不存在，分页结束也不表示整套资料已经读取。
+- 来源包含实际安装版本、文件路径、内容摘要和成员锚点。只在进程内缓存有界数量的索引／正文，文件身份或修改信息变化后重新读取；已有适用资料不必重复查询。
+
+2602／2510 的本机官方资料已实际用于查找、正文读取和继承追溯；2602 的相同读取已通过真实 stdio MCP 调用。此依据只证明所述资料路径可用，不证明任意 API 行为、独立宏库支持或整体需求已完成。
 
 ## 从零创建与连续操作
 
@@ -54,7 +69,7 @@
 - `code` 是 Java 方法体。可访问当前 `Simulation sim`、JSON 参数 `parameters`、步骤间的活对象容器 `shared`、本步输出容器 `result`。
 - `parameters` 的整数是 Java `Long`，小数是 `Double`，普通对象和数组分别为 `Map`、`List`。参数按数据注入，不执行字符串模板替换。
 - `object_parameters` 可显式列出需绑定对象的参数名，例如 `parameters={"part":{"object_id":"<当前ID>"}}`、`object_parameters=["part"]`。这些参数内精确的 `{object_id}` 包装（含嵌套数组／对象）会在所有用户步骤前转换成当前 STAR 对象；Java 可将 `parameters.get("part")` 转型为实际 API 类型。省略此选项时仍为原始 JSON。绑定失败返回 `rejected`，全部用户步骤保持未开始；结果中仍须显式取名称、数值等 JSON 数据，不能直接序列化活对象。
-- `imports` 可指定当前安装的类或通配导入；`declarations` 可定义辅助方法和内部类。默认已导入 `star.common.*`、`java.util.*` 和 `java.nio.file.*`。
+- `imports` 可指定当前安装的类或通配导入；`declarations` 可定义字段、辅助方法和内部类。默认已导入 `star.common.*`、`java.util.*` 和 `java.nio.file.*`。用户代码放在独立 `Payload` 中，身份与全部对象绑定通过、初始化开始凭据写出后才构造；实例字段初始化可用 `sim`、`parameters`、`shared` 和 `getActiveSimulation()`。路径辅助方法沿用入口上下文，但不承诺依赖旧包装类反射身份的代码兼容。
 - `effect=read` 声明不修改算例和外部文件；修改设置、创建对象、网格生成、求解、保存和导出用 `mutate`。这是调用者声明，**不是 Java 沙箱或副作用检测**。
 - `scope` 说明实际目标和范围。代码须将缺失、不支持和错误明确放入结果或抛出异常，不能用空集合替代未读取。结果容器只接受有限 JSON 值，不隐式序列化 STAR 对象。
 - 一个请求最多 200 步、源请求 2 MB。已明确且相关的步骤可集中执行；不为了减少往返扩大范围。前一步失败后，其余步骤保持 `not_started`。
@@ -63,13 +78,13 @@
 
 ## 完成与恢复
 
-`result.execution` 保存总体状态、逐步状态、输出和错误。已完成步骤的结果冻结为 JSON 快照，后续步骤修改 `shared` 的活对象不会改写之前的观察值。
+`result.execution` 保存总体状态、初始化阶段、逐步状态、输出和错误。`initialization` 先于所有步骤；任一步声明 `mutate`，用户声明和对象构造也按 `mutate` 处理，全部步骤为 `read` 时初始化也声明只读。初始化异常分别记为 `uncertain` 或 `failed`，步骤仍为 `not_started`，不能报告为尚未执行用户代码的 `rejected`。已完成步骤的结果冻结为 JSON 快照，后续步骤修改 `shared` 的活对象不会改写之前的观察值。步骤异常时也尽可能保留宏已写入 `result` 的部分观察；无法冻结或序列化时另列 `serialization_error`，不覆盖原执行异常。部分输出不改变失败、`partial` 或 `uncertain` 判定，也不解除会话写入限制。该异常结果保留改动已由2602、2510各自安装 JDK／库编译通过，尚未在 STAR 中重新执行异常场景。
 
 | 状态 | 含义 |
 | --- | --- |
-| `completed` | 所有步骤返回，并记录了可序列化结果。 |
-| `rejected` | 代码编译、输入或身份检查在步骤开始前拒绝。 |
-| `failed` | 首个声明只读的步骤失败；没有宣称任务完成。 |
+| `completed` | 初始化及所有步骤返回，并记录了可序列化结果。 |
+| `rejected` | 代码编译、输入、身份或对象绑定检查在用户初始化开始前拒绝。 |
+| `failed` | 声明只读的初始化或首个步骤失败；没有宣称任务完成。 |
 | `partial` | 至少一个步骤完成，随后步骤失败或结果未知；检查每步状态及 `uncertain`。 |
 | `uncertain` | 变更步骤异常或没有最终凭据，不能证明操作未执行。 |
 | `running` | 本请求仍活动；不是可以重发的失败状态。 |
@@ -81,6 +96,23 @@
 结果未知时保留已完成项，禁止盲目重放整组步骤。已有或稍后落盘的明确终态可供会话恢复；普通成功读取不能自动解除未知写入。宏结果中的 `active_request`、`uncertain_request`（存在时）说明当前会话仍受哪些限制，与本次 `execution.uncertain` 分开解释：一次读取完成，不代表此前写入已确认。`get_execution` 还返回完整 `session_state`。凭据位于会话运行目录，遵循会话清理周期，不是永久工作记忆。
 
 超时不等于客户端已退出；启动器退出后，其子进程仍可能存活。此时保持活动记录，调用返回 `busy`，不得立即重发。外部会话的 `disconnected` 只表示 Bridge 断开，不证明正在运行的客户端已经停止。派发前记录准备阶段与启动尝试；中断时缺少 PID 不能证明没有启动，也不能据此放开新的写入。
+
+### 根据已有观察接受当前状态
+
+对于仍受限制的通用宏，`get_execution` 分别返回原执行结果、`receipt_read`、`request_activity`、可用时的 `review`，以及已有 `reconciliation`。凭据缺失、损坏、不可读取、超过解析预算和有效内容分别标明；32 MiB 以上只流式计算摘要，完整材料仍在返回路径，不冒充空结果或已完成。
+
+确认前由调用者判断已有依据，只有明确接受当前状态、准备继续时才调用：
+
+```text
+reconcile_execution(session_id, request_id, expected_review_token, assessment)
+```
+
+- `expected_review_token` 来自最新 `review.token`，绑定原请求、凭据、会话、最近请求及审阅世代。`review.can_accept=false` 时不能继续；未登记客户端身份的异常派发及缺少停止依据的旧记录不会被当作已停止。
+- `assessment` 必须说明 `observations`、`accepted_scope`、`remaining_scope`，并列出已有 `evidence=[{source, description}]`。依据可以是原部分凭据、已有读取、产物或用户确认，不要求为确认额外执行验证。系统不自动打开或执行这些来源，也不替调用者认证任意任务的业务结果。
+- 确认记录与解除当前限制在同一会话记录内原子更新；不改写原凭据、不重放、不回滚、不保存。历史未知影响仍为未知，`ready` 只说明当前允许继续，不表示旧任务完成。
+- 后续查询及操作会识别已接受凭据的变化。新的明确终态可独立恢复；其他变化重新进入待审队列，内容后来恢复也不能复用旧审阅世代。`reconciliation.evidence_current` 指出旧依据是否仍有效。确认历史保留，同一确认重发只返回旧记录，不能清除后来其他请求的限制。
+
+本地会话锁不约束 GUI 编辑或任意 Java 文件写者，不提供跨进程事务或代码沙箱。当前入口只处理通用宏，不用于解除旧结构化修改或保存的未知结果。初始化异常、丢失派发身份及迟到凭据恢复的实际运行仍需继续核查；当前依据是源码复核、已有凭据查询和公开 MCP 契约，不将其写成故障运行已验证。
 
 ## 修改、保存与探索的边界
 
@@ -117,6 +149,7 @@
 
 | 实际任务 | 结果与证据 |
 | --- | --- |
+| 当前初始化与已有算例审查 | 2602 在已保存通道中[集中读取边界、材料、迭代状态并导出已有报告](<../../outputs/requirements-first/channel-current-audit/audit.json>)，实例字段初始化使用当前 `sim` 和 `getActiveSimulation()`，初始化及三个步骤均完成。读取入口0.01 m/s、密度1000 kg/m³、黏度0.001 Pa·s；以明确的名义水力直径1 mm推得 Re=10，[出口报告](<../../outputs/requirements-first/channel-current-audit/outlet-current.txt>)为1.016045×10⁻⁵ kg/s。没有新求解，迭代仍为5，不声称收敛；新接入约80.52秒、同会话三步约6.58秒，仅是这次任务观察。自有会话已停止，原算例[前](<../../outputs/requirements-first/channel-current-audit/source-before.json>)、[后](<../../outputs/requirements-first/channel-current-audit/source-after.json>)摘要一致。两安装 JDK 另编译通过现有状态、求解和 GUI 定位方法各三份；初始化异常与显式接受流程未实际触发。 |
 | 几何、区域、物理与网格 | 宏创建6面几何和模型；`mesh.generate` 实际运行 parts-based 操作，得到909个单元；用位置报告测得两端面而非猜测面序号。见[网格执行](<../../outputs/requirements-first/channel-workflow/12-execute_recipe.json>)、[测量与配置](<../../outputs/requirements-first/channel-workflow/13-execute_macro.json>)。 |
 | 求解 | `solver.step(iterations=5)` 的实际计数从0到5；密度1000 kg/m³、动力黏度0.001 Pa·s、入口0.01 m/s、出口表压0 Pa。见[求解凭据](<../../outputs/requirements-first/channel-workflow/14-execute_recipe.json>)。只验证通路，不证明收敛或工程精度。 |
 | 导出与重放 | `plot.export` 导出[5点监视器 CSV](<../../outputs/requirements-first/channel-workflow/outlet-mass-flow.csv>)，`report.export` 生成[报告文本](<../../outputs/requirements-first/channel-workflow/outlet-mass-flow.txt>)；同一导出请求[重放](<../../outputs/requirements-first/channel-workflow/18-execute_recipe.json>)约0.001秒，没有再次导出。 |
@@ -140,7 +173,7 @@ GUI 操作只在初次配置后显式另存[设置算例](<../../outputs/require
 
 真实网格运行暴露了此前预检查的遗漏：`AutoSaveBatch=true`、`AutoSaveMesh=false` 仍在宏凭据写出后生成了[自动检查点](<../../outputs/requirements-first/runtime/sessions/8f12cc01fa5d4b8f826a4e22855701cf/star@meshed.sim>)，见[日志:343–350](<../../outputs/requirements-first/runtime/sessions/8f12cc01fa5d4b8f826a4e22855701cf/requests/macro-channel-volume-mesh-1/star.log#L343-L350>)。该文件保留，未掩盖或删除。现已将 batch 标志纳入体网格与表面网格风险。修正后在2602已配置的小算例中，关闭自动保存时[体网格方法正常返回](<../../outputs/requirements-first/reference-workflow/02-execute_recipe.json>)；在单独显式保存的自有设置会话启用 batch 后，[默认调用被自动保存保护拒绝](<../../outputs/requirements-first/reference-workflow/35-execute_recipe.json>)，生成步骤保持未开始，并恢复此前的临时设置。表面网格仍是保守推断。通用方法不会为通过保护擅自改变用户配置。自动另存改变根名后，旧引用被拒绝，使用原 locator 重定位后成功读取。
 
-当前 Java helper 与最小生命周期模板均通过2602、2510安装自身 JDK／库编译；两份随附计划各24类型、142属性通过离线编译。最终源码下，既有 Core 检查9项通过、1项因仍访问旧 HMAC `_discovery_secret` 而报错，见[原检查:175–191](<../../tools/validation/discovery_contract_checks.py#L175-L191>)；[Java 模拟检查](<../../tools/validation/discovery_java_contracts.py>)的替身没有新增生产依赖 `StarBean`、`ObjectNameFactory`，编译失败，当前未执行其6项检查。这与使用实际安装库的编译及真实任务结果分开记录，不能把旧阶段的6项通过沿用为最终结果。没有改写检查来掩盖这些不匹配，也没有新增测试文件。
+当前 Java helper 与最小生命周期模板均通过2602、2510安装自身 JDK／库编译；两份随附计划各24类型、142属性通过离线编译。此前恢复阶段的源码下，既有 Core 检查9项通过、1项因仍访问旧 HMAC `_discovery_secret` 而报错，见[原检查:175–191](<../../tools/validation/discovery_contract_checks.py#L175-L191>)；[Java 模拟检查](<../../tools/validation/discovery_java_contracts.py>)的替身没有新增生产依赖 `StarBean`、`ObjectNameFactory`，编译失败，当前未执行其6项检查。这与使用实际安装库的编译及真实任务结果分开记录，不能把旧阶段的6项通过沿用为最终结果。没有改写检查来掩盖这些不匹配，也没有新增测试文件。
 
 不存在的 `Simulation.setPresentationName` 及错误的 Java 泛型已在派发前编译拒绝。上述 GUI 与失败操作覆盖实际列出的场景，不证明所有异常、结构化写入或未登记版本均已验证。旧 GUI 操作入口没有热重载 Python，其超时凭据中残留的 `last_request_status=running` 也没有被事后改写；最终恢复源码的行为以上述新控制进程实跑为依据。
 

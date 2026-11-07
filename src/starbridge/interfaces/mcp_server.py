@@ -112,6 +112,33 @@ def discover_installations(star: StrictStr | None = None, search_roots: list[Str
     return call('discover_installations', locals())
 
 
+@server.tool(name='starbridge.search_api', annotations=READ)
+def search_api(query: StrictStr, installation: StrictStr | None = None,
+               session_id: StrictStr | None = None, kind: StrictStr = 'all',
+               offset: StrictInt = 0, limit: StrictInt = 20) -> types.CallToolResult:
+    """按实际安装的官方索引搜索类和成员，不连接 STAR，不受结构化适配名单限制。
+
+    installation 与 session_id 二选一；关键词按空白分词且全部匹配，可组合类名和方法名。
+    只搜索索引标签，不全文检索文档或外部宏库。read_status/coverage 区分缺失索引和空命中。
+    选中后用 read_api 获取签名、说明、继承来源和文中代码；无命中不能解释为 API 不存在。
+    """
+    return call('search_api', locals())
+
+
+@server.tool(name='starbridge.read_api', annotations=READ)
+def read_api(java_class: StrictStr, installation: StrictStr | None = None,
+             session_id: StrictStr | None = None, member: StrictStr | None = None,
+             offset: StrictInt = 0, limit: StrictInt = 20) -> types.CallToolResult:
+    """按需读取实际版本类／成员的官方签名、正文、参数约定、代码示例和相关链接。
+
+    member 可用简单名保留重载，或 search_api 返回的完整锚点；自动读取该成员的本地继承声明。
+    省略 member 读取类说明和本类成员分页，不展开所有父类。检查 read_status/coverage/next_offset。
+    类链接另按 links_next_offset 传 offset 续页；长类注记摘录在 content_truncations 明示完整来源。
+    返回来源路径与摘要；外部继承资料只标明未读，不隐式联网。资料、编译及实际执行依据不同。
+    """
+    return call('read_api', locals())
+
+
 @server.tool(name='starbridge.find_objects', annotations=READ)
 def find_objects(session_id: StrictStr, type_id: StrictStr, name: StrictStr | None = None,
                  parent_id: StrictStr | None = None, offset: StrictInt = 0,
@@ -260,7 +287,9 @@ def execute_macro(session_id: StrictStr, request_id: StrictStr, steps: list[dict
     code 是 Java 方法体，访问 sim、parameters、shared、result；把明确 JSON 值放入 result。
     object_parameters 显式列出需绑定的参数名；其中精确的 {object_id:当前ID}（含嵌套数组）
     在全部步骤前替换为 STAR 对象，其他参数仍为 JSON。绑定失败拒绝整个请求，不执行用户步骤。
-    imports 是不含 import/分号的类或通配名称，declarations 可定义辅助方法与内部类。
+    imports 是不含 import/分号的类或通配名称，declarations 可定义字段、辅助方法与内部类。
+    身份与全部绑定通过后才初始化用户声明，execution.initialization 单独记录；任一步mutate则初始化
+    也按mutate声明，全read则初始化也声明只读。声明覆盖全部代码，不是自动检测。
     result.execution.steps 保留完成、失败、未知和未开始项；completed 只证明步骤返回且结果可序列化，
     不证明物理有效性或自动验证读取范围。代码有完整宏权限，effect 是声明而非沙箱。
     request_id 须为稳定任务标识：重发同一内容只返回原凭据，变更内容须新标识。
@@ -273,6 +302,19 @@ def execute_macro(session_id: StrictStr, request_id: StrictStr, steps: list[dict
 def get_execution(session_id: StrictStr, request_id: StrictStr) -> types.CallToolResult:
     """查询通用宏的逐步凭据与会话状态；不重复执行，关闭后仍可读取已有凭据。"""
     return call('get_execution', locals())
+
+
+@server.tool(name='starbridge.reconcile_execution', annotations=WRITE)
+def reconcile_execution(session_id: StrictStr, request_id: StrictStr,
+                        expected_review_token: StrictStr, assessment: dict) -> types.CallToolResult:
+    """显式接受已观察到的当前状态并允许继续；不重放宏、不保存、不把旧结果改成完成。
+
+    先审阅 get_execution 的原结果、当前会话和 review；token 必须仍匹配。
+    assessment 说明 observations/accepted_scope/remaining_scope，以及已有 evidence 的 source/description。
+    依据可来自原部分凭据或已有观察，不要求为确认额外验证；来源文字不自动读取或执行。
+    活动或活动状态未知的请求不能接受。只支持通用宏；相同确认重发不再次解除后来的限制。
+    """
+    return call('reconcile_execution', locals())
 
 
 @server.tool(name='starbridge.inspect_session', annotations=READ)
