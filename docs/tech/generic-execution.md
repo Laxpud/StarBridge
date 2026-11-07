@@ -158,10 +158,14 @@ reconcile_execution(session_id, request_id, expected_review_token, assessment)
 
 | 方法 | 用途 |
 | --- | --- |
-| `search_memory(query, context?, limit?, project_dir?)` | 用已有任务信息检索方法和资料位置；空查询可浏览，结果是待审查候选。 |
+| `search_memory(query, context?, limit?, project_dir?, offset?)` | 用已有任务信息检索有界候选摘要；空查询可浏览，按 `next_offset` 继续。完整代码与依据不随搜索返回。 |
 | `get_memory(memory_id, project_dir?)` | 获取完整场景、做法、参数约定、例外及依据。 |
 | `record_memory(entry, project_dir?)` | 创建新记录；禁止覆盖已有 ID。 |
 | `update_memory(memory_id, expected_revision, changes, project_dir?)` | 根据新观察或纠正更新当前修订；冲突先重读，`changes` 是顶层替换。 |
+
+搜索的 `candidates[]` 保留真实 `memory_id/revision/certainty/storage_scope`，`summary` 提供问题、适用条件、做法、实际效果和证据范围的字段摘录；`has_recipe` 与 `material_counts` 标明另有多少材料。每项摘录有 `text/truncated`，结构化说明还标记是否省略其他元数据；首条例外不能代表全部例外。使用 `full_record` 的方法及参数调用 `get_memory`，审阅完整记录并比较当前修订；不从摘要补造代码或未展示的适用条件。
+
+成功搜索的 `result` 最多32 KiB，按默认分隔符的 UTF-8 JSON 计量，不含外层封套或协议转义，也不承诺错误响应预算。到达预算时不跳过候选，`next_offset` 按实际返回数推进；分页、摘要省略及匹配说明摘录通过 `read_status/coverage` 明示。保持原 `query/context/project_dir` 翻页，不用可能已摘录的查询回显重造输入。当前仍完整读取和排序所选层的记录，每页重新计算；累计扫描 I/O、内存和时间未有全局预算，也没有跨页快照。返回更短不等于整个检索过程已经低成本。
 
 记录必填 `problem`、`applicability`、`approach`、`observed_effect`、`source`、`evidence`、`evidence_scope`、`certainty`。说明字段使用文字或带 `description` 的对象；`evidence` 是非空说明列表。未观察效果或未验证范围应直接说明，不因字段必填而额外验证。
 
@@ -175,9 +179,9 @@ reconcile_execution(session_id, request_id, expected_review_token, assessment)
 
 ## 当前实际证据与未完成项
 
-2026-11-05 的 STAR 2602 / Build 21.02.007 后台操作已完成：从零创建空算例，在一次约 6.1 秒的客户端调用中创建用户场函数、读取定义并导出 CSV，查询及重复提交均返回同一凭据，随后显式另存并关闭本次自建会话。原始结果：[三步执行](<../../outputs/requirements-first/field-workflow/02-execute_macro.json>)、[请求重放](<../../outputs/requirements-first/field-workflow/04-execute_macro.json>)、[保存](<../../outputs/requirements-first/field-workflow/05-save_session.json>)。随后已重新加载并[读到保存的定义](<../../outputs/requirements-first/reload-02-execute_macro.json>)；该方法已作为单次观察记忆保存，并根据官方文档[修正程序名及查找副作用约束](<../../outputs/requirements-first/memory-update.json>)，没有为记忆另行启动验证。[MCP 实际握手与记忆检索](<../../outputs/requirements-first/mcp-handshake.json>)通过，服务发布 22 个工具。这些是本机运行产物，不随包提供。
+2026-11-05 的 STAR 2602 / Build 21.02.007 后台操作已完成：从零创建空算例，在一次约 6.1 秒的客户端调用中创建用户场函数、读取定义并导出 CSV，查询及重复提交均返回同一凭据，随后显式另存并关闭本次自建会话。原始结果：[三步执行](<../../outputs/requirements-first/field-workflow/02-execute_macro.json>)、[请求重放](<../../outputs/requirements-first/field-workflow/04-execute_macro.json>)、[保存](<../../outputs/requirements-first/field-workflow/05-save_session.json>)。随后已重新加载并[读到保存的定义](<../../outputs/requirements-first/reload-02-execute_macro.json>)；该方法已作为单次观察记忆保存，并根据官方文档[修正程序名及查找副作用约束](<../../outputs/requirements-first/memory-update.json>)，没有为记忆另行启动验证。[该阶段 MCP 握手与记忆检索](<../../outputs/requirements-first/mcp-handshake.json>)通过，当时发布22个工具。这些是本机运行产物，不随包提供。
 
-随后在同一安装从零建立了独立的 0.01 × 0.001 × 0.001 m 层流液体通道；各阶段之间保持同一个后台会话，不触碰用户原算例。当前服务发布 24 个工具，含 8 个现成方法；下方保留各阶段实际任务依据，最终接口通过[实际 stdio MCP 枚举、契约／方法查询和工作记忆检索](<../../outputs/requirements-first/mcp-gui-location-handshake.json>)。
+随后在同一安装从零建立了独立的 0.01 × 0.001 × 0.001 m 层流液体通道；各阶段之间保持同一个后台会话，不触碰用户原算例。该阶段的[实际 stdio MCP 枚举、契约／方法查询和记忆检索](<../../outputs/requirements-first/mcp-gui-location-handshake.json>)包含24个工具及8个现成方法；这些是历史接口依据，不是当前默认列表。当前已改为[三个稳定入口与按需格式](<mcp.md#按需取得调用格式>)，下方保留实际任务范围。
 
 | 实际任务 | 结果与证据 |
 | --- | --- |

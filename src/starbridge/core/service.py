@@ -398,11 +398,12 @@ class Service:
             max_nodes=max_nodes, max_depth=max_depth, scope=scope, timeout=_timeout(timeout),
             limit=limit, cursor=cursor, operate=self._operate))
 
-    def search_memory(self, query, context=None, limit=20, project_dir=None):
-        """按已知任务信息检索带场景的候选经验，不为检索额外读取或验证 STAR。"""
+    def search_memory(self, query, context=None, limit=20, project_dir=None, offset=0):
+        """用已有任务信息检索有界经验摘要；按需另读完整记录，不为检索验证 STAR。"""
         from .memory import search_memory
         return search_memory(query, context, limit,
-                             str(_path(project_dir, 'project_dir')) if project_dir is not None else None)
+                             str(_path(project_dir, 'project_dir')) if project_dir is not None else None,
+                             offset=offset)
 
     def get_memory(self, memory_id, project_dir=None):
         """读取方法、参数约定、资料位置和证据范围，结果是经验而非当前用户指令。"""

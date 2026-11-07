@@ -22,6 +22,11 @@ from .session_store import runtime_root
 
 SCHEMA_VERSION = 1
 MAX_RECORD_BYTES = 2_000_000
+# 只限制成功检索 result 的 UTF-8 JSON（默认分隔符），不含 Service/MCP 封套；
+# 不限制既有全量扫描所需的累计 I/O、内存或时间。
+MAX_SEARCH_RESPONSE_BYTES = 32_768
+_SUMMARY_CHARACTERS = {'title': 120, 'problem': 180, 'applicability': 220,
+                       'approach': 220, 'observed_effect': 180, 'evidence_scope': 320}
 _IDENTIFIER = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,127}')
 _PARAMETER = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 _CERTAINTIES = {'user_rule', 'single_observation', 'validated', 'uncertain'}
@@ -470,23 +475,118 @@ def _tokens(text):
     return terms
 
 
-def search_memory(query, context=None, limit=20, project_dir=None):
-    """按关键词返回候选信封，候选内 memory 可直接供 get/update 的调用者使用。
+def _excerpt(text, limit, source):
+    """返回原文前缀及明确的字段、长度和截断标记；不添加推断或伪造省略文字。"""
+    selected = text[:limit]
+    return {'text': selected, 'source': source, 'characters': len(text),
+            'returned_characters': len(selected), 'truncated': len(selected) < len(text)}
 
-    query 为文字，空字符串用于浏览；context 可为文字或 JSON 对象，只参与排序，
-    不作为“条件已满足”的证明。limit 为 1..200。结果包含总匹配数、截断状态和
-    读取范围；每个候选都带 requires_context_review=True 与 recipe_usage 警告。
-    任一正式 JSON 记录损坏会使本次检索明确失败，而不是略过后返回误导性空结果。
-    多记录读取不是事务快照；更新前必须携带所读修订，竞争更新仍会受到保护。
+
+def _summary_field(value, limit, field):
+    """投影单项说明；普通字段名沿用 summary 的键，只在有信息损失时附长度。
+
+    每项始终有 text/truncated。结构化值明确指出所取 description 及是否省略其余
+    元数据；first_exception 指向真实 exceptions[0]，不把首条例外冒充全部例外。
+    """
+    structured = isinstance(value, dict)
+    item = _excerpt(value['description'] if structured else value, limit,
+                    field + '.description' if structured else field)
+    if not item['truncated']:
+        item.pop('characters')
+        item.pop('returned_characters')
+    if structured:
+        item['structured_metadata_omitted'] = len(value) > 1
+    elif field != 'exceptions[0]':
+        item.pop('source')
+    return item
+
+
+def _candidate_summary(candidate, project_dir):
+    """只投影选中候选的场景摘要，源码、依据列表和完整结构仍须通过 get_memory 审阅。"""
+    record = candidate['memory']
+    summary = {name: _summary_field(record[name], limit, name)
+               for name, limit in _SUMMARY_CHARACTERS.items() if name in record}
+    exceptions = record.get('exceptions', [])
+    if exceptions:
+        summary['first_exception'] = _summary_field(exceptions[0], 180, 'exceptions[0]')
+    terms = candidate['match']['matched_terms']
+    selected_terms = terms[:8]
+    term_excerpts = [{'index': index, 'characters': len(term), 'returned_characters': 64}
+                     for index, term in enumerate(selected_terms) if len(term) > 64]
+    arguments = {'memory_id': record['memory_id']}
+    if project_dir is not None:
+        arguments['project_dir'] = project_dir
+    return {
+        'memory_id': record['memory_id'], 'revision': record['revision'],
+        'certainty': record['certainty'], 'storage_scope': candidate['storage_scope'],
+        'summary': summary,
+        'summary_truncated': any(item['truncated'] or item.get('structured_metadata_omitted', False)
+                                 for item in summary.values()) or len(exceptions) > 1,
+        'has_recipe': 'recipe' in record,
+        'material_counts': {'evidence': len(record['evidence']),
+                            'references': len(record.get('references', [])),
+                            'exceptions': len(exceptions), 'tags': len(record.get('tags', []))},
+        'full_record': {'method': 'get_memory', 'arguments': arguments},
+        'match': {'score': candidate['match']['score'],
+                  'matched_fields': candidate['match']['matched_fields'],
+                  'matched_terms': [term[:64] for term in selected_terms],
+                  'matched_term_count': len(terms),
+                  'matched_terms_truncated': len(terms) > len(selected_terms) or bool(term_excerpts),
+                  'matched_term_excerpts': term_excerpts},
+        'requires_context_review': True,
+    }
+
+
+def _search_response_size(result):
+    """按 tool_result 当前默认 JSON 分隔符计算 result 字节，并包含计数字段自身。
+
+    这里只计算 result，不把传输封套、JSON-RPC 或调用者其他格式化开销算作已受限。
+    数字占用的位数稳定后即取得准确大小，不以候选数量代替整体字节预算。
+    """
+    size = 0
+    while True:
+        result['budget']['serialized_bytes'] = size
+        measured = len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode('utf-8'))
+        if measured == size:
+            return size
+        size = measured
+
+
+def search_memory(query, context=None, limit=20, project_dir=None, offset=0):
+    """按原关键词排名返回有界候选摘要，不再返回 candidates[].memory 完整记录。
+
+    query 为最多4000字符的文字，空串浏览；context 为文字或 JSON 对象，只参与排序。
+    limit 为1..200，offset 为0..2147483647；同 query/context/project_dir 按 next_offset
+    继续。成功 result 以 ensure_ascii=False、allow_nan=False、默认分隔符编码时不超过
+    32 KiB，含查询／场景摘录、候选及预算说明，不含 Service/MCP 封套和其他格式化。
+    受字节预算限制时可能少于 limit；过大的不可省元数据会明确失败，不返回空成功。
+
+    摘录始终给出 text/truncated；仅截断时附原始／返回字符数。原字段默认由 summary
+    键指出，结构化 description 和首条例外另附 source。revision/certainty 保持原值，
+    evidence_scope 使用其真实说明；has_recipe、材料计数及 full_record 给出审阅入口。get_memory
+    仍返回完整记录，其当前 revision 可能已与候选不同，不能把摘要当成完整记录更新。
+
+    预算只覆盖返回值：仍完整读取、校验、排名各层记录，累计扫描成本未全局有界。
+    任一正式记录损坏仍使检索明确失败，不跳过坏文件；高层覆盖不掩盖低层损坏。
+    分页不是事务快照，每页重算；修改可能使位置漂移，不因此证明全部记忆已覆盖。
     """
     if not isinstance(query, str) or len(query) > 4000:
         raise ValueError('query must be text of at most 4000 characters')
     if type(limit) is not int or not 1 <= limit <= 200:
         raise ValueError('limit must be an integer from 1 to 200')
+    if type(offset) is not int or not 0 <= offset <= 2_147_483_647:
+        raise ValueError('offset must be an integer from 0 to 2147483647')
     if context is not None and not isinstance(context, (str, dict)):
         raise ValueError('context must be text, a JSON object or null')
+    query = _json_copy(query)
     context = _json_copy(context)
-    roots = _roots(project_dir)
+    # 规范化同一个项目基址用于本次读取及后续 get_memory 指引，不从 memory 存储目录反推。
+    selected_project = None
+    if project_dir is not None:
+        if not isinstance(project_dir, (str, os.PathLike)) or not str(project_dir).strip():
+            raise ValueError('project_dir must identify an existing directory')
+        selected_project = str(Path(project_dir).expanduser().resolve())
+    roots = _roots(selected_project)
     seed = _seed()
     records = {seed['memory_id']: (seed, 'builtin')}
     # 1. 完整读取各层再检索；高层覆盖不能掩盖低层已知文件的损坏。
@@ -503,8 +603,9 @@ def search_memory(query, context=None, limit=20, project_dir=None):
                 records[record['memory_id']] = (record, scope)
     # 2. query 必须产生文本匹配，context 只提升排序；空 query 则允许浏览全部记录。
     query_terms = _tokens(query)
-    context_terms = _tokens(context if isinstance(context, str) else
-                            json.dumps(context, ensure_ascii=False) if context is not None else '')
+    context_text = (context if isinstance(context, str) else
+                    json.dumps(context, ensure_ascii=False) if context is not None else '')
+    context_terms = _tokens(context_text)
     weights = {'title': 5, 'problem': 5, 'tags': 4, 'applicability': 3, 'approach': 3,
                'observed_effect': 1, 'source': 1, 'evidence': 1, 'evidence_scope': 1,
                'references': 1, 'exceptions': 1, 'recipe': 1}
@@ -522,12 +623,64 @@ def search_memory(query, context=None, limit=20, project_dir=None):
                      for key, value in fields.items())
         candidates.append({'memory': record, 'storage_scope': scope,
                            'match': {'score': score, 'matched_terms': matched,
-                                     'matched_fields': sorted(key for key, terms in matches.items() if terms)},
-                           'requires_context_review': True, 'recipe_usage': _RECIPE_NOTICE})
-    # 3. 稳定排序不因“已验证”或“用户规则”的标签而自动提升适用性。
+                                     'matched_fields': sorted(key for key, terms in matches.items() if terms)}})
+    # 3. 稳定排序保持不变；只有完成原检索后才投影当前页，摘要不参与权重计算。
     candidates.sort(key=lambda candidate: (-candidate['match']['score'], candidate['memory']['memory_id']))
-    return {'kind': 'memory_match_candidates', 'application': 'review_required', 'notice': _NOTICE,
-            'query': query, 'context': context, 'candidates': candidates[:limit],
-            'total_matches': len(candidates), 'returned': min(len(candidates), limit),
-            'truncated': len(candidates) > limit, 'read_status': 'complete',
-            'read_scope': {'builtin': True, **{scope: str(root) for scope, root in roots}}}
+    total = len(candidates)
+    result = {
+        'kind': 'memory_match_candidates', 'representation': 'candidate_summaries',
+        'application': 'review_required', 'notice': _NOTICE, 'recipe_usage': _RECIPE_NOTICE,
+        'query': _excerpt(query, 256, 'query'),
+        'context': _excerpt(context_text, 256, 'context' if isinstance(context, str) else 'context_json')
+                   if context is not None else None,
+        'candidates': [], 'total_matches': total, 'offset': offset, 'limit': limit,
+        'page_end_reason': 'response_budget',
+        'read_scope': {'builtin': True, **{scope: str(root) for scope, root in roots}},
+        'coverage': {'scope': 'candidate_summaries', 'full_records_returned': False,
+                     'store_read_status': 'complete', 'snapshot': False,
+                     'scan': 'all_scope_records_loaded_and_ranked_before_pagination',
+                     'scan_globally_bounded': False,
+                     'continuation': 'Keep query/context/project_dir unchanged; every page recomputes live ranking.',
+                     'revision': 'Compare get_memory revision with candidate revision before reusing or updating.'},
+        'budget': {'max_bytes': MAX_SEARCH_RESPONSE_BYTES,
+                   'encoding': 'UTF-8 JSON; ensure_ascii=False, allow_nan=False, default separators',
+                   'scope': 'result_only_excludes_service_envelope_and_protocol',
+                   'summary_field_characters': {**_SUMMARY_CHARACTERS, 'first_exception': 180},
+                   'query_context_characters': 256,
+                   'matched_terms': 8, 'matched_term_characters': 64},
+    }
+
+    def page_state():
+        """更新真实返回范围；最后一页、空的越界页也不冒称本页覆盖全部匹配。"""
+        returned = len(result['candidates'])
+        result['returned'] = returned
+        result['next_offset'] = offset + returned if offset + returned < total else None
+        result['truncated'] = (offset > 0 and total > 0) or result['next_offset'] is not None
+        excerpted = any(item['summary_truncated'] for item in result['candidates'])
+        match_excerpted = any(item['match']['matched_terms_truncated'] for item in result['candidates'])
+        result['coverage']['summaries_excerpted'] = excerpted
+        result['coverage']['match_explanations_excerpted'] = match_excerpted
+        result['coverage']['all_matches_returned'] = not result['truncated']
+        result['read_status'] = 'partial' if result['truncated'] or excerpted or match_excerpted else 'complete'
+
+    # 4. 先核对固定元数据，再逐个加入摘要。预算不足不能静默跳过当前位置的候选。
+    page_state()
+    if _search_response_size(result) > MAX_SEARCH_RESPONSE_BYTES:
+        raise MemoryStoreError('Memory search metadata exceeds the result byte budget; use a narrower scope')
+    for candidate in candidates[offset:offset + limit]:
+        result['candidates'].append(_candidate_summary(candidate, selected_project))
+        page_state()
+        if _search_response_size(result) > MAX_SEARCH_RESPONSE_BYTES:
+            result['candidates'].pop()
+            page_state()
+            if not result['candidates']:
+                raise MemoryStoreError('Cannot represent memory ' + repr(candidate['memory']['memory_id'])
+                                       + ' within the search result budget; use get_memory for this identifier')
+            break
+    else:
+        result['page_end_reason'] = ('offset_beyond_matches' if offset > total else
+                                     'limit' if result['next_offset'] is not None else 'results_end')
+    # 将计数字段自身也计入总预算；不以未经实测的字段上限假设代替最终编码大小。
+    if _search_response_size(result) > MAX_SEARCH_RESPONSE_BYTES:
+        raise MemoryStoreError('Memory search result exceeds its byte budget')
+    return result

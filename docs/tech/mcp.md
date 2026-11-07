@@ -10,17 +10,41 @@ MCP 和 JSON CLI 共用 Core Service。正常任务以实际版本的 Java API�
 
 三端使用[插件安装入口](../distribution.md#三端插件安装)，源码与通用 stdio 接入见[独立安装说明](../distribution.md#源码与通用接入)。stdout 仅承载协议消息；算例与输出路径均指 MCP 进程所在机器的绝对路径。
 
-首次需要了解参数时调用 `get_contract` 或读取 `starbridge://contract`，无需先读文档或 Skill。已有有效会话、对象引用、资料和代码可以复用。初始化只提供简短能力说明；当前仍一次发布全部工具、返回完整契约，尚未实现按主题展开操作入口，不能将资料按需读取当成该要求已完成。`usage.workflow.task` 描述正常宏任务路径，`structured_read/structured_write` 只描述可选结构化流程。`usage.defaults` 来自 Core 方法签名；默认值是省略参数时的行为，可按任务覆盖。
+MCP 进程不热重载 Python。源码或插件升级后，应先处理执行中的请求，再重启 MCP 连接以取得新入口；这不要求重新加载已有 STAR 算例。
+
+初始化提供简短说明，默认工具列表只含 `starbridge.expand_capabilities`、`starbridge.query`、`starbridge.execute`。AI 按任务明确选择所需能力或方法，取得相关参数格式后调用；不是按关键词触发，不要求每次重新展开，也不依赖客户端动态刷新工具列表。能力展开只返回接口元数据，API 正文读取和相关记忆检索分别由业务方法完成。完整 `get_contract` 与 `starbridge://contract` 保留为显式参考，不再是默认前置步骤。已有有效会话、对象引用、格式、资料和代码可以复用。
 
 安装未知时用 `discover_installations` 探测实际程序；用户已指定程序时可直接交给 `open_session`。`get_capabilities()` 的 `supported`、`catalog_supported` 和 `supported_versions` 只描述结构化目录，不能证明本机安装；通用生命周期与宏另见 `session_lifecycle`、`generic_execution`，发现另查 `runtime_discovery.supported`。顶层 `ok` 仅表示查询完成，不表示未知版本已经验证。
 
 `open_session` 从所选程序检测版本，并核对可选的 `release/build` 预期；无法检测或不匹配时在加载前拒绝，不自动换安装。未登记版本可尝试独立通用路径，但须先用所选安装内 JDK／库编译最小生命周期模板，再核对实际 server 版本与加载对象；不借用邻近目录或系统 JDK。返回 `star_version`、`version_source`、编译凭据以及可为 `null` 的 `catalog_target`，不把成功接入推广成全部 API 已验证。需要运行时规则时，还要求已有精确适配与本机 Javadoc。接入、保存与关闭语义见[会话说明](<bridge-session.md>)。
 
-## 工具与资源
+## 按需取得调用格式
 
-工具前缀为 `starbridge.`，下表省略前缀。会话内操作需要 `session_id`；契约、安装发现、能力查询及工作记忆接口不需要。`timeout` 单位为秒，会话操作默认 180，安装发现默认 30；客户端超时应更长。超时或断开不证明 STAR 操作已取消。
+`expand_capabilities` 的 `capabilities` 可选择 `work`（会话／通用宏）、`api`（版本资料）、`memory`（工作记忆）、`recipes`（现成方法）、`structured`（可选结构化）或 `reference`（完整契约）。也可只传 `methods` 选择已知业务方法；两种选择合并去重，均省略时只给简短索引，不列出全部参数说明。
 
-| 工具 | 主要参数 | 结果与限制 |
+```json
+{"methods": ["read_api", "get_execution"]}
+```
+
+返回的 `methods[]` 给出 `method`、应使用的 `tool` 和完整 `arguments_schema`。例如，向 `starbridge.query` 传入：
+
+```json
+{"method": "get_execution", "arguments": {"session_id": "<current session_id>", "request_id": "<original request_id>"}}
+```
+
+向 `starbridge.execute` 传入的方法及参数使用同样结构。它承载生命周期、宏和记忆写入等可能有副作用的动作；`query` 明确拒绝这些方法。任意 Java 宏即使声明 `effect=read` 仍走 `execute`，不把调用者声明当作代码沙箱。正常业务结果保持原封套、局部状态和 `isError`，不套第二层结果或自动重试；原 SDK 的 Strict 类型与默认值仍生效。
+
+能力展开的成功 `result` 最多32 KiB，按默认分隔符的 UTF-8 JSON 计量，不含外层封套及协议转义；只在完整方法之间分页，不截坏 schema。`limit` 默认8、上限100；按 `next_offset` 继续并保持选择不变。末页只说明没有后续页，`coverage.selection_complete` 才表示本页包含整个选择。单项超预算会明确报错，不返回无法推进的空页。
+
+这一层只改变入口和契约获取，不增加一次 STAR 往返。展开不读取 API 正文、记忆条目或算例；查询和执行才调用选定业务方法，已有方法格式可以直接复用。完整契约的 `usage.workflow.task` 描述正常宏任务，`structured_read/structured_write` 是可选路径；`usage.defaults` 来自 Core 签名，是可覆盖的省略行为。
+
+当前真实 stdio MCP 的[默认定义](<../../outputs/requirements-first/on-demand/final-entry-tools.json>)为三个稳定工具；[同口径 UTF-8 JSON 度量](<../../outputs/requirements-first/on-demand/final-entry-metrics.json>)为4118字节，当前27个业务方法完整定义为59369字节。这不是 token 数或总任务提速比例。新路径已取得[工作方法格式](<../../outputs/requirements-first/on-demand/final-work-contracts.json>)、[已关闭会话的原研究凭据](<../../outputs/requirements-first/on-demand/study-receipt.json>)、[记忆候选](<../../outputs/requirements-first/on-demand/memory-candidates.json>)和[完整记忆](<../../outputs/requirements-first/on-demand/reviewed-memory.json>)；通过 `execute` [记录上轮已有研究经验](<../../outputs/requirements-first/on-demand/recorded-study-memory.json>)后，按相关任务[再次检索到该经验](<../../outputs/requirements-first/on-demand/source-reuse-candidates.json>)，没有启动 STAR 或为记忆另行验证。只读／写入分类及参数异常分支另有静态复核，不冒充全部故障已实跑。
+
+## 业务方法与资源
+
+下表是可按需取得的业务方法，不是默认工具列表。MCP 将方法名和参数交给上面的稳定入口；JSON CLI 继续使用原业务方法名。会话内操作需要 `session_id`；契约、安装发现、能力查询及工作记忆接口不需要。`timeout` 单位为秒，会话操作默认180，安装发现默认30；客户端超时应更长。超时或断开不证明 STAR 操作已取消。
+
+| 方法 | 主要参数 | 结果与限制 |
 |---|---|---|
 | `get_contract` | 无 | schema 2 调用流程、默认值、结果位置与恢复约定 |
 | `discover_installations` | `star` 或 `search_roots`，可选 `timeout` | 有界探测实际版本，不加载算例、不自动选择 |
@@ -40,7 +64,7 @@ MCP 和 JSON CLI 共用 Core Service。正常任务以实际版本的 Java API�
 | `execute_macro` | `request_id/steps`，可选 `parameters/object_parameters/imports/declarations/intent/working_directory` | 同会话组合 `code` 与完整源码 `macro` 步骤；原宏、辅助源码和显式 JAR 原样编译；[路径及结果边界](<generic-execution.md#原样复用完整宏与辅助源码>)；完整宏权限，不是代码沙箱 |
 | `get_execution` | `request_id` | 原宏凭据、读取诊断、活动状态及可用的审阅 token；不重做操作 |
 | `reconcile_execution` | `request_id/expected_review_token/assessment` | 根据已有依据显式接受当前状态；不重放、不保存、不追认旧任务完成，见[接受条件与边界](<generic-execution.md#根据已有观察接受当前状态>) |
-| `search_memory` | `query`，可选 `context/limit/project_dir` | 返回需审查适用条件的经验与资料候选 |
+| `search_memory` | `query`，可选 `context/limit/offset/project_dir` | 有界候选摘要与 `full_record` 获取指引；检查摘录及 `next_offset`，不返回完整代码与依据列表 |
 | `get_memory` | `memory_id`，可选 `project_dir` | 完整做法、场景和证据范围 |
 | `record_memory` | `entry`，可选 `project_dir` | 记录实际任务已有依据，不额外验证或执行方法 |
 | `update_memory` | `memory_id/expected_revision/changes`，可选 `project_dir` | 乐观并发修订，保留例外与纠正 |
@@ -109,7 +133,9 @@ MCP `content` 中只返回一份 Core JSON 文本，不重复提供 `structuredC
 
 ## 迁移与兼容边界
 
-这是破坏性接口迁移，契约从 1 升至 2。移除 `describe_node`、`read_node_properties`、`modify_node_property`、`relocate_node` 和公开 `modify(request)`；旧参数 `node_id/target/properties/parent` 不再接受，分别使用统一对象、属性选择和父对象 ID。程序与 Skill 应一起更新。
+当前 MCP 默认列表改为三个稳定入口。原业务工具仍注册，原始 MCP `tools/call` 可以按旧名字调用，但客户端可能拒绝显示隐藏工具，或为隐藏名字额外请求工具列表；新接入应使用 `query/execute`，不依赖这种兼容方式。JSON CLI 的业务方法名和调用封套不变，结构化对象契约仍为 schema 2。`search_memory` 响应另有明确迁移：`candidates[].memory` 改为摘要、真实 ID／修订及 `full_record` 获取参数，完整材料通过 `get_memory` 取得；输入新增可选 `offset`，存储与完整读取格式未变。
+
+此前的对象接口迁移将契约从 1 升至 2。移除 `describe_node`、`read_node_properties`、`modify_node_property`、`relocate_node` 和公开 `modify(request)`；旧参数 `node_id/target/properties/parent` 不再接受，分别使用统一对象、属性选择和父对象 ID。程序与 Skill 应一起更新。
 
 旧 Runner 的 `set-scalar`、schema 1 修改及其 Inspector 结果投影已删除。对应的常量、表达式和标签能力均通过已有目录属性执行，迁移对应表见[旧修改入口迁移](modifier.md)。Inspector 快照继续作为按需审查结果保留。
 

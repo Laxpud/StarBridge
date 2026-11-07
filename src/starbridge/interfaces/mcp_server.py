@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """通过官方 Python SDK 提供本机 stdio MCP，所有业务调用交给共享 Core。
 
-stdout 仅用于 MCP 消息；STAR 的输出由原执行器写入请求日志。工具是同步函数，
-SDK 在线程中执行，避免长时间 STAR 调用阻塞协议循环；同一会话仍由文件锁互斥。
+stdout 仅用于 MCP 消息；STAR 的输出由原执行器写入请求日志。稳定入口异步转发，
+原同步业务包装器仍由 SDK 在线程执行，避免 STAR 调用阻塞协议循环；会话由文件锁互斥。
 """
 
 import json
@@ -14,12 +14,30 @@ from pydantic import StrictBool, StrictFloat, StrictInt, StrictStr
 from jsonschema import Draft202012Validator
 
 from starbridge import __version__
-from starbridge.core.service import Service, contract
+from starbridge.core.service import METHODS, Service, contract
 from starbridge.core.interface_contract import SERVER_INSTRUCTIONS, tool_input_schema, recovery_guidance
+from starbridge.core.interface_exposure import (
+    ENTRY_TOOLS, READ_METHODS, method_entry, validate_partition, expand as expand_contracts,
+)
+
+validate_partition(METHODS)
 
 
 def tool_result(result):
-    """单份 JSON 文本承载共享 Core 封套，不再复制一份相同的 structuredContent。"""
+    """单份 JSON 文本承载 Core 封套；恢复提示使用默认可见入口，不复制结果正文。"""
+    recovery = result.get('recovery')
+    if isinstance(recovery, dict):
+        method = recovery.get('next_tool', '').removeprefix('starbridge.')
+        if method == 'get_contract':
+            # 无会话时 Core 的旧兜底是整份契约；MCP 改为按需入口，不因一次错误加载所有说明。
+            result = {**result, 'recovery': {**recovery, 'next_tool': 'starbridge.expand_capabilities', 'arguments': {}}}
+        elif method in METHODS:
+            # 只改 MCP 路由，不改变 Core 的状态判断；缺少的业务参数仍须按原错误补充。
+            arguments = {'method': method}
+            if 'arguments' in recovery:
+                arguments['arguments'] = recovery['arguments']
+            result = {**result, 'recovery': {**recovery, 'next_tool': 'starbridge.' + method_entry(method),
+                                           'method': method, 'arguments': arguments}}
     return types.CallToolResult(
         content=[types.TextContent(text=json.dumps(result, ensure_ascii=False, allow_nan=False))],
         is_error=result['status'] != 'ok')
@@ -34,6 +52,8 @@ async def validate_arguments(context, call_next):
                 schema = tool_input_schema(tool.name.removeprefix('starbridge.'), tool.input_schema)
                 error = next(Draft202012Validator(schema).iter_errors(params.get('arguments', {})), None)
                 if error is not None:
+                    if tool.name.removeprefix('starbridge.') in ENTRY_TOOLS:
+                        return entry_rejection(error.message, list(error.absolute_path))
                     return tool_result({'status': 'rejected', 'error': {
                         'type': 'ArgumentValidationError', 'message': error.message,
                         'argument_path': list(error.absolute_path)},
@@ -41,12 +61,15 @@ async def validate_arguments(context, call_next):
                 break
     result = await call_next(context)
     if context.method == 'tools/list' and isinstance(result, types.ListToolsResult):
-        # 发布的格式与执行前检查同源；动态实例条件仍由 Core 验证。
+        # 默认仅发布稳定入口；完整业务注册表保留，按需展开才返回选中方法的格式。
+        result.tools = [tool for tool in result.tools if tool.name.removeprefix('starbridge.') in ENTRY_TOOLS]
         for tool in result.tools:
             tool.input_schema = tool_input_schema(tool.name.removeprefix('starbridge.'), tool.input_schema)
     elif context.method == 'tools/list' and isinstance(result, dict):
-        # SDK 的协商版本也可能在中间件返回前已转成协议字典。
-        for tool in result.get('tools', []):
+        # 当前 SDK 通常已序列化；只过滤 tools，保留其协议版本及其他封套字段。
+        result['tools'] = [tool for tool in result.get('tools', [])
+                           if tool['name'].removeprefix('starbridge.') in ENTRY_TOOLS]
+        for tool in result['tools']:
             tool['inputSchema'] = tool_input_schema(tool['name'].removeprefix('starbridge.'), tool['inputSchema'])
     return result
 
@@ -69,6 +92,88 @@ def call(method, arguments):
     """直接返回单份 Core 状态封套，失败时设置 MCP 的 isError。"""
     result = service.call(method, arguments)
     return tool_result(result)
+
+
+async def method_catalog():
+    """通过 SDK 公开注册接口取同源签名；不经过出站列表过滤，也不读取业务资料。"""
+    result = {}
+    for tool in await server.list_tools():
+        method = tool.name.removeprefix('starbridge.')
+        if method in METHODS:
+            expected_read = method in READ_METHODS
+            if tool.annotations is None or tool.annotations.read_only_hint is not expected_read:
+                raise RuntimeError(f'Method impact annotation disagrees with its entrypoint: {method}')
+            result[method] = {'description': tool.description or '',
+                              'input_schema': tool_input_schema(method, tool.input_schema)}
+    if set(result) != set(METHODS):
+        raise RuntimeError('Registered business tools and Core methods must agree')
+    return result
+
+
+@server.tool(name='starbridge.expand_capabilities', annotations=READ)
+async def expand_capabilities(capabilities: list[StrictStr] | None = None,
+                              methods: list[StrictStr] | None = None,
+                              offset: StrictInt = 0, limit: StrictInt = 8) -> types.CallToolResult:
+    """主动选择任务相关能力或已知方法，取得说明、参数格式和调用入口。
+
+    省略选择只返回简短索引。按 next_offset 继续，schema不截断；不调用STAR、不读API正文或记忆。
+    这不是STAR功能支持清单，也不会自动授予写入权限；已有有效格式可直接复用。
+    """
+    try:
+        result = expand_contracts(await method_catalog(), capabilities, methods, offset, limit)
+        return tool_result({'status': 'ok', 'result': result})
+    except ValueError as error:
+        return entry_rejection(str(error))
+
+
+def entry_rejection(message, path=None):
+    """入口输入错误在业务调用之前拒绝，不据此推断已有算例状态或重试写入。"""
+    return tool_result({'status': 'rejected', 'error': {'type': 'ArgumentValidationError',
+        'message': message, 'argument_path': path or []},
+        'recovery': {'automatic_retry': False, 'next_tool': 'starbridge.expand_capabilities',
+                     'arguments': {}, 'instruction': '本次业务方法未调用；按需取得正确格式。已有会话的未知结果仍须查原凭据。'}})
+
+
+async def invoke_method(entry, method, arguments):
+    """以原 schema 和 SDK 原签名校验参数，再调用一次旧业务包装器，保留 Strict/defaults。
+
+    不能仅用 Service.call 替代 SDK 校验：JSON Schema 的 integer 可能接受 1.0，原
+    StrictInt 不接受。公开 call_tool 不递归进入 middleware；同步业务仍由 SDK 在线程执行。
+    """
+    try:
+        expected = method_entry(method)
+    except ValueError as error:
+        return entry_rejection(str(error), ['method'])
+    if expected != entry:
+        return entry_rejection(f'{method} requires starbridge.{expected}; no business method was called', ['method'])
+    arguments = {} if arguments is None else arguments
+    catalog = await method_catalog()
+    error = next(Draft202012Validator(catalog[method]['input_schema']).iter_errors(arguments), None)
+    if error is not None:
+        return entry_rejection(error.message, ['arguments', *error.absolute_path])
+    # 仅允许既有业务名称，不能转发回 query/execute/expand 形成递归。CallToolResult 原样返回，
+    # 保留 Core partial/uncertain 与 is_error，不再次包一层 JSON 或复制 structuredContent。
+    return await server.call_tool('starbridge.' + method, arguments)
+
+
+@server.tool(name='starbridge.query', annotations=READ)
+async def query(method: StrictStr, arguments: dict | None = None) -> types.CallToolResult:
+    """调用已知只读方法，按需展开取得 method 与 arguments_schema。
+
+    只接受既有读取方法，不接收用户Java或记忆写入，也不请求算例修改／会话启停；这些动作另用execute。
+    返回原业务状态与覆盖信息；只读成功不解除此前未知写入。
+    """
+    return await invoke_method('query', method, arguments)
+
+
+@server.tool(name='starbridge.execute', annotations=MACRO_WRITE)
+async def execute(method: StrictStr, arguments: dict | None = None) -> types.CallToolResult:
+    """调用明确选定的宏、生命周期、记忆写入或结构化修改方法，不根据关键词选择动作。
+
+    使用展开取得的格式和已有授权范围；宏有完整Java权限，即使声明只读也走此入口。
+    原请求标识、逐步结果和恢复规则不变，失败或超时不自动重发。
+    """
+    return await invoke_method('execute', method, arguments)
 
 
 @server.tool(name='starbridge.get_contract', annotations=READ)
@@ -107,7 +212,7 @@ def discover_installations(star: StrictStr | None = None, search_roots: list[Str
     当前实现最多探测 20 个不同调用路径；这些路径和预算不是用户安装位置或数量的限制。
     result.installations[] 含 executable、实际 version、适配标志、Javadoc 路径及探测错误。
     未适配版本也原样报告；没有命中或预算截断不表示整机未安装。安装支持不证明许可证可用。
-    按用户任务选择程序，再 get_capabilities(release,build)；多个版本无法确定时询问用户，不自动换版本。
+    按用户任务选择程序；仅选用结构化接口时再查 get_capabilities。多个版本无法确定时询问用户，不自动换版本。
     """
     return call('discover_installations', locals())
 
@@ -207,12 +312,13 @@ def execute_operation(session_id: StrictStr, object_id: StrictStr, operation_id:
 
 @server.tool(name='starbridge.search_memory', annotations=READ)
 def search_memory(query: StrictStr, context: Any = None, limit: StrictInt = 20,
-                  project_dir: StrictStr | None = None) -> types.CallToolResult:
-    """按已知任务信息检索经验与资料位置；不要求会话，不额外读取或验证算例。
+                  project_dir: StrictStr | None = None, offset: StrictInt = 0) -> types.CallToolResult:
+    """用已有任务信息检索有界候选摘要；不要求会话，不为检索读取或验证算例。
 
-    返回 candidates[].memory 的完整方法、适用场景、来源与证据范围；候选不是自动规则。
-    query 可空以浏览；context 为文字或 JSON 对象，只影响排序；limit=1..200。
-    显式 project_dir 同时读取项目覆盖层，省略只读用户记忆与随包种子。
+    candidates保留ID/修订/置信范围、summary字段摘录和full_record获取参数，不返回完整recipe/来源证据。
+    按需get_memory审阅完整记录；摘要/分页遗漏看read_status、coverage和next_offset，候选不是自动规则。
+    query可空以浏览；context为文字或JSON对象，仅影响排序；limit=1..200，结果另受32 KiB预算。
+    显式project_dir读取项目覆盖层；全量扫描成本仍未有界，翻页不是记录快照。
     """
     return call('search_memory', locals())
 

@@ -10,16 +10,18 @@ from copy import deepcopy
 SERVER_INSTRUCTIONS = (
     'StarBridge 帮助 AI 使用实际版本的 STAR-CCM+ Java API 编写、复用和执行宏，'
     '接手已有 GUI 算例或在后台连续工作，并按需获取 API 资料、执行依据与工作记忆。'
-    '宏是正常操作方式，不以结构化适配清单限定能力。相关任务需要详细说明时主动调用 '
-    'starbridge.get_contract；已有有效会话、资料和代码可直接复用。'
+    '宏是正常操作方式，不以结构化适配清单限定能力。任务相关时主动用 '
+    'starbridge.expand_capabilities 取得所需能力或方法的说明和参数格式，再经 query／execute 调用。'
+    '能力展开、API正文读取和相关记忆检索彼此独立；已有有效格式、会话、资料和代码可直接复用。'
     '未读取不等于未设置，宏返回不等于任务完成；结果未知时先查凭据，不盲目重复执行。'
 )
 
 
 USAGE_INSTRUCTIONS = (
     '当前实现优先连接本机 Linux STAR GUI／服务器，没有匹配会话时直接加载原算例。'
-    '需要完整调用格式时可调用 starbridge.get_contract（也可读取 starbridge://contract），'
-    '取得流程、对象定位格式、结果位置和恢复约定，无需读取项目文档或 Skill。'
+    'MCP默认只列expand_capabilities/query/execute；按任务明确选择能力或方法，取得格式后经对应入口调用。'
+    '已有格式可直接复用，不要求每次重新展开，也不根据关键词自动启用。'
+    '完整get_contract方法及starbridge://contract资源保留为显式参考，不是正常任务的必经前置。'
     '版本来自用户指定安装或 discover_installations 的实际探测，不从工具说明猜固定版本。'
     'get_capabilities() 列结构化登记范围及独立通用入口，不代表本机安装；supported只描述目录适配。'
     '用户给出的版本是预期约束，和探测结果不符时不得自动换安装。未登记版本不能冒用邻近目录。'
@@ -45,7 +47,7 @@ USAGE_INSTRUCTIONS = (
     '常见网格、计算、运行状态和导出可先用 list_recipes 查看现成方法，execute_recipe 显式执行选定方法；'
     '已有适用方法无需重新编写。memory:ID 方法须先审阅来源/参数并传 expected_revision，检索不触发执行。'
     '网格和计算默认拒绝触发已有自动保存；任务明确允许时传 allow_existing_autosave=true，不擅自改变用户设置。'
-    '没有适用的现成方法时可用 execute_macro 在同一已加载会话内执行完整 Java 宏 API；'
+    'execute_macro 直接在同一已加载会话使用 Java API；完整源码与代码步骤都是正常路径，不必先尝试专门方法；'
     '将已明确步骤集中在一个请求内减少客户端往返，步骤依赖通过 shared 传递。'
     '宏代码有完整权限，effect 只是影响声明；范围内的缺失读取须由步骤显式表达，不能把未读取当空值。'
     '每次宏请求使用稳定 request_id，结果检查 execution.steps，失败或超时先 get_execution，不盲目重试。'
@@ -154,6 +156,9 @@ def locator_schema():
 def tool_input_schema(method, schema):
     """给工具发布与请求校验使用同一参数格式；实例条件仍由 Core/Java 核验。"""
     import json
+    from .interface_exposure import ENTRY_TOOLS, entry_schema
+    if method in ENTRY_TOOLS:
+        return entry_schema(method, schema)
     result = deepcopy(schema)
     result['additionalProperties'] = False
     parameters = result.setdefault('properties', {})
@@ -182,7 +187,8 @@ def tool_input_schema(method, schema):
             parameters['kind']['enum'] = ['all', 'type', 'member']
     if method == 'search_memory':
         parameters['query']['description'] = '经验或资料关键词，可为空以浏览；结果只是候选，不能推断条件已满足。'
-        parameters['limit'].update(maximum=200, description='返回候选数，允许 1–200；检查 truncated。')
+        parameters['limit'].update(maximum=200, description='候选摘要数上限，允许1–200；结果另受32 KiB预算，按next_offset继续。')
+        parameters['offset'].update(maximum=2147483647, description='候选排序序列起点；续页保持query/context/project_dir，不提供记录快照。')
         parameters['context'].update(type=['string', 'object', 'null'])
     if 'expected_revision' in parameters:
         parameters['expected_revision'].update(minimum=1)
@@ -331,6 +337,12 @@ def usage_contract():
                        if p.default is not inspect.Parameter.empty} for name in METHODS}
     return {
         'instructions': USAGE_INSTRUCTIONS, 'defaults': defaults,
+        'mcp_entrypoints': {
+            'default_tools': ['starbridge.expand_capabilities', 'starbridge.query', 'starbridge.execute'],
+            'expand': '明确选择capabilities或methods，返回相关说明及完整arguments_schema；分页不截断schema，成功result最多32 KiB。',
+            'invoke': 'query/execute参数为{method,arguments}；只读方法只能走query，潜在写入及任意宏走execute，原SDK参数校验和Core封套保持。',
+            'reuse': '展开不建立授权或会话状态；已有有效格式可直接复用，不必每次展开。',
+            'compatibility': '旧业务MCP名字仍接受原始协议调用但不在默认列表中；不保证客户端显示隐藏工具。JSON CLI业务方法保持原名。'},
         'contract_scope': {
             'defaults': '省略参数时的当前行为，可按任务覆盖；不是固定配置。',
             'limits': '当前服务校验边界，不是 STAR 的通用限制。',
@@ -382,6 +394,7 @@ def usage_contract():
             'relocate_object': 'result.object.object_id；检查 state/errors，再描述读取。',
             'session': 'result为会话记录；star_version是版本绑定，version_source区分检测/运行时核验；catalog_target可为null，lifecycle_compilation只证明最小模板编译。status只检查进程，不重新核验版本。',
             'save_session': 'result.output 是实际绝对路径；session_metadata 为保存时元数据，不是全量快照或独立重载验证。',
+            'search_memory': 'result.candidates为有界摘要，保留memory_id/revision/certainty、summary及full_record获取参数；检查read_status/coverage/next_offset。完整代码和依据另用get_memory，不再返回candidates[].memory。',
             'list_recipes': 'result.recipes[] 包含参数、适用范围和证据；不连接 STAR。',
             'execute_recipe': 'result.recipe 保存方法来源；检查 result.execution 的逐步状态和各步骤返回的实际状态。',
             'execute_macro': 'result.execution.status/steps；来源步骤仅证明entrypoint_returned，reported_results标明未提供业务结果。artifacts提供编译与客户端日志路径/大小，不把completed等同任务完成。',
@@ -432,7 +445,8 @@ def usage_contract():
             'recipe': {'code': '完整方法源码，按调用者选择使用，不自动执行', 'imports': 'Java 导入名称数组',
                        'parameters': '参数名到 {type,description,required} 的映射；对象需当前重新定位，不能默认旧 ID。'},
             'update': 'expected_revision 保护并发修订；changes 顶层替换，可选字段 null 删除。',
-            'activation': '只根据现有任务信息检索；检索候选不是自动规则，先核对场景、依据和例外。',
+            'activation': '只根据现有任务信息检索摘要；候选不是自动规则，按full_record取得完整记录后核对当前修订、场景、依据和例外。',
+            'search_budget': '成功result按默认分隔符UTF-8 JSON计量不超过32 KiB，不含协议封套。摘要和query/context回显均可能摘录；续页保持原输入，不用摘录重造查询。全层扫描成本仍未全局有界，分页非快照，坏文件不静默跳过。',
             'evidence': '仅记录实际任务已有依据，不为验证标签额外启动计算或验证。',
             'storage': '默认 STARBRIDGE_HOME/memory 或 ~/.starbridge/memory；显式项目范围可覆盖用户记录。'},
         'locator_schema': locator_schema(),

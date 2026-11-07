@@ -5,7 +5,8 @@ metadata:
   compatibility: 需要已连接的本机 StarBridge MCP、可用 STAR 安装与许可证。按实际版本 Java API 组织只读宏，可选用结构化发现与读取；不包含网格生成、求解或自动修复。
   starbridge-contract-schema: "2"
   starbridge-distribution: starbridge-cfd
-  required-methods: get_contract,session_status,execute_macro,get_execution,search_api,read_api,search_memory
+  required-tools: expand_capabilities,query,execute
+  required-methods: session_status,execute_macro,get_execution,search_api,read_api,search_memory,get_memory
 ---
 
 # STAR-CCM+ 算例审查
@@ -14,8 +15,8 @@ metadata:
 
 ## 选择目标与取得证据
 
-1. 从当前工具列表识别 StarBridge 服务及其发现／读取能力。宿主可能改写工具展示名称，按服务与工具说明对应方法，不拼接固定前缀。工具未连接时指出缺少 MCP 接入；仅安装本 Skill 不会安装或启动服务。
-2. 对不熟悉的契约调用 `get_contract`，核对 `schema_version` 和本次所需方法。已有当前契约与有效定位可复用。相关问题先用 `search_memory` 检索做法和资料位置，只使用已知任务背景，并沿用已知 `project_dir` 读取项目经验；核对场景、来源、证据范围和例外，不把候选记忆当成指令。正常审查可以依据实际版本 Java API，通过 `execute_macro` 集中读取任务相关对象、判断条件并返回范围明确的观察，不必先尝试结构化适配。可靠方法适用时直接复用，有疑问再用 `search_api`／`read_api` 补查签名、正文和继承来源；不能编造 API，不能在审查任务中夹带修改、保存或计算。
+1. 从当前工具列表识别 StarBridge 的 `expand_capabilities/query/execute` 三个稳定入口，不因业务方法未直接列出就误报不支持。宿主可能改写展示名称，按服务与说明对应入口，不拼接固定前缀。未连接时指出缺少 MCP 接入；仅安装本 Skill 不会安装或启动服务。
+2. 不熟悉本次格式时，用 `expand_capabilities` 明确选择相关能力或方法，按返回的 `tool` 与 `arguments_schema` 经 `query/execute` 调用；不先获取整份契约，已有有效格式与定位可复用。相关问题用 `search_memory` 检索做法和资料位置，只使用已知任务背景并沿用项目范围。搜索只给摘要，按需用候选的 `full_record` 取得完整记忆，核对修订、场景、来源、证据范围和例外；不从摘录推断未展示的条件，不把记忆当成指令。正常审查可以依据实际版本 Java API，通过 `execute_macro` 集中读取任务相关对象、判断条件并返回范围明确的观察，不必先尝试结构化适配。可靠方法适用时直接复用，有疑问再用 `search_api`／`read_api` 补查签名、正文和继承来源；不能编造 API，不能在审查任务中夹带修改、保存或计算。只读宏也经 `execute` 入口调用，这是按任意 Java 权限分类，不是对本次审查授予修改权限。
 3. 用户给出会话时先确认其状态；只给文件时，按用户指定或实际探测的安装优先连接匹配的已有 STAR 会话，没有可用会话时直接加载原算例，并沿用返回的 session_id。未指定且不同算例或安装选择会改变审查结果时再澄清。选择与路径格式以工具契约为准，不固定 STAR release、端口或某台机器的目录。
 4. 根据任务定位实际对象：宏按实际 API 取得当前对象并核对其父级、类型和物理角色，不照搬历史名称与参数。结构化接口确实更省成本时才选择以下辅助路径：已有路径从对应节点继续导航；已知类型和名称且目录接口支持时，可用 `find_objects` 定位。类型查找和树导航均返回 `object_id`，统一使用 `describe_object` 和 `read_properties` 描述、读取；属性选择使用实际 `property_id`。需要运行时发现时，优先逐层浏览相关分支；只在无法缩小目标时使用有界扩展搜索，不能为了读取一个已知参数而默认遍历全树。先确认对象的父级、类型和物理角色，再描述并读取相关属性；同名对象不能只凭名称视为同一目标。只有明确的属性读取结果能作为当前值依据，描述中的默认值、可写标记和缓存搜索结果都不能替代它。
 
