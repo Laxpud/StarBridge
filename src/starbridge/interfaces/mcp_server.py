@@ -113,7 +113,7 @@ async def method_catalog():
 @server.tool(name='starbridge.expand_capabilities', annotations=READ)
 async def expand_capabilities(capabilities: list[StrictStr] | None = None,
                               methods: list[StrictStr] | None = None,
-                              offset: StrictInt = 0, limit: StrictInt = 8) -> types.CallToolResult:
+                              offset: StrictInt = 0, limit: StrictInt = 16) -> types.CallToolResult:
     """主动选择任务相关能力或已知方法，取得说明、参数格式和调用入口。
 
     省略选择只返回简短索引。按 next_offset 继续，schema不截断；不调用STAR、不读API正文或记忆。
@@ -225,6 +225,7 @@ def search_api(query: StrictStr, installation: StrictStr | None = None,
 
     installation 与 session_id 二选一；关键词按空白分词且全部匹配，可组合类名和方法名。
     只搜索索引标签，不全文检索文档或外部宏库。read_status/coverage 区分缺失索引和空命中。
+    成功result受32 KiB UTF-8 JSON预算，完整条目按next_offset续页；不是索引扫描或缓存内存预算。
     选中后用 read_api 获取签名、说明、继承来源和文中代码；无命中不能解释为 API 不存在。
     """
     return call('search_api', locals())
@@ -238,7 +239,9 @@ def read_api(java_class: StrictStr, installation: StrictStr | None = None,
 
     member 可用简单名保留重载，或 search_api 返回的完整锚点；自动读取该成员的本地继承声明。
     省略 member 读取类说明和本类成员分页，不展开所有父类。检查 read_status/coverage/next_offset。
-    类链接另按 links_next_offset 传 offset 续页；长类注记摘录在 content_truncations 明示完整来源。
+    成功result受32 KiB预算；成员和类链接共用分页边界，分别看next_offset/links_next_offset并传offset续页。
+    正文必要摘录在content_truncations明示，full_text_ref相对result指向完整来源；截断示例不是可执行完整代码。
+    不裁剪签名、来源或错误；最低资料超预算明确拒绝，不表示API不可用。整页解析/索引扫描/缓存仍无全局预算。
     返回来源路径与摘要；外部继承资料只标明未读，不隐式联网。资料、编译及实际执行依据不同。
     """
     return call('read_api', locals())
@@ -398,6 +401,9 @@ def execute_macro(session_id: StrictStr, request_id: StrictStr, steps: list[dict
     working_directory作用于整个客户端；完整宏的resolvePath仍基于各自原文件目录。
     不自动复制资源；支持JAR内资源；重名类、非空Manifest Class-Path和旧式JAR索引当前拒绝。
     整个请求共用类命名空间；STAR只编译薄启动宏，用户程序不再二次编译。
+    外部javac使用独立空processorpath；STAR使用空用户classpath，入口编译后再加载冻结依赖。
+    cwd中已有javac Plugin服务描述符时拒绝派发；安装/配置/目录仍可信，不防同权限并发篡改。
+    运行期类/资源与SPI可使用该加载器，不保证嵌套STAR源码编译继承依赖或异步任务已结束。
     object_parameters 显式列出需绑定的参数名；其中精确的 {object_id:当前ID}（含嵌套数组）
     在全部步骤前替换为 STAR 对象，其他参数仍为 JSON。绑定失败拒绝整个请求，不执行用户步骤。
     imports 是不含 import/分号的类或通配名称，declarations 可定义字段、辅助方法与内部类。
@@ -415,6 +421,23 @@ def execute_macro(session_id: StrictStr, request_id: StrictStr, steps: list[dict
 def get_execution(session_id: StrictStr, request_id: StrictStr) -> types.CallToolResult:
     """查询通用宏的逐步凭据与会话状态；不重复执行，关闭后仍可读取已有凭据。"""
     return call('get_execution', locals())
+
+
+@server.tool(name='starbridge.read_execution_artifact', annotations=READ)
+def read_execution_artifact(session_id: StrictStr, request_id: StrictStr, artifact: StrictStr,
+                            offset: StrictInt = 0, limit_bytes: StrictInt = 8192,
+                            tail: StrictBool = False, expected_version: StrictStr | None = None) -> types.CallToolResult:
+    """按任务读取固定执行材料的头部、尾部或字节窗口，不启动STAR或重复执行。
+
+    artifact选request/compiler_log/client_log/compilation/receipt，不接受任意文件路径。
+    默认最多读取8192原始字节，成功result另受32 KiB JSON预算；不会一次加载完整大日志再截断。
+    tail=true从观察到的文件尾部读取，此时offset须为0。否则用零起始字节offset与next_offset续读。
+    可携带version作expected_version，变化后拒绝混页；它是文件元数据版本，不是内容哈希或恢复token。
+    检查read_status、coverage、changed_during_read和encoding，不把缺失／错误当成空文件。
+    无效UTF-8或窗口从半字符开始时说明替代解码并保留raw_base64；原字节摘要只覆盖返回窗口。
+    只读到末尾不等于读完整文件；日志文本或原始JSON片段也不是验证后的执行结果，仍以get_execution判断。
+    """
+    return call('read_execution_artifact', locals())
 
 
 @server.tool(name='starbridge.reconcile_execution', annotations=WRITE)

@@ -15,7 +15,7 @@ import signal
 import subprocess
 import tempfile
 
-from .java_runtime import _installation, source_text
+from .java_runtime import _JAVAC_ISOLATION_POLICY, _installation, source_text
 from .macro_execution import compile_program
 from .modifier import java_literal
 from starbridge.core.session_store import runtime_root, session_version
@@ -54,7 +54,8 @@ def prepare(star, version, timeout=90):
     version = session_version(state)
     root, compiler, jars = _selected_installation(star)
     source = render(state, 'session-info', '/unused/starbridge-preflight-result.json')
-    fingerprint = [source, version, str(root), str(compiler),
+    # 隔离策略变更也使预检查失效；旧编译证明不能代表新策略下已成功编译。
+    fingerprint = [source, version, str(root), str(compiler), _JAVAC_ISOLATION_POLICY,
                    [(str(jar), jar.stat().st_mtime_ns, jar.stat().st_size) for jar in jars]]
     key = hashlib.sha256(json.dumps(fingerprint, sort_keys=True).encode()).hexdigest()
     cache = runtime_root() / 'cache' / 'lifecycle'

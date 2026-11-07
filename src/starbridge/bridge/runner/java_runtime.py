@@ -12,6 +12,10 @@ import tempfile
 from starbridge.core.session_store import runtime_root
 
 
+# 编译缓存必须包含隔离策略；旧的仅使用 -proc:none 的产物不能冒充已隔绝 classpath 插件。
+_JAVAC_ISOLATION_POLICY = 'private_empty_processorpath_v1'
+
+
 @lru_cache(maxsize=8)
 def _source(path, modified, size):
     """源码仅在文件元数据变化时重读；参数中的时间和大小用于缓存失效。"""
@@ -37,6 +41,19 @@ def _installation(executable):
     return None
 
 
+def _run_javac(compiler, arguments, directory, timeout, *, env=None):
+    """编译显式源码，保留普通依赖查找，但不从编译 classpath 自动加载编译扩展。
+
+    JDK 21 的 -proc:none 只禁用注解处理，不阻止 javac 的 Plugin 服务发现及 autoStart。
+    每次新建私有空 processorpath，使插件查找不再回退到包含用户 JAR 的 classpath；
+    不复用源码、类输出或已有路径，编译结束即清理。JDK、启动环境及其父加载器仍受信任，
+    此设置只隔绝编译 classpath 的插件通道，不是通用代码沙箱。
+    """
+    with tempfile.TemporaryDirectory(prefix='.empty-processorpath-', dir=directory) as processor_path:
+        return subprocess.run([str(compiler), '-proc:none', '-processorpath', processor_path, *arguments],
+                              capture_output=True, text=True, timeout=timeout, env=env)
+
+
 def compile_runtime(star, timeout=90, cache_root=None):
     """按安装路径和辅助类源码编译一次；返回宏 classpath 和内联回退所需源码。
 
@@ -51,7 +68,7 @@ def compile_runtime(star, timeout=90, cache_root=None):
         inline = '\n'.join(text.replace('public class ', 'class ', 1) for text in texts.values())
         return None, inline
     root, compiler, jars = installation
-    key = hashlib.sha256(json.dumps([str(root), texts], sort_keys=True).encode()).hexdigest()
+    key = hashlib.sha256(json.dumps([str(root), texts, _JAVAC_ISOLATION_POLICY], sort_keys=True).encode()).hexdigest()
     cache = cache_root if cache_root is not None else runtime_root() / 'cache' / 'java'
     cache.mkdir(parents=True, exist_ok=True)
     destination = cache / key
@@ -65,12 +82,12 @@ def compile_runtime(star, timeout=90, cache_root=None):
             build = Path(temporary)
             for name, text in texts.items():
                 (build / name).write_text(text)
-            compiled = subprocess.run([str(compiler), '-proc:none', '-cp', ':'.join(map(str, jars)),
-                '-d', str(build), *(str(build / name) for name in texts)],
-                capture_output=True, text=True, timeout=timeout)
+            compiled = _run_javac(compiler, ['-cp', ':'.join(map(str, jars)),
+                '-d', str(build), *(str(build / name) for name in texts)], build, timeout)
             if compiled.returncode:
                 raise RuntimeError('STAR runtime compilation failed: ' + compiled.stderr[-4000:])
-            (build / 'ready.json').write_text(json.dumps({'installation': str(root), 'compiler': str(compiler)}))
+            (build / 'ready.json').write_text(json.dumps({'installation': str(root), 'compiler': str(compiler),
+                                                        'compiler_isolation': _JAVAC_ISOLATION_POLICY}))
             if destination.exists():
                 shutil.rmtree(destination)
             build.rename(destination)

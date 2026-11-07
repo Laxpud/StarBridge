@@ -148,18 +148,23 @@ def execution_result(directory, request_id, state=None):
         result['reconciliation'] = {**recorded,
             'evidence_current': evidence_current(recorded, state, identifier, digest, observed['read_status'])}
         result['previous_reconciliation_count'] = len(state.get('execution_review_history', {}).get(identifier, []))
-    # 只返回诊断产物的位置与大小，不把完整源码或客户端日志重复塞进模型上下文。
-    artifacts = {}
-    for kind, filename in (('request', 'macro-request.json'), ('compiler_log', 'compile.log'),
-                           ('client_log', 'star.log'), ('compilation', 'compilation.json')):
-        path = run / filename
-        try:
-            artifacts[kind] = {'path': str(path), 'status': 'available', 'bytes': path.stat().st_size}
-        except FileNotFoundError:
-            artifacts[kind] = {'path': str(path), 'status': 'missing'}
-        except OSError as error:
-            artifacts[kind] = {'path': str(path), 'status': 'unreadable', 'error': str(error)}
-    result['artifacts'] = artifacts
+    # 只列固定材料的状态、大小与元数据版本；正文由调用者按任务选窗口，不重复塞入日志。
+    from .execution_artifacts import inventory
+    result['artifacts'] = inventory(Path(directory), request_id)
+    from .session_store import session_directory
+    reader_session = str(Path(directory))
+    try:
+        # 仅当短ID仍指向本次实际目录才使用；不信任旧状态记录所属的STARBRIDGE_HOME。
+        # 保留原路径拼写也避免默认运行根是软链接时，清单版本因绝对引用规范化而失效。
+        candidate = Path(directory).name
+        if session_directory(candidate) == Path(directory):
+            reader_session = candidate
+    except (OSError, ValueError, RuntimeError):
+        pass
+    result['artifact_reader'] = {
+        'method': 'read_execution_artifact',
+        'arguments': {'session_id': reader_session, 'request_id': request_id},
+        'selection': 'Add artifact with a key from artifacts; optional expected_version must be that artifact metadata version, not a review token.'}
     if request.get('source_bundle'):
         result['source_programs'] = [{'step_id': step['id'], 'entry_class': step['macro']['entry_class'],
                                      'entry_source': step['macro']['entry_source']}

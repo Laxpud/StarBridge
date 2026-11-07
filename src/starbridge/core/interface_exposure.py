@@ -14,7 +14,7 @@ READ_METHODS = frozenset({
     'get_contract', 'discover_installations', 'get_capabilities', 'search_api', 'read_api',
     'find_objects', 'browse_tree', 'search_settings', 'relocate_object', 'describe_object',
     'read_properties', 'inspect_session', 'session_status', 'get_execution', 'list_recipes',
-    'search_memory', 'get_memory',
+    'search_memory', 'get_memory', 'read_execution_artifact',
 })
 EXECUTE_METHODS = frozenset({
     'open_session', 'save_session', 'close_session', 'execute_macro', 'reconcile_execution',
@@ -24,8 +24,8 @@ CAPABILITIES = {
     'work': {
         'summary': '接手或创建算例，以任意 Java API／完整宏连续工作，读取凭据并显式保存或关闭。',
         'methods': ['discover_installations', 'open_session', 'execute_macro', 'get_execution',
-                    'session_status', 'save_session', 'close_session', 'reconcile_execution'],
-        'guidance': '宏是正常操作方式，不必先查询结构化支持。复用已有会话与可靠代码，集中组织读取、判断、修改和回读；不默认复制算例。使用稳定请求标识，未知或局部结果先取原凭据，不盲目重发。编译和入口返回不等于任务完成；保存与关闭须属于明确任务。任意宏即使声明只读也经 execute 调用，不是沙箱。',
+                    'read_execution_artifact', 'session_status', 'save_session', 'close_session', 'reconcile_execution'],
+        'guidance': '宏是正常操作方式，不必先查询结构化支持。复用已有会话与可靠代码，集中组织读取、判断、修改和回读；不默认复制算例。使用稳定请求标识，未知或局部结果先取原凭据，不盲目重发。编译和入口返回不等于任务完成；按需用 read_execution_artifact 取日志窗口或编译材料，不因只有路径就重做任务。保存与关闭须属于明确任务。任意宏即使声明只读也经 execute 调用，不是沙箱。',
     },
     'api': {
         'summary': '按需查实际安装版本的官方 Java API 签名、说明、继承关系和来源。',
@@ -94,7 +94,7 @@ def entry_schema(method, schema):
                     if name == 'capabilities':
                         branch['items']['enum'] = list(CAPABILITIES)
         properties['offset'].update(minimum=0, maximum=2147483647, description='所选方法序列的起点；续页保持 capabilities/methods 不变，不提供跨升级快照。')
-        properties['limit'].update(minimum=1, maximum=100, description='本页最多返回的方法契约数，默认8；还受32 KiB结果预算限制，按 next_offset 继续。')
+        properties['limit'].update(minimum=1, maximum=100, description='本页最多返回的方法契约数，默认16；还受32 KiB结果预算限制，按 next_offset 继续。')
     return result
 
 
@@ -113,7 +113,7 @@ def _measure(result):
     return _size(result)
 
 
-def expand(catalog, capabilities=None, methods=None, offset=0, limit=8):
+def expand(catalog, capabilities=None, methods=None, offset=0, limit=16):
     """返回所选方法的完整格式或简短索引；预算到达时只在方法边界分页，不截断 schema。"""
     if type(offset) is not int or not 0 <= offset <= 2147483647 or type(limit) is not int or not 1 <= limit <= 100:
         raise ValueError('offset and limit must be integers within their published bounds')

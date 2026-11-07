@@ -27,7 +27,7 @@ METHODS = (
     'find_objects', 'browse_tree', 'search_settings', 'relocate_object',
     'describe_object', 'read_properties', 'modify_property', 'execute_operation',
     'inspect_session', 'open_session', 'session_status', 'save_session', 'close_session',
-    'execute_macro', 'get_execution', 'reconcile_execution', 'list_recipes', 'execute_recipe',
+    'execute_macro', 'get_execution', 'read_execution_artifact', 'reconcile_execution', 'list_recipes', 'execute_recipe',
     'search_memory', 'get_memory', 'record_memory', 'update_memory',
 )
 
@@ -500,6 +500,13 @@ class Service:
         result = execution_result(session_directory(session_id), request_id, state)
         result['session_state'] = public_session(state)
         return result
+
+    def read_execution_artifact(self, session_id, request_id, artifact, offset=0, limit_bytes=8192,
+                                tail=False, expected_version=None):
+        """按需读取明确请求的固定材料，不轮询进程、不解析整份凭据或解除未知状态。"""
+        from .execution_artifacts import read_artifact
+        return read_artifact(session_directory(session_id), request_id, artifact, offset, limit_bytes,
+                             tail, expected_version)
 
     def reconcile_execution(self, session_id, request_id, expected_review_token, assessment):
         """根据调用者对已有依据的判断接受当前状态，不重做宏、不改变原任务完成状态。

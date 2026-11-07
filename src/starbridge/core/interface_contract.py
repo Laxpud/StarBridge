@@ -107,6 +107,10 @@ PARAMETER_DESCRIPTIONS = {
     'value': '按当前属性 write_contract.value_schema 提供新值；与 expected 的读取格式可能不同。',
     'cursor': '前页 next_cursor 原样传回；null 表示第一页，失效时重新浏览/描述/搜索。',
     'offset': '非负分页起点；优先使用返回的 next_cursor 或 next_offset。',
+    'artifact': '明确请求的固定材料名：request、compiler_log、client_log、compilation或receipt；不接受任意路径。',
+    'limit_bytes': '一次材料原始读取的字节上限，允许4–65536，默认8192；返回JSON另受32 KiB预算，字符边界或转义可能使本页更短。',
+    'tail': 'true选择观察到的文件尾部，要求offset=0；不表示读完整文件或跟踪后续追加。',
+    'expected_version': '可选前页或材料清单的version；文件元数据变化时拒绝拼页，不是内容哈希或reconcile_execution的review token。',
     'limit': '可调整的返回页面大小，当前允许 1–500；还有 next_cursor/next_offset 时不能宣称枚举完成。',
     'scope': '当前可选 simulation（算例范围）或 all（另含库资源）；按任务选择，all 不表示已遍历全树或允许写入资源。',
     'max_nodes': '可调整的观察预算，当前允许 1–10000；不是全量覆盖保证。',
@@ -180,7 +184,7 @@ def tool_input_schema(method, schema):
             {'required': ['installation'], 'properties': {'installation': {'type': 'string'}, 'session_id': {'type': 'null'}}},
             {'required': ['session_id'], 'properties': {'session_id': {'type': 'string'}, 'installation': {'type': 'null'}}},
         ]
-        parameters['limit'].update(maximum=100, description='资料页面大小，允许 1–100；默认20，按 next_offset 继续。')
+        parameters['limit'].update(maximum=100, description='资料条目上限，允许1–100；默认20，成功result另受32 KiB预算。按next_offset继续；read_api的类链接还须检查links_next_offset，同用offset。')
         parameters['session_id']['description'] = '可选已有会话标识；只读取绑定安装与版本，不连接 STAR。与 installation 二选一。'
         if method == 'search_api':
             parameters['query']['description'] = '非空索引关键词；按空白分词且全部匹配类名／成员标签，支持类名和方法名组合，不保证自然语言召回。'
@@ -190,6 +194,15 @@ def tool_input_schema(method, schema):
         parameters['limit'].update(maximum=200, description='候选摘要数上限，允许1–200；结果另受32 KiB预算，按next_offset继续。')
         parameters['offset'].update(maximum=2147483647, description='候选排序序列起点；续页保持query/context/project_dir，不提供记录快照。')
         parameters['context'].update(type=['string', 'object', 'null'])
+    if method == 'read_execution_artifact':
+        from .execution_artifacts import ARTIFACTS, MAX_READ_BYTES
+        parameters['artifact']['enum'] = list(ARTIFACTS)
+        parameters['limit_bytes'].update(minimum=4, maximum=MAX_READ_BYTES)
+        parameters['offset'].update(maximum=9223372036854775807,
+            description='零起始字节位置，不是行号；续页使用next_offset并保持同一材料和expected_version。')
+        parameters['expected_version'].update(pattern='^[0-9a-f]{64}$')
+        result['allOf'] = [{'if': {'properties': {'tail': {'const': True}}, 'required': ['tail']},
+                            'then': {'properties': {'offset': {'const': 0}}}}]
     if 'expected_revision' in parameters:
         parameters['expected_revision'].update(minimum=1)
     if method in ('search_memory', 'get_memory', 'record_memory', 'update_memory'):
@@ -361,7 +374,9 @@ def usage_contract():
             'selection': 'installation 取实际安装根目录，或 session_id 使用会话绑定安装；二选一。会话版本与安装资料不符时拒绝，不替换版本。',
             'search': 'search_api 查询官方类名和成员索引，不受结构化适配清单限制；按任务关键词缩小范围后 read_api。',
             'read': 'read_api 获取签名、说明、参数约定、文中代码和来源；member 可选简单名称或完整锚点，保留重载与本地继承声明。',
-            'coverage': 'read_status、coverage.errors、next_offset 区分缺失、外部资料未读和成员分页；类链接另查 links_next_offset/links_coverage，使用相同 offset 参数续页。长类注记摘录在 content_truncations 明示并提供完整来源；不能冒充全文。查询不到不是 API 不存在。当前不检索正文、独立宏示例库或社区资料。',
+            'coverage': 'read_status、coverage.errors、next_offset区分缺失、外部资料未读和成员分页；类链接另查links_next_offset/links_coverage，与成员共用offset及页边界。必要正文摘录在content_truncations明示；full_text_ref相对result指向完整来源。签名、来源和错误不裁剪，最低资料无法表示时明确报预算错误；查询不到不是API不存在。当前不检索正文、独立宏示例库或社区资料。',
+            'result_budget': {'max_bytes': 32768, 'scope': '成功result的UTF-8 JSON，包含自计数字段，不含封套和协议转义。',
+                              'limits': '条目数不是总预算；索引扫描、整页HTML解析和缓存内存尚无全局预算。'},
             'reuse': '返回实际版本、来源路径和内容摘要；进程内有界缓存按安装和文件身份失效。已获取且适用的资料不必重复查询。'},
         'workflow': {
             'task': ['明确本次任务范围与探索/执行意图；复用已知会话、对象访问方法和相关资料',
@@ -398,7 +413,8 @@ def usage_contract():
             'list_recipes': 'result.recipes[] 包含参数、适用范围和证据；不连接 STAR。',
             'execute_recipe': 'result.recipe 保存方法来源；检查 result.execution 的逐步状态和各步骤返回的实际状态。',
             'execute_macro': 'result.execution.status/steps；来源步骤仅证明entrypoint_returned，reported_results标明未提供业务结果。artifacts提供编译与客户端日志路径/大小，不把completed等同任务完成。',
-            'get_execution': '读取原凭据和receipt_read诊断；缺失、损坏与读取失败不冒充未执行。review提供当前审阅token/can_accept，reconciliation与原execution状态分开，evidence_current指出依据是否变化；不重新执行。',
+            'get_execution': '读取原凭据和receipt_read诊断；缺失、损坏与读取失败不冒充未执行。artifacts列固定材料状态/大小/元数据version，artifact_reader保留实际会话范围并指向有界读取。review提供当前审阅token/can_accept，reconciliation与原execution状态分开，evidence_current指出依据是否变化；不重新执行。',
+            'read_execution_artifact': 'result.text只含明确请求材料的字节窗口；查看read_status/coverage/encoding、range与next_offset。缺失/不可读/版本不符不等于空文件，日志与原始receipt片段不是已验证执行状态；不轮询STAR或解除未知状态。',
             'reconcile_execution': 'result.reconciliation记录调用者接受的当前状态与依据，不证明原任务完成；检查session_state是否还有其他uncertain_request/pending_reconciliations。'},
         'prepared_methods': {
             'discovery': 'list_recipes 取得内置方法与参数；记忆方法先 get_memory 审阅适用范围、源码和依据。',
@@ -428,6 +444,11 @@ def usage_contract():
                      'effect': 'read | mutate', 'scope': '调用者声明的目标、值与输出范围，不自动认证覆盖'},
             'source_execution': '所选安装JDK统一编译冻结源码/JAR，拒绝安装库/依赖/源码间重名类；STAR只编译无用户代码的薄启动宏，不二次编译用户程序，不抽取方法或删除package。运行时核对入口类来源后构造、绑定Simulation/原路径、直接execute。原构造器不保证已有Simulation；单请求共享类命名空间和静态状态，不自动注入包装器参数或业务结果。',
             'source_paths': 'working_directory作用于整个客户端；来源宏resolvePath各自沿用原文件位置。不复制算例/资源目录；支持JAR内资源，非空Manifest Class-Path和旧式JAR索引拒绝，外部数据与原生依赖不冻结。',
+            'compiler_boundary': '外部javac显式私有空processorpath，不只依赖-proc:none。通用宏向STAR显式传空用户classpath覆盖设置，完整源入口编译完成后才用独立URLClassLoader加载冻结依赖并临时设TCCL；不把用户JAR交给STAR编译器。实际cwd有javac Plugin服务描述符时派发前拒绝；安装/模块配置/环境/目录仍可信，不防同权限并发篡改。普通运行期SPI不同于嵌套STAR源宏编译，后者不自动继承依赖；加载器寿命不证明异步工作完成。',
+            'artifact_reading': {'method': 'read_execution_artifact', 'max_result_bytes': 32768,
+                'max_read_bytes': 65536, 'default_read_bytes': 8192,
+                'scope': '固定请求材料，不接受任意路径。成功result的UTF-8 JSON预算不含封套和协议转义，原始读取不先加载整份材料。',
+                'continuation': '零起始字节offset与next_offset；tail要求offset=0。expected_version绑定元数据而非内容哈希，不是恢复review token，也不提供跨调用快照。'},
             'context': {'sim': '当前 Simulation', 'parameters': 'Map<String,Object>；普通值为 JSON，显式引用位置绑定当前 STAR 对象',
                         'shared': '同请求步骤间共享 Java 对象的 Map', 'result': '本步 JSON 输出 Map'},
             'extensions': 'imports指定类或通配导入，declarations定义字段、辅助方法和内部类；身份及全部对象绑定通过、initialization.running落盘后才初始化。任一步mutate则初始化也声明mutate，全read则初始化声明read。声明覆盖全部用户源码，不是沙箱或副作用检测。',

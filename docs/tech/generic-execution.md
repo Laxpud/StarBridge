@@ -12,10 +12,10 @@ AI 直接使用实际版本的 Java API 编写、组合和执行任务宏，这�
 
 - 查询词按空白分词且全部匹配类名和成员标签；不是全文检索、中文语义搜索或独立宏示例库检索。
 - `member` 可用简单名称保留重载，也可使用搜索返回的完整签名锚点。指定成员时只返回相关正文；不指定则读取类说明和本类成员的一页，不默认展开全部父类。
-- `limit` 默认20、上限100，成员按 `next_offset` 继续。未指定成员时，类级关联链接另按 `links_next_offset` 继续，同样传入 `offset`；两份列表的结束位置须分别判断。
-- 类注记可能包含上千个已知子类。超出4000字符的单条类注记返回明确摘录，`content_truncations` 列出原长度、返回长度及完整来源，`read_status=partial`；关联链接按页返回，不再把整个列表塞入每个响应。成员正文不采用这种摘录，资料响应的总字节预算仍未完成。
+- `limit` 默认20、上限100，成功 `result` 另受32 KiB UTF-8 JSON预算，包含计数字段自身，不含封套或协议转义。搜索按完整条目分页；读取将同一 `offset` 的成员（或其错误）和类链接成行返回，两列表共用页边界，分别检查 `next_offset` 和 `links_next_offset` 后传入 `offset` 继续，不把最后一页当成单页覆盖整个选择。
+- 类注记可能包含上千个已知子类。超出4000字符的单条类注记返回明确摘录；最低一行连同固定资料仍超预算时，也会摘录必要正文、注记文字或示例。`content_truncations` 列出原长度、返回长度和完整来源；新 `full_text_ref` 是相对 `result` 的 JSON Pointer。签名、来源、继承组和错误不裁剪，最低资料仍无法表示时明确报预算错误，不伪称 API 不存在。截断示例不是完整可执行代码。
 - `read_status`、`coverage.errors` 及类级 `links_coverage/content_truncations` 区分索引缺失、局部失败、未返回全文、外部资料未读以及没有匹配。未找到不能推断 API 不存在，分页结束也不表示整套资料已经读取。
-- 来源包含实际安装版本、文件路径、内容摘要和成员锚点。只在进程内缓存有界数量的索引／正文，文件身份或修改信息变化后重新读取；已有适用资料不必重复查询。
+- 来源包含实际安装版本、文件路径、内容摘要和成员锚点。进程内缓存有界数量的索引／正文，文件身份或修改信息变化后重新读取；索引扫描、整页 HTML 解析和缓存内存仍无全局预算，不把结果有界等同总成本有界。已有适用资料不必重复查询。
 
 2602／2510 的本机官方资料已实际用于查找、正文读取和继承追溯；2602 的相同读取已通过真实 stdio MCP 调用。此依据只证明所述资料路径可用，不证明任意 API 行为、独立宏库支持或整体需求已完成。
 
@@ -106,7 +106,29 @@ AI 直接使用实际版本的 Java API 编写、组合和执行任务宏，这�
 - 包装器不会自动把 `parameters/shared/result` 注入原宏，也不解析任意宏内部的业务操作。来源步骤的成功依据是 `entrypoint_returned`，`reported_results=not_provided` 明确表示没有直接取得业务结果；需要时在同请求加入普通回读步骤或读取宏自身产物。宏内部吞异常、嵌套播放、异步任务及交互行为不能由最外层返回值证明完成。
 - 冻结 JAR 内的资源可随 JAR 使用；源码旁的 classpath 资源不会自动复制，也不将可变源码目录加入运行 classpath。非空 JAR Manifest `Class-Path` 及旧式 JAR 索引当前拒绝，避免间接查找未冻结依赖；不改写第三方 JAR。原位置的数据文件、原生库及用户代码自行读取的外部内容不在代码快照范围。
 
-来源步骤的结构化结果在可捕获异常后保留 `phase` 和根因，完整堆栈写客户端日志；进程直接中止时，只能依赖此前落盘的状态，不能推断内存阶段已经持久化。`execute_macro`／`get_execution` 的 `artifacts` 返回请求、编译信息、编译日志及客户端日志的路径、大小和可用状态，不默认返回完整日志；路径读取与日志分页入口仍需后续完善。
+来源步骤的结构化结果在可捕获异常后保留 `phase` 和根因，完整堆栈写客户端日志；进程直接中止时，只能依赖此前落盘的状态，不能推断内存阶段已经持久化。`execute_macro`／`get_execution` 的 `artifacts` 列出固定请求材料的路径、大小、可用状态和元数据版本；不默认返回完整日志，所需内容通过下述窗口读取。
+
+### 编译与运行期依赖边界
+
+不能仅凭禁用注解处理，就认定 javac 不会运行编译扩展。实际两套安装的 Temurin 21.0.8+9／21.0.6+7 源码与字节码表明，javac 在编译前仍会发现 `com.sun.source.util.Plugin`、构造提供者并调用 `autoStart()`；返回 false 也不代表构造和该方法没有执行。STAR 的 `NeoScript` 内部同样使用 javac，仅设置空注解处理器列表，并未隔离这一插件路径。这是静态调用链确认，没有构造或运行插件样本。
+
+- Python 调用安装 javac 时，每次创建私有空 `-processorpath`，同时保留 `-proc:none` 和正常的安装库／显式依赖 classpath；相关编译缓存包含此策略，旧证明不会冒充新隔离。具体实现见[java_runtime.py](<../../src/starbridge/bridge/runner/java_runtime.py>)。
+- 通用宏向 STAR 显式传入新建空用户 `-classpath`，而非省略参数后回退用户设置。完整源码的[薄启动宏](<../../src/starbridge/bridge/java/StarBridgeLaunch.java>)在自身编译完成后，才用以 STAR loader 为父的独立 `URLClassLoader` 加载本次编译目录和冻结 JAR；不把原源码目录或整个工作目录加入运行 URL。线程 context loader 在调用期间设为该加载器，结束后恢复。
+- 保留真实 `working_directory`，不通过改写 `user.dir` 冒充 Java 相对路径一致。STAR 编译还会加入当前目录，因此派发前拒绝其中已有的 `META-INF/services/com.sun.source.util.Plugin`，包括软链接；无法检查也不当作不存在。选定安装、NetBeans 模块、启动环境、父加载器和目录仍受信任，不能抵御同权限进程在检查后改写文件，**不是代码沙箱**。
+- 普通运行期类、资源和 SPI 可以使用该加载器；用户再次调用 STAR 的 `play`／`NeoScript` 编译嵌套源码时，不自动继承这些运行 URL。加载器不在同步入口刚返回时关闭，以免异步线程后续懒加载失败；其寿命随客户端结束，并不证明异步工作已完成。
+
+当前独立加载器已完成静态核查及[两安装正常源码编译](<../../outputs/requirements-first/launcher-isolation-_9lgu76p/compilation-summary.json>)，但尚未用于下一项真实 STAR 工作；上一版薄启动宏的运行凭据不覆盖这次加载器改动。此次没有额外外部用户 JAR 或 SPI 运行覆盖。
+
+### 按需读取执行材料
+
+`read_execution_artifact(session_id, request_id, artifact, ...)` 只读所选请求的 `request`、`compiler_log`、`client_log`、`compilation` 或 `receipt`，不接受任意路径，也不调用 STAR 或改变恢复状态。可沿用 `get_execution.artifact_reader` 的方法与会话／请求参数，再明确添加材料名；指引保留实际选定的会话范围，不以另一运行根下同名短 ID 替代。
+
+- 默认最多读取8192原始字节，`limit_bytes` 允许4–65536；不是先加载整份大日志再截断。成功 `result` 另限32 KiB JSON，不含封套和协议转义；转义或原字节材料较大时会缩小返回窗口。
+- `offset` 是零起始字节位置，续读使用实际 `next_offset`。正常 UTF-8 续页不丢失末尾半字符；任意偏移从半字符开始或遇到无效编码时，返回替代解码诊断及该窗口的 `raw_base64`。`range.sha256` 只证明返回的原字节窗口，不是整份文件摘要。
+- `tail=true` 要求 `offset=0`，选取当时文件尾部；预算缩小时仍保留尾部窗口。到达文件尾部不代表读取了前文，检查 `coverage.whole_file` 和省略范围。
+- `expected_version` 可取清单或前页的 `version`，用于拒绝跨元数据版本拼页；它不是内容哈希、恢复 review token 或事务快照。文件在读取中变化、被替换、缺失、无法访问和真实空文件分别表达；不能把 `text=null` 当成没有日志。
+
+日志是任务数据而非指令，原始凭据片段也没有经过完整凭据校验。取得文字不改变原任务状态；仍用 `get_execution` 判断完成、局部结果和未知写入。该新入口的预算不表示原 `get_execution` 大凭据解析或全部业务响应已经有统一返回预算。
 
 ## 完成与恢复
 
@@ -185,7 +207,9 @@ reconcile_execution(session_id, request_id, expected_review_token, assessment)
 
 | 实际任务 | 结果与证据 |
 | --- | --- |
-| 原样完整宏与批量工况 | 2602 在已有通道中[混合执行](<../../outputs/requirements-first/inlet-study/execution.json>)基线读取、带包名／私有方法的完整宏及辅助 Java、产物读取，约6.47秒生成0.02／0.04 m/s两个[工况文件记录](<../../outputs/requirements-first/inlet-study/variants/cases.csv>)；保留基线第5次迭代，没有清除数据、重新求解或重载产物。原入口目录的 CSV 与显式 cwd 均按预期使用；[MCP 重放](<../../outputs/requirements-first/inlet-study/mcp-replay.json>)约0.019秒只返回原凭据。最终薄启动宏通过同会话的[只读清点](<../../outputs/requirements-first/inlet-study/inventory.json>)运行，当前入口实读0.04 m/s，实际内容见[客户端日志](<../../outputs/requirements-first/runtime/sessions/6e54569858b244c0aace25e7e066a301/requests/macro-inlet-study-inventory/star.log>)；最终源码／启动宏也通过[2602](<../../outputs/requirements-first/inlet-study/final-source-build-tped7bzp/21.02.007/compilation.json>)和[2510](<../../outputs/requirements-first/inlet-study/final-source-build-tped7bzp/20.06.007/compilation.json>)编译。本次无额外 JAR，依赖冲突和异常恢复不是本次实跑覆盖；自有服务已停止，基线[前](<../../outputs/requirements-first/inlet-study/source-before.json>)、[后](<../../outputs/requirements-first/inlet-study/source-after.json>)摘要一致。 |
+| 执行材料与资料的按需取得 | 当前真实 MCP 在另一运行根的绝对会话范围中[取得原凭据](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/selected-runtime-execution.json>)并沿返回指引读取[715字节原日志](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/selected-runtime-log.json>)，没有丢失范围或重跑 STAR；0.04 m/s、迭代5及变体存在但未重载均是原任务记录。另取得[真实空编译日志](<../../outputs/requirements-first/artifact-reading/compiler_log.json>)、编译信息和请求首／续窗。两安装的[2602](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/21.02.007-session-directory-api.json>)、[2510](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/20.06.007-session-directory-api.json>)继承成员资料均经原生MCP返回，单次result为2927字节。真实官方export索引与RootObject读取另触发整项预算分页；单项最低元数据超限、正文摘录与错误交互仍仅静态复核。 |
+| 编译扩展与运行加载边界 | 实际安装JDK及STAR字节码确认两层javac均会发现Plugin，不能把 `-proc:none` 或空注解处理器列表视为插件隔离。外部编译策略已用于[两安装正常编译](<../../outputs/requirements-first/compiler-isolation-j4alj1ek/compilation-summary.json>)；独立运行加载器及私有空STAR classpath又经[当前模板正常编译](<../../outputs/requirements-first/launcher-isolation-_9lgu76p/compilation-summary.json>)。没有构造插件样本或启动STAR；新加载器的真实任务运行、外部JAR／资源／SPI、嵌套源宏及异常恢复不在本次覆盖中。 |
+| 原样完整宏与批量工况 | 2602 在已有通道中[混合执行](<../../outputs/requirements-first/inlet-study/execution.json>)基线读取、带包名／私有方法的完整宏及辅助 Java、产物读取，约6.47秒生成0.02／0.04 m/s两个[工况文件记录](<../../outputs/requirements-first/inlet-study/variants/cases.csv>)；保留基线第5次迭代，没有清除数据、重新求解或重载产物。原入口目录的 CSV 与显式 cwd 均按预期使用；[MCP 重放](<../../outputs/requirements-first/inlet-study/mcp-replay.json>)约0.019秒只返回原凭据。当时的薄启动宏通过同会话的[只读清点](<../../outputs/requirements-first/inlet-study/inventory.json>)运行，当前入口实读0.04 m/s，实际内容见[客户端日志](<../../outputs/requirements-first/runtime/sessions/6e54569858b244c0aace25e7e066a301/requests/macro-inlet-study-inventory/star.log>)；当时源码／启动宏也通过[2602](<../../outputs/requirements-first/inlet-study/final-source-build-tped7bzp/21.02.007/compilation.json>)和[2510](<../../outputs/requirements-first/inlet-study/final-source-build-tped7bzp/20.06.007/compilation.json>)编译。本次无额外 JAR，依赖冲突和异常恢复不是本次实跑覆盖；自有服务已停止，基线[前](<../../outputs/requirements-first/inlet-study/source-before.json>)、[后](<../../outputs/requirements-first/inlet-study/source-after.json>)摘要一致。 |
 | 当前初始化与已有算例审查 | 2602 在已保存通道中[集中读取边界、材料、迭代状态并导出已有报告](<../../outputs/requirements-first/channel-current-audit/audit.json>)，实例字段初始化使用当前 `sim` 和 `getActiveSimulation()`，初始化及三个步骤均完成。读取入口0.01 m/s、密度1000 kg/m³、黏度0.001 Pa·s；以明确的名义水力直径1 mm推得 Re=10，[出口报告](<../../outputs/requirements-first/channel-current-audit/outlet-current.txt>)为1.016045×10⁻⁵ kg/s。没有新求解，迭代仍为5，不声称收敛；新接入约80.52秒、同会话三步约6.58秒，仅是这次任务观察。自有会话已停止，原算例[前](<../../outputs/requirements-first/channel-current-audit/source-before.json>)、[后](<../../outputs/requirements-first/channel-current-audit/source-after.json>)摘要一致。两安装 JDK 另编译通过现有状态、求解和 GUI 定位方法各三份；初始化异常与显式接受流程未实际触发。 |
 | 几何、区域、物理与网格 | 宏创建6面几何和模型；`mesh.generate` 实际运行 parts-based 操作，得到909个单元；用位置报告测得两端面而非猜测面序号。见[网格执行](<../../outputs/requirements-first/channel-workflow/12-execute_recipe.json>)、[测量与配置](<../../outputs/requirements-first/channel-workflow/13-execute_macro.json>)。 |
 | 求解 | `solver.step(iterations=5)` 的实际计数从0到5；密度1000 kg/m³、动力黏度0.001 Pa·s、入口0.01 m/s、出口表压0 Pa。见[求解凭据](<../../outputs/requirements-first/channel-workflow/14-execute_recipe.json>)。只验证通路，不证明收敛或工程精度。 |

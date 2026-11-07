@@ -74,7 +74,8 @@ Service 校验公开方法和参数并形成状态封套；发现模块维护会
 | [`cli.py`](../../src/starbridge/cli.py)、`__main__.py`、`mcp.py`、[`interfaces/mcp_server.py`](../../src/starbridge/interfaces/mcp_server.py) | 共享 JSON CLI、Python 模块和 MCP 入口；MCP 适配工具与资源。包内 `__init__.py` 组织命名空间及版本。 |
 | [service.py](<../../src/starbridge/core/service.py>)、[objects.py](<../../src/starbridge/core/objects.py>)、[interface_contract.py](<../../src/starbridge/core/interface_contract.py>)、[interface_exposure.py](<../../src/starbridge/core/interface_exposure.py>) | 编排公开方法与状态封套；按任务展开相关契约，默认 MCP 只列稳定的展开／查询／执行入口，不读取业务资料。 |
 | [macros.py](<../../src/starbridge/core/macros.py>)、[recipes.py](<../../src/starbridge/core/recipes.py>)、[memory.py](<../../src/starbridge/core/memory.py>) | 校验通用步骤和凭据；准备参数化方法；保存与检索带依据的项目／用户记忆，不自动执行记忆。 |
-| [macro_execution.py](<../../src/starbridge/bridge/runner/macro_execution.py>)、[StarBridgeProgram.java](<../../src/starbridge/bridge/java/StarBridgeProgram.java>) | 派发前编译宏，同请求连续执行并原子记录逐步结果；恢复时读取旧凭据，不盲目重放。 |
+| [api_docs.py](<../../src/starbridge/core/api_docs.py>)、[execution_artifacts.py](<../../src/starbridge/core/execution_artifacts.py>) | 按需读取实际安装资料和固定请求材料，分别约束成功结果预算，保留来源、分页和读取限制；不把文本取得当成执行成功。 |
+| [macro_execution.py](<../../src/starbridge/bridge/runner/macro_execution.py>)、[StarBridgeLaunch.java](<../../src/starbridge/bridge/java/StarBridgeLaunch.java>)、[StarBridgeProgram.java](<../../src/starbridge/bridge/java/StarBridgeProgram.java>) | 区分外部预编译、STAR入口编译与用户程序加载；同请求连续执行并记录逐步结果，恢复时读取旧凭据，不盲目重放。 |
 | [GuiPresentation.java](<../../src/starbridge/bridge/java/GuiPresentation.java>) | 显式 GUI 位置方法使用的官方节点模型；读取根可达路径、属性栏及首层菜单元数据，不打开视图或执行动作。 |
 | [`core/environment.py`](../../src/starbridge/core/environment.py)、`catalog_bundle.py`、`session_store.py` | 探测实际安装、选择已登记版本、解析会话与产物位置。 |
 | [`core/discovery.py`](../../src/starbridge/core/discovery.py)、`discovery_rules.py`、`discovery_policy.py`、`discovery_write.py` | 运行时对象引用、分页与索引，版本规则、读计划和受控写计划。 |

@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import zipfile
 
-from .java_runtime import _installation, source_text
+from .java_runtime import _JAVAC_ISOLATION_POLICY, _installation, _run_javac, source_text
 from .modifier import java_literal
 from starbridge.core.session_store import session_version
 
@@ -122,11 +122,14 @@ def render(state, request, result):
 
 
 def render_launch(request, directory):
-    """生成不含用户类型编译引用的启动宏，STAR 不再二次编译混合步骤或用户声明。"""
+    """生成无用户类型编译引用的入口；冻结依赖只在入口编译完成后进入独立运行加载器。"""
     name = 'StarBridgeLaunch_' + request['fingerprint'][:20]
+    runtime_paths = [directory / 'classes', *(directory / item['relative_path']
+        for item in request.get('source_bundle', {}).get('dependencies', []))]
     values = {'LAUNCH_CLASS': name, 'PROGRAM_CLASS': java_literal(program_class(request)),
               'PROGRAM_SOURCE': java_literal(str(directory / (program_class(request) + '.java'))),
-              'CLASSES': java_literal(str(directory / 'classes'))}
+              'CLASSES': java_literal(str(directory / 'classes')),
+              'RUNTIME_PATHS': 'new String[] {' + ', '.join(java_literal(str(path)) for path in runtime_paths) + '}'}
     template = Path(__file__).resolve().parents[1] / 'java' / 'StarBridgeLaunch.java'
     return name, re.sub(r'__([A-Z_]+)__', lambda match: values[match.group(1)], source_text(template))
 
@@ -187,7 +190,8 @@ def compile_program(star, macro, directory, timeout, *, sources=(), classpath=()
     """用同安装 JDK 统一编译入口与明确源码，不改包名或借邻近版本补齐依赖。
 
     仅旧的代码步骤保留交给 STAR 编译的兼容路径；多文件模式缺工具链必须拒绝。
-    编译器禁止注解处理器，依赖只取准备阶段已冻结的显式 JAR，不递归添加原源码目录。
+    编译器禁用注解处理，并以私有空 processorpath 隔绝 classpath 的插件发现；普通依赖
+    仍使用安装库及准备阶段已冻结的显式 JAR，不递归添加原源码目录，也不提供代码沙箱。
     """
     executable = shutil.which(star)
     installation = _installation(str(Path(executable).resolve())) if executable else None
@@ -208,16 +212,15 @@ def compile_program(star, macro, directory, timeout, *, sources=(), classpath=()
         empty_sourcepath.mkdir()
         # 完整源码只编译显式单元，不让 javac 从工作目录或依赖 JAR 隐式找另一份 .java。
         source_options = ['-sourcepath', str(empty_sourcepath), '-implicit:none']
-    process = subprocess.run([str(compiler), '-proc:none', '-encoding', 'UTF-8', *source_options,
+    process = _run_javac(compiler, ['-encoding', 'UTF-8', *source_options,
         '-cp', os.pathsep.join(map(str, dependencies)), '-d', str(classes), str(macro), *map(str, sources)],
-        capture_output=True, text=True, timeout=timeout,
-        env=dict(os.environ, LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8'))
+        directory, timeout, env=dict(os.environ, LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8'))
     (directory / 'compile.log').write_text(process.stdout + process.stderr)
     if process.returncode:
         raise ValueError('Macro compilation rejected before execution: ' + process.stderr[-6000:])
     if sources or classpath:
         check_class_conflicts(jars, classpath, classes)
-    return {'status': 'compiled', 'installation': str(root),
+    return {'status': 'compiled', 'installation': str(root), 'compiler_isolation': _JAVAC_ISOLATION_POLICY,
             **({'source_lookup': 'explicit_units_only', 'class_conflicts': 'none_observed'}
                if sources or classpath else {})}
 
@@ -247,6 +250,28 @@ def final_receipt(path):
     identifier = path.parent.name
     expected = identifier[len('macro-'):] if identifier.startswith('macro-') else None
     return final_document(load_receipt(path, expected))
+
+
+def star_compiler_classpath(directory, working_directory):
+    """给STAR编译入口明确的空用户路径，拒绝实际cwd中可自动发现的javac插件描述符。
+
+    NeoScript未设置独立processorpath，并把用户设置和cwd加入编译classpath。冻结的JAR
+    只供编译后运行加载器使用；这里不能仅省略-classpath而回退旧设置。cwd仍保持真实任务
+    语义，已存在的描述符（包括软链接）须拒绝，其他查找错误不能当作不存在。
+    安装模块、JVM环境和目录仍可信；此检查不防御同权限进程在检查后写入，不构成沙箱。
+    """
+    provider = Path(working_directory) / 'META-INF' / 'services' / 'com.sun.source.util.Plugin'
+    try:
+        provider.lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        raise ValueError('Working directory exposes a javac Plugin provider before macro identity checks: ' + str(provider))
+    empty = directory / 'star-compiler-classpath'
+    if os.pathsep in str(empty):
+        raise ValueError('STAR compiler classpath directory must not contain the platform classpath separator')
+    empty.mkdir(mode=0o700)
+    return empty
 
 
 def execute(state, directory, request, timeout, on_client_start, *, on_client_launch=None):
@@ -292,16 +317,17 @@ def execute(state, directory, request, timeout, on_client_start, *, on_client_la
         return data
 
     try:
+        working_directory = request.get('working_directory', directory)
+        compiler_classpath = star_compiler_classpath(directory, working_directory)
         compilation = compile_program(state['star'], macro, directory, min(timeout, 90),
                                       sources=sources, classpath=classpath)
         check_source_entries(request, directory)
+        compilation.update(star_compiler_classpath='private_empty_directory',
+                           cwd_plugin_provider='absent_at_preflight',
+                           runtime_loading_plan='dedicated_url_loader' if request.get('source_bundle') else 'star_macro_loader')
         (directory / 'compilation.json').write_text(json.dumps(compilation) + '\n')
-        command = [state['star'], '-noretry', '-nbuserdir', str(directory.parent.parent / 'client-settings')]
-        if request.get('source_bundle'):
-            runtime_classpath = [directory / 'classes', *classpath]
-            if any(os.pathsep in str(path) for path in runtime_classpath):
-                raise ValueError('Runtime classpath paths must not contain the platform classpath separator')
-            command += ['-classpath', os.pathsep.join(map(str, runtime_classpath))]
+        command = [state['star'], '-noretry', '-nbuserdir', str(directory.parent.parent / 'client-settings'),
+                   '-classpath', str(compiler_classpath)]
         command += ['-host', state['host'], '-port', str(state['port']), '-batch', str(batch), '-noexit']
         (directory / 'command.json').write_text(json.dumps(command) + '\n')
         environment = dict(os.environ, LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8')
@@ -315,7 +341,7 @@ def execute(state, directory, request, timeout, on_client_start, *, on_client_la
             if on_client_launch is not None:
                 on_client_launch('attempted')
             try:
-                process = subprocess.Popen(command, cwd=request.get('working_directory', directory),
+                process = subprocess.Popen(command, cwd=working_directory,
                                            env=environment, stdin=subprocess.DEVNULL,
                                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             except (OSError, ValueError) as error:
