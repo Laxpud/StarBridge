@@ -256,7 +256,8 @@ def search_guide(query: StrictStr, installation: StrictStr | None = None,
     """按任务搜索实际安装用户指南的标题／摘要，找到操作前提、宏示例和版本迁移资料。
 
     installation与session_id二选一，language是安装文档目录语言代号，不自动翻译或切换版本。
-    关键词按空白分词且全部匹配；不是全文、语义搜索或已下载教程库搜索。正文用read_guide另读。
+    关键词按空白分词且全部匹配；ASCII字母/数字开头的词从词首匹配，非ASCII词按子串，精确标题优先。
+    支持英文词尾延伸，但不是词干还原、全文、语义或已下载教程库搜索；正文用read_guide另读。
     复用官方索引，不遍历全部HTML；索引输入上限8MiB，结果32KiB，完整条目按next_offset续页。
     read_status/coverage区分资料不可用、索引部分识别与无命中；无命中不能证明操作不可用。
     """
@@ -428,13 +429,15 @@ def execute_macro(session_id: StrictStr, request_id: StrictStr, steps: list[dict
     """用当前安装的完整 Java 宏 API 集中完成明确步骤，不受目录适配白名单限制。
 
     steps 每项有 id/effect/scope，code与macro二选一；effect=read或mutate，导出/保存/计算均为mutate。
+    仅不改算例仍不够声明read：用户宏创建诊断JSON/CSV等外部文件也须mutate，并用scope限定输出及不改动范围。
     code是方法体，访问sim/parameters/shared/result。macro={entry_source,entry_class,sources?,classpath?}
     原样编译已有完整Java宏与明确helpers/JAR，在同一会话调用公开execute，不拆写私有方法或package。
     完整宏不自动获得包装器参数/result；成功仅entrypoint_returned，未提供业务结果会明确标记。
     可与普通回读步骤组合；来源/依赖字节纳入指纹，原文件变更后查询旧结果用get_execution。
     working_directory作用于整个客户端；完整宏的resolvePath仍基于各自原文件目录。
     不自动复制资源；支持JAR内资源；重名类、非空Manifest Class-Path和旧式JAR索引当前拒绝。
-    整个请求共用类命名空间；STAR只编译薄启动宏，用户程序不再二次编译。
+    整个请求共用类命名空间；含完整源码时STAR只编译薄启动宏，用户程序不再二次编译。
+    纯code请求仍走原STAR源码编译路径，不把外部预编译成功当成已取消其二次编译。
     外部javac使用独立空processorpath；STAR使用空用户classpath，入口编译后再加载冻结依赖。
     cwd中已有javac Plugin服务描述符时拒绝派发；安装/配置/目录仍可信，不防同权限并发篡改。
     运行期类/资源与SPI可使用该加载器，不保证嵌套STAR源码编译继承依赖或异步任务已结束。

@@ -75,11 +75,18 @@ def _index(path, stamp):
 
 @lru_cache(maxsize=32)
 def _matches(path, stamp, query):
-    """同一索引和查询的翻页复用命中序列；新查询仍只扫描标题和摘要。"""
+    """复用命中序列；英文词从词首匹配，避免table误命中suitable/repeatable。
+
+    允许英文词尾延伸以保留table/tables等常见检索，不做词干还原或语义召回；
+    非ASCII词仍按子串匹配，不能把中文连续文字当成一个英文单词。精确标题优先。
+    """
     rows, _, _, _ = _index(path, stamp)
     words = query.split()
-    selected = [index for index, row in enumerate(rows) if all(word in row[3] for word in words)]
-    selected.sort(key=lambda index: (-sum(word in rows[index][1].casefold() for word in words),
+    patterns = [re.compile(('(?<![a-z0-9])' if word.isascii() and word[0].isalnum() else '')
+                           + re.escape(word)) for word in words]
+    selected = [index for index, row in enumerate(rows) if all(pattern.search(row[3]) for pattern in patterns)]
+    selected.sort(key=lambda index: (rows[index][1].casefold() != query,
+                                    -sum(bool(pattern.search(rows[index][1].casefold())) for pattern in patterns),
                                     rows[index][1].casefold(), rows[index][0]))
     return tuple(selected)
 
@@ -254,8 +261,9 @@ class GuideDocumentation:
         result.update(query=query, matches=[], next_offset=None)
         try:
             path, stamp, rows, _ = self._prepare(result)
-            matches = _matches(str(path), stamp, query.casefold().strip())
-            result['coverage'].update(total_matches=len(matches), offset=offset, returned=0)
+            matches = _matches(str(path), stamp, ' '.join(query.casefold().split()))
+            result['coverage'].update(total_matches=len(matches), offset=offset, returned=0,
+                matching='All terms; ASCII alphanumeric-start terms match word prefixes, others match substrings; exact title first')
             for position in range(offset, min(len(matches), offset + limit)):
                 topic, title, summary, _ = rows[matches[position]]
                 result['matches'].append({'topic': topic, 'title': title, 'summary': summary,

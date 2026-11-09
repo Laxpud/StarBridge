@@ -208,7 +208,7 @@ def tool_input_schema(method, schema):
             parameters['language'].update(pattern='^[a-z]{2}([-_][A-Za-z]{2})?$')
         if method == 'search_guide':
             parameters['query'].update(minLength=1, maxLength=1024,
-                description='非空标题／摘要关键词，按空白分词且全部匹配；不是指南全文或语义搜索。')
+                description='非空标题／摘要关键词，按空白分词且全部匹配；ASCII字母/数字开头的词从词首匹配并允许词尾延伸，其他词按子串，精确标题优先。不是词干还原、指南全文或语义搜索。')
         if method == 'read_guide':
             parameters['topic'].update(pattern='^[A-Za-z0-9][A-Za-z0-9_.-]*\\.html$')
             parameters['offset']['description'] = '渲染正文的Unicode码点起点，不是HTML字节；按next_offset续读，保持topic和expected_sha256。'
@@ -246,7 +246,8 @@ def tool_input_schema(method, schema):
                          'items': object_schema({'source': TEXT, 'description': TEXT})}}))
     if method == 'execute_macro':
         parameters['intent']['enum'] = ['execute', 'explore']
-        common = {'id': TEXT, 'effect': {'enum': ['read', 'mutate']}, 'scope': TEXT}
+        common = {'id': TEXT, 'effect': {'enum': ['read', 'mutate'],
+                  'description': '用户代码任何算例修改、计算、导出或外部文件写入均声明mutate；创建新的诊断JSON/CSV也不属于read。用scope限制实际允许的影响。'}, 'scope': TEXT}
         source = object_schema({
             'entry_source': {**TEXT, 'description': '原UTF-8 Java文件的绝对路径，保持package和原宏位置。'},
             'entry_class': {**TEXT, 'description': '公开无参数构造的StarMacro完整Java类名。'},
