@@ -30,7 +30,7 @@ USAGE_INSTRUCTIONS = (
     '运行时发现要求 runtime_discovery.supported=true；属性读取与写入规则编译还需对应安装的本机 Javadoc。'
     '需要这些规则时 open_session.star 优先指向安装目录内的实际程序，安装目录外的包装脚本无法据路径定位文档。'
     '正常工作以实际版本 Java API 和宏为主，按任务直接定位对象并组织读取、条件判断、修改和回读。'
-    '需要补查调用依据时用 search_api/read_api 取得实际安装的签名、说明及继承来源；已有可靠写法可直接复用。'
+    '需要补查时用search_api/read_api取得实际安装的签名与继承，用search_guide/read_guide取得用户指南的操作前提、宏代码及版本说明；已有可靠写法可直接复用。'
     '结构化接口是可选辅助：未知对象可用 browse_tree/search_settings，已知目录类型可用 find_objects；均返回 object_id。'
     '选用结构化属性接口时用 describe_object 获取属性契约，再按需读取；已有同会话有效定位和契约时可直接复用。'
     '流程示例不是每次调用的固定前置步骤；已有可用会话无需重新发现安装或打开会话。'
@@ -88,7 +88,14 @@ TARGET_DEFS['catalog_target']['description'] = (
 PARAMETER_DESCRIPTIONS = {
     'installation': '实际 STAR 安装根目录的绝对路径，即包含 star/ 与 doc/ 的目录；可取 discover_installations 的 javadoc_root，与 session_id 二选一。仅绑定所选安装资料，不自动换版本。',
     'java_class': '官方索引返回的完整 Java 类名，包含包名；嵌套类型保留点号。',
-    'member': '可选成员简单名或官方完整锚点；简单名返回同名重载并追溯本地继承声明，省略只展开本类成员。',
+    'member': '可选成员简单名或官方完整锚点；简单名保留重载与本地继承声明，与members互斥。两者均省略只展开本类成员。',
+    'members': '同一类的1–32个非空、不重复成员选择器；共享类资料，保留各选择器的缺失、重载、继承和本页覆盖，与member互斥。',
+    'language': '安装指南目录的语言代号，默认en；不自动翻译或切换语言。实际HTML声明语言另列，不把目录名当作正文语言核验。',
+    'topic': 'search_guide或read_guide.links给出的本语言索引内HTML名称，不是任意文件路径或URL。',
+    'limit_chars': '正文窗口的Unicode码点上限，1–24000，默认12000；32KiB结果预算可能进一步缩短窗口。',
+    'link_offset': '相关链接列表的零起始位置，与正文offset独立；按links_next_offset续读。',
+    'link_limit': '相关链接本页条数，1–100，默认20；元数据过大时缩小此值。',
+    'expected_sha256': '可选前页source.sha256；绑定原HTML内容，来源变化时返回source_changed而不混合新旧正文。',
     'kind': 'API 索引查询范围：all、type 或 member；不搜索未加载正文或外部宏库。',
     'release': '用户指定或 discover_installations 实际返回的 STAR release，不限于固定枚举；能力查询决定是否支持，open_session 中作为可选预期值核对。',
     'build': '用户指定或实际检测的 STAR Build 字符串；get_capabilities 可精确查询，open_session 中作为可选预期值核对。',
@@ -179,16 +186,36 @@ def tool_input_schema(method, schema):
             parameters[name].update(bounds)
     if 'scope' in parameters:
         parameters['scope']['enum'] = ['simulation', 'all']
-    if method in ('search_api', 'read_api'):
+    if method in ('search_api', 'read_api', 'search_guide', 'read_guide'):
         result['oneOf'] = [
             {'required': ['installation'], 'properties': {'installation': {'type': 'string'}, 'session_id': {'type': 'null'}}},
             {'required': ['session_id'], 'properties': {'session_id': {'type': 'string'}, 'installation': {'type': 'null'}}},
         ]
-        parameters['limit'].update(maximum=100, description='资料条目上限，允许1–100；默认20，成功result另受32 KiB预算。按next_offset继续；read_api的类链接还须检查links_next_offset，同用offset。')
+        if 'limit' in parameters:
+            parameters['limit'].update(maximum=100, description='资料条目上限，允许1–100；默认20，成功result另受32 KiB预算。按next_offset继续；read_api的类链接还须检查links_next_offset，同用offset。')
         parameters['session_id']['description'] = '可选已有会话标识；只读取绑定安装与版本，不连接 STAR。与 installation 二选一。'
         if method == 'search_api':
             parameters['query']['description'] = '非空索引关键词；按空白分词且全部匹配类名／成员标签，支持类名和方法名组合，不保证自然语言召回。'
             parameters['kind']['enum'] = ['all', 'type', 'member']
+        if method == 'read_api':
+            for branch in parameters['members'].get('anyOf', [parameters['members']]):
+                if branch.get('type') == 'array':
+                    branch.update(minItems=1, maxItems=32, uniqueItems=True)
+                    branch['items'].update(minLength=1)
+            result['allOf'] = [{'not': {'required': ['member', 'members'], 'properties': {
+                'member': {'type': 'string'}, 'members': {'type': 'array'}}}}]
+        if method in ('search_guide', 'read_guide'):
+            parameters['language'].update(pattern='^[a-z]{2}([-_][A-Za-z]{2})?$')
+        if method == 'search_guide':
+            parameters['query'].update(minLength=1, maxLength=1024,
+                description='非空标题／摘要关键词，按空白分词且全部匹配；不是指南全文或语义搜索。')
+        if method == 'read_guide':
+            parameters['topic'].update(pattern='^[A-Za-z0-9][A-Za-z0-9_.-]*\\.html$')
+            parameters['offset']['description'] = '渲染正文的Unicode码点起点，不是HTML字节；按next_offset续读，保持topic和expected_sha256。'
+            parameters['limit_chars'].update(minimum=1, maximum=24000)
+            parameters['link_offset'].update(minimum=0)
+            parameters['link_limit'].update(minimum=1, maximum=100)
+            parameters['expected_sha256'].update(pattern='^[0-9a-f]{64}$')
     if method == 'search_memory':
         parameters['query']['description'] = '经验或资料关键词，可为空以浏览；结果只是候选，不能推断条件已满足。'
         parameters['limit'].update(maximum=200, description='候选摘要数上限，允许1–200；结果另受32 KiB预算，按next_offset继续。')
@@ -373,8 +400,9 @@ def usage_contract():
         'documentation': {
             'selection': 'installation 取实际安装根目录，或 session_id 使用会话绑定安装；二选一。会话版本与安装资料不符时拒绝，不替换版本。',
             'search': 'search_api 查询官方类名和成员索引，不受结构化适配清单限制；按任务关键词缩小范围后 read_api。',
-            'read': 'read_api 获取签名、说明、参数约定、文中代码和来源；member 可选简单名称或完整锚点，保留重载与本地继承声明。',
-            'coverage': 'read_status、coverage.errors、next_offset区分缺失、外部资料未读和成员分页；类链接另查links_next_offset/links_coverage，与成员共用offset及页边界。必要正文摘录在content_truncations明示；full_text_ref相对result指向完整来源。签名、来源和错误不裁剪，最低资料无法表示时明确报预算错误；查询不到不是API不存在。当前不检索正文、独立宏示例库或社区资料。',
+            'read': 'read_api获取签名、说明、参数约定、文中代码和来源；member可选简单名称或完整锚点，也可用members集中读同类一组成员，检查selectors各自缺失与覆盖，保留重载和本地继承声明。',
+            'guide': 'search_guide搜索所选安装/语言指南的标题摘要；read_guide取主题正文及代码窗口、相关链接和API别名。正文以Unicode码点续读，代码范围为半开区间，完整窗口不等于独立完整宏。指南包版本必须与安装Build一致；不下载教程文件或执行文档代码。',
+            'coverage': 'read_status、coverage.errors、next_offset区分缺失、外部资料未读和成员分页；类链接另查links_next_offset/links_coverage，与成员共用offset及页边界。必要正文摘录在content_truncations明示；full_text_ref相对result指向完整来源。签名、来源和错误不裁剪，最低资料无法表示时明确报预算错误；查询不到不是API不存在。两个搜索入口均非全文搜索，也不检索外部独立宏库或社区资料；指南代码块按当前主题单独取得，外部教程引用不是已取得源码。',
             'result_budget': {'max_bytes': 32768, 'scope': '成功result的UTF-8 JSON，包含自计数字段，不含封套和协议转义。',
                               'limits': '条目数不是总预算；索引扫描、整页HTML解析和缓存内存尚无全局预算。'},
             'reuse': '返回实际版本、来源路径和内容摘要；进程内有界缓存按安装和文件身份失效。已获取且适用的资料不必重复查询。'},
@@ -398,6 +426,8 @@ def usage_contract():
         'result_paths': {
             'envelope': 'MCP content 中单份 JSON {status,result} 或 {status,error,session_state?,recovery}。',
             'discover_installations': 'result.installations[]；检查 coverage，不是全机清单。',
+            'search_guide': 'result.matches[].topic/title/summary；read_status与coverage区分索引不可用、部分识别和无命中，按next_offset继续。',
+            'read_guide': 'result.text/range/code_blocks；正文按next_offset、链接按links_next_offset独立续读。期望摘要用source.sha256，source_changed不返回混合正文。检查complete_in_window，不把完整代码块当作已编译或实际执行。',
             'get_capabilities': 'supported/catalog_supported仅指结构化目录；另查runtime_discovery、session_lifecycle与generic_execution。未登记版本通用入口仍需预编译/运行时核验，ok不表示适配或行为已验证。',
             'find_objects': 'result.objects[].object_id/locator；next_offset 非空继续分页。',
             'browse_tree': 'result.object 与 objects[]；代理 object_id 为空。',

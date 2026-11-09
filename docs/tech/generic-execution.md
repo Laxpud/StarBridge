@@ -11,13 +11,28 @@ AI 直接使用实际版本的 Java API 编写、组合和执行任务宏，这�
 例如，任务需要按名称查找场函数时，先以 `FieldFunctionManager getFunction` 查询；选中后读取 `star.common.FieldFunctionManager` 的 `getFunction`。正文明确该方法在未找到时可能创建派生场函数，不能凭方法名把它当成无副作用的读取。继续读取同一类的 `hasObject` 时，返回真实声明类 `star.base.neo.ClientServerObjectManager`，保留其“按显示名称查找、无匹配返回 null”的说明。这是沿官方继承链接取得的依据，不是新增一种场函数专用适配。
 
 - 查询词按空白分词且全部匹配类名和成员标签；不是全文检索、中文语义搜索或独立宏示例库检索。
-- `member` 可用简单名称保留重载，也可使用搜索返回的完整签名锚点。指定成员时只返回相关正文；不指定则读取类说明和本类成员的一页，不默认展开全部父类。
+- `member` 可用简单名称保留重载，也可使用搜索返回的完整签名锚点；同一类的多个已知方法可改传 `members=["getDefinition", "getIsExpression", "getRawValue", "getSIValue", "getUnits"]`，最多32个，与 `member` 互斥。两者均省略才读取类说明和本类成员的一页，不默认展开全部父类。
+- 多成员读取共享类准备和公共字段，不循环返回多份类资料。联合顺序沿官方本类详情、继承列表及链接，而不是输入顺序；相同声明去重，`selected_by` 保留选择来源。检查 `selectors` 各项的 `found/read_status/returned/failed/selection_complete`：找到声明或继承引用不等于正文取得，也不把其他成员成功当作整组成功。整个联合页共用 `offset/limit` 和32 KiB预算。
 - `limit` 默认20、上限100，成功 `result` 另受32 KiB UTF-8 JSON预算，包含计数字段自身，不含封套或协议转义。搜索按完整条目分页；读取将同一 `offset` 的成员（或其错误）和类链接成行返回，两列表共用页边界，分别检查 `next_offset` 和 `links_next_offset` 后传入 `offset` 继续，不把最后一页当成单页覆盖整个选择。
 - 类注记可能包含上千个已知子类。超出4000字符的单条类注记返回明确摘录；最低一行连同固定资料仍超预算时，也会摘录必要正文、注记文字或示例。`content_truncations` 列出原长度、返回长度和完整来源；新 `full_text_ref` 是相对 `result` 的 JSON Pointer。签名、来源、继承组和错误不裁剪，最低资料仍无法表示时明确报预算错误，不伪称 API 不存在。截断示例不是完整可执行代码。
 - `read_status`、`coverage.errors` 及类级 `links_coverage/content_truncations` 区分索引缺失、局部失败、未返回全文、外部资料未读以及没有匹配。未找到不能推断 API 不存在，分页结束也不表示整套资料已经读取。
-- 来源包含实际安装版本、文件路径、内容摘要和成员锚点。进程内缓存有界数量的索引／正文，文件身份或修改信息变化后重新读取；索引扫描、整页 HTML 解析和缓存内存仍无全局预算，不把结果有界等同总成本有界。已有适用资料不必重复查询。
+- 来源包含实际安装版本、文件路径、内容摘要和成员锚点。进程内缓存有界数量的索引／正文及页内声明定位，文件身份或修改信息变化后重新读取；命名读取只解析相关继承链接。Javadoc索引扫描、整页 HTML 解析和缓存内存仍无全局预算，不把结果有界等同总成本有界。已有适用资料不必重复查询。
 
-2602／2510 的本机官方资料已实际用于查找、正文读取和继承追溯；2602 的相同读取已通过真实 stdio MCP 调用。此依据只证明所述资料路径可用，不证明任意 API 行为、独立宏库支持或整体需求已完成。
+2602／2510 的本机官方资料已实际用于查找、正文读取和继承追溯。后处理资料任务通过[原生MCP](<../../outputs/requirements-first/postprocessing-materials/native-mcp.json>)集中读取了 `Scene.printAndWait` 的8个重载和 `export3DSceneFileAndWait` 的6个重载，result共18,644字节；没有执行这些方法。这只证明所述资料路径可用，不证明 API 行为、独立宏库支持或整体需求完成。
+
+上一翼型任务所需的 `ScalarPhysicalQuantity` 五个getter，旧五份result合计15,902字节，新组合result为8,423字节，减少约47%。离线比较已保存响应确认五项正文、签名和共享来源未变，仅新增选择归属信息；这不是总任务耗时或模型token数的减幅。两版实际读取与[比较依据](<../../outputs/requirements-first/postprocessing-materials/response-size-comparison.json>)均保留，没有为落盘重新查询或计时。
+
+### 用户指南、宏示例与操作前提
+
+`search_guide(query="simulation history", installation=..., language="en")` 搜索实际安装用户指南的标题和摘要；`read_guide(topic=..., installation=...)` 再读取选中主题的正文、发布时代码及相关链接。也可用已有会话绑定安装，不启动STAR。语言是文档目录代号，不自动翻译或切换；返回HTML声明语言和指南包版本，包版本必须与所选安装Build一致；指南也包含历史版本迁移章节，安装版本不等于其中每个示例代码的目标版本，仍须阅读标题和上下文。标题／摘要命中不是全文命中；无命中不能推断操作不存在，教程下载引用也不表示文件已安装。
+
+正文只取 `main/article`，说明文字规范化排版空白，`pre` 代码保留原文换行。`code_blocks` 给出正文中的半开字符区间及 `complete_in_window`，可从 `text` 中按相对 `range.offset` 的位置取得代码。**窗口含完整代码块不表示它是独立完整宏，更不表示已编译或执行。** 图片只保留替代文字；脚本、附件与外部页面不执行、不隐式读取。`api_aliases` 是指南声明的关联，不替代Javadoc核验。
+
+- 正文 `offset` 计Unicode码点而非HTML字节，默认 `limit_chars=12000`，上限24000；按 `next_offset` 继续，用前页 `source.sha256` 作为 `expected_sha256`，来源改变时返回 `source_changed`，不给混合正文。相关链接另用 `link_offset/link_limit` 和 `links_next_offset` 续页，目标和锚点未逐一核验。
+- 成功result限32 KiB，必要时缩短可续读的正文窗口，不删除来源或错误；元数据本身过大则明确拒绝，可减少链接条数。指南索引输入限8 MiB、单主题限2 MiB，超过或格式不识别明确报资料不可用，不伪装成空命中。
+- 复用官方标题摘要索引，不遍历所有主题；同一查询的翻页复用命中序列。进程内最多缓存4份索引、8份已选主题文本，按文件身份和修改信息失效。该限制只覆盖此资料源，不是整项任务或全部Javadoc的I/O／内存预算。
+
+实际后处理资料读取取得了指南中的完整 `runMultiple` 代码块、`PostProcessor` 的4个依赖外围上下文的片段，以及虽称“final macro”却缺少完整类声明的教学代码；均未执行或自动修补。2602与2510的 `Solution History Reference` 使用同一GUID，但2602正文另有2510重采样体有损压缩可能损坏历史文件的警告，不能跨版本套用相同页面名。实际范围见[2602材料](<../../outputs/requirements-first/postprocessing-materials/history-2602.json>)与[2510及场景API材料](<../../outputs/requirements-first/postprocessing-materials/native-mcp.json>)；窗口预算、缓存失效、版本冲突等拒绝分支仅源码复核，未额外构造故障。
 
 ## 从零创建与连续操作
 

@@ -234,17 +234,51 @@ def search_api(query: StrictStr, installation: StrictStr | None = None,
 @server.tool(name='starbridge.read_api', annotations=READ)
 def read_api(java_class: StrictStr, installation: StrictStr | None = None,
              session_id: StrictStr | None = None, member: StrictStr | None = None,
-             offset: StrictInt = 0, limit: StrictInt = 20) -> types.CallToolResult:
+             offset: StrictInt = 0, limit: StrictInt = 20,
+             members: list[StrictStr] | None = None) -> types.CallToolResult:
     """按需读取实际版本类／成员的官方签名、正文、参数约定、代码示例和相关链接。
 
     member 可用简单名保留重载，或 search_api 返回的完整锚点；自动读取该成员的本地继承声明。
-    省略 member 读取类说明和本类成员分页，不展开所有父类。检查 read_status/coverage/next_offset。
+    也可用members一次选择同类至多32个成员，共享类资料；与member互斥，检查每个selector的缺失和覆盖。
+    两者均省略则读取类说明和本类成员分页，不展开所有父类。检查 read_status/coverage/next_offset。
     成功result受32 KiB预算；成员和类链接共用分页边界，分别看next_offset/links_next_offset并传offset续页。
     正文必要摘录在content_truncations明示，full_text_ref相对result指向完整来源；截断示例不是可执行完整代码。
     不裁剪签名、来源或错误；最低资料超预算明确拒绝，不表示API不可用。整页解析/索引扫描/缓存仍无全局预算。
     返回来源路径与摘要；外部继承资料只标明未读，不隐式联网。资料、编译及实际执行依据不同。
     """
     return call('read_api', locals())
+
+
+@server.tool(name='starbridge.search_guide', annotations=READ)
+def search_guide(query: StrictStr, installation: StrictStr | None = None,
+                 session_id: StrictStr | None = None, language: StrictStr = 'en',
+                 offset: StrictInt = 0, limit: StrictInt = 20) -> types.CallToolResult:
+    """按任务搜索实际安装用户指南的标题／摘要，找到操作前提、宏示例和版本迁移资料。
+
+    installation与session_id二选一，language是安装文档目录语言代号，不自动翻译或切换版本。
+    关键词按空白分词且全部匹配；不是全文、语义搜索或已下载教程库搜索。正文用read_guide另读。
+    复用官方索引，不遍历全部HTML；索引输入上限8MiB，结果32KiB，完整条目按next_offset续页。
+    read_status/coverage区分资料不可用、索引部分识别与无命中；无命中不能证明操作不可用。
+    """
+    return call('search_guide', locals())
+
+
+@server.tool(name='starbridge.read_guide', annotations=READ)
+def read_guide(topic: StrictStr, installation: StrictStr | None = None,
+               session_id: StrictStr | None = None, language: StrictStr = 'en',
+               offset: StrictInt = 0, limit_chars: StrictInt = 12000,
+               link_offset: StrictInt = 0, link_limit: StrictInt = 20,
+               expected_sha256: StrictStr | None = None) -> types.CallToolResult:
+    """定向读取用户指南主题正文与发布时代码，不执行脚本、联网或自动执行宏。
+
+    topic取search_guide或已有主题links返回的HTML名称，不接受任意路径。核对安装和指南包版本。
+    offset以渲染正文Unicode码点计，不是HTML字节；按next_offset续读，并用source.sha256作expected_sha256。
+    说明文字规范化空白；pre代码保留换行，code_blocks给出正文中的半开区间和complete_in_window。
+    代码块在窗口内完整不等于独立完整宏、编译通过或适用于当前算例；不补写示例缺少的上下文。
+    相关链接用link_offset/link_limit单独分页；未读取教程下载包，api_aliases也不是API存在性核验。
+    单主题输入上限2MiB，结果32KiB，必要时缩短正文窗口，不静默丢来源或错误。图片只保留替代文字。
+    """
+    return call('read_guide', locals())
 
 
 @server.tool(name='starbridge.find_objects', annotations=READ)

@@ -148,6 +148,49 @@ def _anchors(section):
     return {node.attrs['id'] for node in section.walk() if node.attrs.get('id')}
 
 
+@lru_cache(maxsize=32)
+def _page_lookup(path, stamp):
+    """随页面版本缓存详情、锚点别名及继承引用的位置，不缓存可被响应摘录修改的正文。
+
+    继承引用这里只按原始片段建立索引；命名读取选中后才解析路径或访问声明页，
+    因而不会为一个 getter 解析整页无关继承链接。详情位置的顺序沿用官方页面。
+    """
+    page, digest = _page(path, stamp)
+    details, by_selector, by_anchor = [], {}, {}
+    for section in page.walk('detail', 'section'):
+        anchor = section.attrs.get('id')
+        signature = section.part('member-signature')
+        if not anchor or not signature:
+            continue
+        aliases = _anchors(section)
+        number = len(details)
+        details.append({'node': section, 'anchor': anchor, 'signature': signature})
+        for alias in aliases:
+            by_anchor.setdefault(alias, number)
+        names = aliases | {anchor.split('(')[0], section.part('element-name')}
+        for name in names - {''}:
+            by_selector.setdefault(name, []).append(number)
+    inherited, inherited_by_name, groups = [], {}, []
+    for group in page.walk('inherited-list'):
+        owners, count = [], 0
+        for href in group.links():
+            # 不在这里展开相对路径或调用 link；无关类型的链接只作原始位置索引。
+            fragment = unquote(href.partition('#')[2])
+            if not fragment:
+                owners.append(href)
+                continue
+            number = len(inherited)
+            inherited.append((href, fragment))
+            inherited_by_name.setdefault(fragment.split('(')[0], []).append(number)
+            count += 1
+        groups.append((tuple(owners), count))
+    return {'page': page, 'digest': digest, 'signature': page.part('type-signature'),
+            'description': next(page.walk('class-description'), None),
+            'details': tuple(details), 'by_selector': by_selector, 'by_anchor': by_anchor,
+            'inherited': tuple(inherited), 'inherited_by_name': inherited_by_name,
+            'inherited_groups': tuple(groups)}
+
+
 def _raw(node):
     """保留示例代码的换行与缩进，不把 Java 行注释后的代码折叠到同一行。"""
     return ''.join(_raw(child) if isinstance(child, Element) else child for child in node.children)
@@ -350,75 +393,159 @@ class Documentation:
                 break
         return _require_budget(result)
 
-    def read(self, java_class, member=None, offset=0, limit=20):
-        """读取精确类型或成员；成员可为简单名称或完整锚点，保留重载与继承声明来源。
+    def _member_candidates(self, path, prepared, reverse, selectors):
+        """合并本类与选中继承声明，按页面顺序去重；失败位置也保留为可分页条目。
 
-        不指定 member 时只展开本类成员的一页，并列出继承来源及数量；指定成员时，
-        先从本类和官方继承列表定位，再仅加载本页命中的声明。不会将父类内容复制成
-        子类自有成员，也不会因当前页面未声明该方法就断言 API 不存在。预算分页同时
-        推进本类链接列表，保留 next_offset 和 links_next_offset 共用 offset 的语义；
-        正文摘录在 content_truncations 说明，完整签名、来源和错误不能静默删除。
+        只加载命中名称的声明页以确认官方锚点／类型擦除别名，不展开无关继承成员。
+        多个选择器命中同一声明时共用一次正文读取，selected_by仍保留每个选择来源。
+        """
+        candidates, located = [], {}
+        owners = {path: prepared}
+        owner_errors = {}
+
+        def add(key, candidate, matched, unresolved=()):
+            if key not in located:
+                located[key] = candidate
+                candidate['matched_by'], candidate['unresolved_by'] = set(), set()
+                candidates.append(candidate)
+            item = located[key]
+            item['matched_by'].update(matched)
+            item['unresolved_by'].update(unresolved)
+            item['unresolved_by'].difference_update(item['matched_by'])
+
+        selected_own = {}
+        if selectors is None:
+            selected_own = {number: [] for number in range(len(prepared['details']))}
+        else:
+            for selector in selectors:
+                for number in prepared['by_selector'].get(selector, ()):
+                    selected_own.setdefault(number, []).append(selector)
+        for number in sorted(selected_own):
+            detail = prepared['details'][number]
+            anchor = detail['anchor']
+            add((path, anchor), {'path': path, 'anchor': anchor, 'inherited': False,
+                                'detail': detail, 'digest': prepared['digest']}, selected_own[number])
+        if selectors is None:
+            return candidates
+
+        selected_links = set()
+        for selector in selectors:
+            selected_links.update(prepared['inherited_by_name'].get(selector.split('(')[0], ()))
+        for number in sorted(selected_links):
+            href, anchor = prepared['inherited'][number]
+            relevant = [selector for selector in selectors if selector.split('(')[0] == anchor.split('(')[0]]
+            matched = [selector for selector in relevant if selector == anchor or '(' not in selector]
+            owner_path = None
+            source = {'href': href, 'origin': self.source(path)}
+            try:
+                link = self.link(href, path, reverse)
+                if not link['local']:
+                    # 不联网；完整别名是否存在无法据远程链接确认，和确切名称命中分开记录。
+                    add((link['uri'], anchor), {'path': link['uri'], 'anchor': anchor, 'inherited': True,
+                        'error': {'member': anchor, 'source': link['uri'], 'reason': 'external_documentation_not_read'}},
+                        matched, set(relevant) - set(matched))
+                    continue
+                owner_path = Path(link['path'])
+                source = self.source(owner_path, anchor=anchor)
+                if owner_path not in owners and owner_path not in owner_errors:
+                    try:
+                        owners[owner_path] = _page_lookup(str(owner_path), _stamp(owner_path))
+                    except (OSError, ValueError) as error:
+                        owner_errors[owner_path] = {'type': type(error).__name__, 'message': str(error)}
+                if owner_path in owner_errors:
+                    add((owner_path, anchor), {'path': owner_path, 'anchor': anchor, 'inherited': True,
+                        'error': {'member': anchor, 'source': source, **owner_errors[owner_path]}},
+                        matched, set(relevant) - set(matched))
+                    continue
+                owner = owners[owner_path]
+                detail_number = owner['by_anchor'].get(anchor)
+                if detail_number is None:
+                    raise ValueError(f'Member detail not found: {owner_path}#{anchor}')
+                detail = owner['details'][detail_number]
+                matched = [selector for selector in relevant
+                           if selector in matched or detail_number in owner['by_selector'].get(selector, ())]
+                if matched:
+                    add((owner_path, detail['anchor']),
+                        {'path': owner_path, 'anchor': anchor, 'inherited': True,
+                         'detail': detail, 'digest': owner['digest']}, matched)
+            except (OSError, ValueError) as error:
+                add((owner_path if owner_path is not None else href, anchor),
+                    {'path': owner_path, 'anchor': anchor, 'inherited': True,
+                     'error': {'member': anchor, 'source': source,
+                               'type': type(error).__name__, 'message': str(error)}},
+                    matched, set(relevant) - set(matched))
+        return candidates
+
+    def read(self, java_class, member=None, offset=0, limit=20, members=None):
+        """集中读取一个类或所选成员；保留重载、继承来源、逐项错误和本页覆盖。
+
+        member和members互斥，后者接受最多32个唯一名称／完整锚点。两者都省略时，
+        仍只分页展开本类成员和类链接。命名读取准备相关声明页的缓存定位信息以确认
+        官方别名及去重，不解析无关继承链接；成员正文仅为当前联合候选页展开。
+        联合顺序固定为本类详情顺序、继承列表及其官方链接顺序，与选择器顺序无关。
+        一个声明只返回一次，members模式用selected_by保留全部命中选择器。
+        offset/limit和32 KiB预算作用于整个联合页；签名、来源和错误不作预算裁剪。
         """
         java_class = _text(java_class, 'java_class')
+        multiple = members is not None
+        if multiple and member is not None:
+            raise ValueError('member and members are mutually exclusive')
         member = _text(member, 'member') if member is not None else None
+        if multiple:
+            if not isinstance(members, list) or not 1 <= len(members) <= 32:
+                raise ValueError('members must be a non-empty list of at most 32 unique member names or anchors')
+            selectors = [_text(value, 'members item') for value in members]
+            if len(set(selectors)) != len(selectors):
+                raise ValueError('members must contain unique member names or anchors after trimming whitespace')
+        else:
+            selectors = [member] if member is not None else None
         _range(offset, limit)
         paths, reverse, index_source = self.types()
         base = self.base()
         if java_class not in paths:
-            return _require_budget({**base, 'read_status': 'not_found_in_index', 'java_class': java_class,
+            unavailable = {**base, 'read_status': 'not_found_in_index', 'java_class': java_class,
                     'coverage': {'scope': 'selected_installation_type_index', 'source': index_source},
                     'next_step': 'Search the selected installation index; absence is not proof of API unavailability.',
-                    'budget': _budget()})
+                    'budget': _budget()}
+            if multiple:
+                unavailable['selectors'] = [{'selector': selector, 'found': None,
+                    'read_status': 'class_not_found_in_index', 'matched': None, 'returned': 0,
+                    'processed': 0, 'failed': 0, 'selection_complete': False} for selector in selectors]
+                unavailable['coverage']['member_filters'] = selectors
+            return _require_budget(unavailable)
         path = paths[java_class]
-        page, digest = _page(str(path), _stamp(path))
-        signature = page.part('type-signature')
+        prepared = _page_lookup(str(path), _stamp(path))
+        signature, digest = prepared['signature'], prepared['digest']
         if not signature:
             raise ValueError(f'Unsupported Javadoc type page: {path}')
-        description = next(page.walk('class-description'), None)
+        description = prepared['description']
         if description is None:
             raise ValueError(f'Javadoc class description is unavailable: {path}')
-        own = {section.attrs['id']: section for section in page.walk('detail', 'section')
-               if section.attrs.get('id') and next(section.walk('member-signature'), None) is not None}
-
-        def selected(anchor, declared_name=None, aliases=()):
-            """完整锚点精确选择重载；构造器简单名和泛型别名取官方声明，不猜类型。"""
-            if member is None or member == anchor or member in aliases:
-                return True
-            return '(' not in member and member in (anchor.split('(')[0], declared_name)
-
-        candidates = [(path, anchor, False) for anchor, section in own.items()
-                      if selected(anchor, section.part('element-name'), _anchors(section))]
-        inherited, seen = [], set(candidates)
-        for group in page.walk('inherited-list'):
-            links = [self.link(href, path, reverse) for href in group.links()]
-            members = [link for link in links if link.get('member')]
-            owners = [link for link in links if not link.get('member')]
-            inherited.append({'sources': owners, 'member_count': len(members)})
-            if member is not None:
-                for link in members:
-                    if not selected(link['member']):
-                        continue
-                    key = (Path(link['path']) if link.get('local') else link['uri'], link['member'], True)
-                    if key not in seen:
-                        candidates.append(key)
-                        seen.add(key)
+        candidates = self._member_candidates(path, prepared, reverse, selectors)
+        inherited = ([{'sources': [self.link(href, path, reverse) for href in owners], 'member_count': count}
+                      for owners, count in prepared['inherited_groups']] if selectors is None else [])
         results, errors = [], []
-        class_links = description.links() if member is None else []
+        class_links = description.links() if selectors is None else []
         # 先取得不带链接条目的类正文；同一 offset 的成员与类链接随后成行加入，保持两个
         # 游标的原有列表含义，又避免预算分别截短后产生互相跳过或反复重读的续页位置。
         context = ({**self.content(description, path, reverse, (offset, 0)), 'inherited_groups': inherited}
-                   if member is None else {'class_context': 'signature_only'})
+                   if selectors is None else {'class_context': 'signature_only'})
         result = {**base, 'read_status': 'ok',
                   'java_class': java_class, 'signature': signature, 'source': self.source(path, digest),
                   **context, 'members': results, 'next_offset': None,
                   'page_end_reason': 'results_end', 'budget': _budget(),
-                  'coverage': {'scope': 'declared_members' if member is None else 'declared_and_linked_inherited_members',
+                  'coverage': {'scope': 'declared_members' if selectors is None else 'declared_and_linked_inherited_members',
                                'member_filter': member, 'matched': len(candidates), 'returned': 0,
                                'offset': offset, 'truncated': False, 'errors': errors,
                                'inheritance_expansion': 'named_member_only',
                                'external_documentation_read': False}}
         rows = 0
         total_rows = max(len(candidates), len(class_links))
+        if multiple:
+            result['coverage']['member_filters'] = selectors
+            result['coverage']['candidate_order'] = 'Declared detail order, then inherited-list/link order; independent of selector order.'
+            result['coverage']['selector_found_scope'] = 'A matching declaration or official inherited link was located; body read success is reported separately.'
+            result['selectors'] = []
 
         def refresh():
             """按接纳的完整行计覆盖；已返回的错误也消耗成员位置，避免反复读取同一坏项。"""
@@ -432,7 +559,7 @@ class Documentation:
                                          'results_end' if end >= total_rows else
                                          'limit' if rows == limit else 'response_budget')
             links_complete = True
-            if member is None:
+            if selectors is None:
                 links_complete = len(result['links']) == len(class_links)
                 result['links_next_offset'] = end if end < len(class_links) else None
                 result['links_coverage'].update(returned=len(result['links']),
@@ -440,30 +567,55 @@ class Documentation:
                     continuation='Use the same offset parameter; member and class-link cursors share a page boundary.')
             excerpted = bool(result.get('content_truncations')) or any(item.get('content_truncations') for item in results)
             result['coverage']['text_excerpted'] = excerpted
+            missing_selection = False
+            if multiple:
+                summaries = []
+                for selector in selectors:
+                    matched = sum(selector in item['matched_by'] for item in candidates)
+                    unresolved = sum(selector in item['unresolved_by'] for item in candidates)
+                    selected_page = sum(selector in item['matched_by'] or selector in item['unresolved_by']
+                                        for item in candidates[offset:end])
+                    returned = [item for item in results if selector in item['selected_by']]
+                    failed = sum(selector in item['selected_by'] for item in errors)
+                    selector_complete = selected_page == matched + unresolved
+                    found = True if matched else None if unresolved else False
+                    missing_selection |= found is not True
+                    status = ('not_found_in_page' if not matched and not unresolved else
+                              'partial' if failed or unresolved or not selector_complete
+                              or any(item.get('content_truncations') for item in returned) else 'ok')
+                    summaries.append({'selector': selector, 'found': found, 'read_status': status,
+                                      'matched': matched, 'unresolved': unresolved, 'returned': len(returned),
+                                      'processed': selected_page, 'failed': failed,
+                                      'selection_complete': selector_complete})
+                result['selectors'] = summaries
             result['read_status'] = ('partial' if errors or excerpted or not complete or not links_complete else
-                                     'ok' if candidates or member is None else 'not_found_in_page')
+                                     'not_found_in_page' if not candidates and selectors is not None else
+                                     'partial' if missing_selection else 'ok')
 
         for index in range(offset, min(offset + limit, total_rows)):
             previous_results, previous_errors = len(results), len(errors)
             previous_links = len(result.get('links', []))
             if index < len(candidates):
-                owner_path, anchor, is_inherited = candidates[index]
-                if not isinstance(owner_path, Path):
-                    errors.append({'member': anchor, 'source': owner_path, 'reason': 'external_documentation_not_read'})
+                candidate = candidates[index]
+                owner_path, anchor = candidate['path'], candidate['anchor']
+                selection = ({'selected_by': [selector for selector in selectors
+                              if selector in candidate['matched_by'] or selector in candidate['unresolved_by']]}
+                             if multiple else {})
+                if multiple and candidate['unresolved_by']:
+                    selection['selection_unresolved_for'] = [selector for selector in selectors
+                                                              if selector in candidate['unresolved_by']]
+                if 'error' in candidate:
+                    errors.append({**candidate['error'], **selection})
                 else:
                     try:
-                        owner_page, owner_digest = _page(str(owner_path), _stamp(owner_path))
-                        section = next((item for item in owner_page.walk('detail', 'section')
-                                        if anchor in _anchors(item)), None)
-                        if section is None or not section.part('member-signature'):
-                            raise ValueError(f'Member detail not found: {owner_path}#{anchor}')
+                        detail = candidate['detail']
                         results.append({'declaring_class': reverse.get(owner_path), 'member': anchor,
-                            'inherited': is_inherited, 'signature': section.part('member-signature'),
-                            'source': self.source(owner_path, owner_digest, anchor),
-                            **self.content(section, owner_path, reverse)})
+                            'inherited': candidate['inherited'], 'signature': detail['signature'],
+                            'source': self.source(owner_path, candidate['digest'], anchor),
+                            **self.content(detail['node'], owner_path, reverse), **selection})
                     except (OSError, ValueError) as error:
                         errors.append({'member': anchor, 'source': self.source(owner_path, anchor=anchor),
-                                       'type': type(error).__name__, 'message': str(error)})
+                                       'type': type(error).__name__, 'message': str(error), **selection})
             if index < len(class_links):
                 result['links'].append(self.link(class_links[index], path, reverse))
             rows += 1
@@ -474,7 +626,7 @@ class Documentation:
             elif _response_size(result) > MAX_RESPONSE_BYTES:
                 del results[previous_results:]
                 del errors[previous_errors:]
-                if member is None:
+                if selectors is None:
                     del result['links'][previous_links:]
                 rows -= 1
                 refresh()
@@ -484,16 +636,17 @@ class Documentation:
         return _require_budget(result)
 
 
-def documentation(installation=None, session_id=None):
+def documentation(installation=None, session_id=None, factory=Documentation):
     """从显式安装或已绑定会话选择资料；会话版本冲突时拒绝，不借用相近版本。
 
     会话方式只读身份文件，不连接客户端。外部包装启动器若不能定位安装，调用者
     需显式指定真实安装目录；显式目录模式报告文档版本，不冒充活会话已验证版本。
+    内部factory可构造其他资料读取器，只须提供同安装的version；不要求先有Javadoc。
     """
     if (installation is None) == (session_id is None):
         raise ValueError('Provide exactly one of installation or session_id')
     if session_id is None:
-        return Documentation(installation)
+        return factory(installation)
     from .catalog import read_json
     from .session_store import session_directory, session_version
     state = read_json(session_directory(session_id) / 'session.json')
@@ -502,7 +655,7 @@ def documentation(installation=None, session_id=None):
                  if (parent / 'star/RELEASE_NOTES').is_file()), None)
     if root is None:
         raise ValueError('Cannot locate documentation from the session launcher; provide the actual installation')
-    result = Documentation(str(root))
+    result = factory(str(root))
     if result.version != session_version(state):
         raise ValueError('Installed documentation version differs from the bound session version')
     return result

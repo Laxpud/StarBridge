@@ -11,7 +11,7 @@ import json
 ENTRY_TOOLS = frozenset({'expand_capabilities', 'query', 'execute'})
 MAX_RESULT_BYTES = 32768
 READ_METHODS = frozenset({
-    'get_contract', 'discover_installations', 'get_capabilities', 'search_api', 'read_api',
+    'get_contract', 'discover_installations', 'get_capabilities', 'search_api', 'read_api', 'search_guide', 'read_guide',
     'find_objects', 'browse_tree', 'search_settings', 'relocate_object', 'describe_object',
     'read_properties', 'inspect_session', 'session_status', 'get_execution', 'list_recipes',
     'search_memory', 'get_memory', 'read_execution_artifact',
@@ -28,9 +28,9 @@ CAPABILITIES = {
         'guidance': '宏是正常操作方式，不必先查询结构化支持。复用已有会话与可靠代码，集中组织读取、判断、修改和回读；不默认复制算例。使用稳定请求标识，未知或局部结果先取原凭据，不盲目重发。编译和入口返回不等于任务完成；按需用 read_execution_artifact 取日志窗口或编译材料，不因只有路径就重做任务。保存与关闭须属于明确任务。任意宏即使声明只读也经 execute 调用，不是沙箱。',
     },
     'api': {
-        'summary': '按需查实际安装版本的官方 Java API 签名、说明、继承关系和来源。',
-        'methods': ['search_api', 'read_api'],
-        'guidance': '使用已知安装或已有会话的版本，已有适用资料不必重查。搜索只覆盖官方索引标签，不是全文或宏库搜索；无命中不能证明 API 不存在。按需读取选中的成员，检查分页、缺失和截断，不启动 STAR 客户端。',
+        'summary': '按需查实际安装的API签名、继承与用户指南中的操作前提、宏代码和版本说明。',
+        'methods': ['search_api', 'read_api', 'search_guide', 'read_guide'],
+        'guidance': '使用已知安装或已有会话的版本，已有适用资料不必重查。同类多个成员可用read_api的members集中读取。search_api覆盖类/成员索引，search_guide覆盖用户指南标题/摘要；均非全文搜索，无命中不证明API或操作不存在。read_guide取得选中正文及代码窗口，不把片段、教程下载引用或文档示例当成已编译/运行的完整宏。检查分页、缺失、代码窗口完整性和实际来源，不启动STAR客户端。',
     },
     'memory': {
         'summary': '检索相关经验摘要、审阅完整依据，并按实际新观察记录或修订。',

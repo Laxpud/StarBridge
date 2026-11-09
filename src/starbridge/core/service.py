@@ -24,6 +24,7 @@ from .session_store import new_session_directory, session_directory, public_sess
 
 METHODS = (
     'get_contract', 'discover_installations', 'get_capabilities', 'search_api', 'read_api',
+    'search_guide', 'read_guide',
     'find_objects', 'browse_tree', 'search_settings', 'relocate_object',
     'describe_object', 'read_properties', 'modify_property', 'execute_operation',
     'inspect_session', 'open_session', 'session_status', 'save_session', 'close_session',
@@ -127,10 +128,24 @@ class Service:
         from .api_docs import documentation
         return documentation(installation, session_id).search(query, kind, offset, limit)
 
-    def read_api(self, java_class, installation=None, session_id=None, member=None, offset=0, limit=20):
-        """按需读取签名、说明、文中代码及继承来源，缺失资料不是 API 不存在。"""
+    def read_api(self, java_class, installation=None, session_id=None, member=None, offset=0, limit=20, members=None):
+        """按需读取单个或同类一组成员，共享类资料并保留各选择器的缺失与继承来源。"""
         from .api_docs import documentation
-        return documentation(installation, session_id).read(java_class, member, offset, limit)
+        return documentation(installation, session_id).read(java_class, member, offset, limit, members=members)
+
+    def search_guide(self, query, installation=None, session_id=None, language='en', offset=0, limit=20):
+        """从安装用户指南的标题／摘要找操作流程和宏材料，不扫描所有正文或执行示例。"""
+        from .api_docs import documentation
+        from .guide_docs import GuideDocumentation
+        return documentation(installation, session_id, factory=lambda root: GuideDocumentation(root, language)).search(query, offset, limit)
+
+    def read_guide(self, topic, installation=None, session_id=None, language='en', offset=0,
+                   limit_chars=12000, link_offset=0, link_limit=20, expected_sha256=None):
+        """读取已选主题的有界正文和代码窗口，区分源码片段、缺失依赖和实际运行依据。"""
+        from .api_docs import documentation
+        from .guide_docs import GuideDocumentation
+        return documentation(installation, session_id, factory=lambda root: GuideDocumentation(root, language)).read(
+            topic, offset, limit_chars, link_offset, link_limit, expected_sha256)
 
     def get_capabilities(self, release=None, build=None):
         """查询注册能力，版本由调用者或安装探测提供；未知版本作为查询结果返回。
