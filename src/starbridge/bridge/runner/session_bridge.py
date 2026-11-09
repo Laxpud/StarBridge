@@ -2,9 +2,10 @@
 """连接本机已有 STAR 或启动自有服务，按明确指令修改内存、保存和断开。"""
 
 import argparse
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -33,6 +34,15 @@ class OperationUncertain(RuntimeError):
 
 class OperationBusy(ModificationRejected):
     """请求仍在执行；不能把忙碌解释为本次操作失败或未知写入。"""
+
+
+class ConnectionDiscoveryIncomplete(ModificationRejected):
+    """可见候选未能全部判定，不据此自动启动另一个算例实例。"""
+
+    def __init__(self, summary):
+        self.discovery = summary
+        super().__init__('Existing STAR candidate discovery is incomplete; no new server was started. '
+                         'Inspect connection_discovery and select a known port or resolve the pending candidate.')
 
 
 def write_json(path, data):
@@ -366,42 +376,141 @@ def bind_legacy_version(directory, state, timeout):
     compact_request(state, run, 'session-info')
 
 
-def local_servers(star):
-    """从同一安装、同一用户的本机进程查找监听端口，不扫描网络或其他用户。
+def local_servers(star, port=None):
+    """按当前监听和明确端口声明缩小候选；协议、版本和算例仍由只读宏核对。"""
+    from .server_discovery import discover
+    return discover(star, port, process_identity)
 
-    端口仅作为候选；连接后还要由宏核对实际算例路径、版本和 Simulation key。
-    Linux /proc 不可见的进程无法自动接入，不能据此宣称发现了所有 GUI。
+
+def session_signature(state):
+    """摘要表示持锁读到的整份登记状态，用来拒绝覆盖探测后发生的其他请求。"""
+    return hashlib.sha256(json.dumps(state, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+@contextmanager
+def probe_guard(root, candidate):
+    """读取已登记端点前先取得其会话锁，不与本运行目录的业务请求交错。
+
+    只覆盖当前运行根的记录；GUI及另一运行根不参与此锁，仍需运行时身份检查。
+    多个历史连接可能指向同一原生进程，因此按固定顺序锁定全部匹配记录。
     """
-    # 1. 只考虑安装内 STAR 原生程序；Java 客户端的辅助 HTTP 端口不作为候选。
-    installation = Path(star).resolve().parents[1]
-    listeners = {}
-    for name in ('tcp', 'tcp6'):
-        for line in Path('/proc/net', name).read_text().splitlines()[1:]:
-            fields = line.split()
-            if fields[3] == '0A':
-                listeners[fields[9]] = int(fields[1].rsplit(':', 1)[1], 16)
-    found = {}
-    for process in Path('/proc').glob('[0-9]*'):
+    with ExitStack() as locks:
+        observed_records = {}
+        for record in sorted(root.glob('*/session.json')):
+            try:
+                previous = json.loads(record.read_text())
+            except (OSError, ValueError):
+                continue
+            if not isinstance(previous, dict):
+                continue
+            if (previous.get('port') != candidate['port']
+                    or previous.get('server_process', previous.get('process')) != candidate['process']):
+                continue
+            locks.enter_context(locked(record.parent))
+            current = json.loads(record.read_text())
+            if (not isinstance(current, dict) or current.get('port') != candidate['port']
+                    or current.get('server_process', current.get('process')) != candidate['process']):
+                raise RuntimeError('Registered candidate changed before inspection')
+            if current.get('active_request'):
+                # 客户端可能脱离控制进程继续运行；没有可靠终止依据时不再派发探测宏。
+                unknown = (current.get('client_process') is None
+                           and current.get('client_launch_state') not in ('preparing', 'not_started'))
+                if client_running(current) or unknown:
+                    raise OperationBusy('Existing candidate has active or unknown request activity; '
+                                        'inspect its session_status before reconnecting')
+                # 凭据已写完而客户端刚退出时，active_request仍可能残留；按原恢复规则收尾。
+                refresh_request(record.parent, current)
+            observed_records[str(record)] = session_signature(current)
+        yield observed_records
+
+
+def probe_candidates(args, directory, state, source):
+    """串行读取可见候选，记录真实阶段成本；没有终态不是“没有匹配会话”。"""
+    from . import lifecycle_execution
+    from .server_discovery import endpoint_alive
+    started = time.monotonic()
+    candidates = [] if getattr(args, 'create', False) else local_servers(state['star'], args.port)
+    discovery = {'schema_version': 1, 'scope': 'visible_same_uid_selected_installation_listeners',
+                 'requested_port': args.port, 'requested_input': str(source) if source else None,
+                 'enumeration_seconds': time.monotonic() - started,
+                 'candidates': candidates, 'probes': [], 'status': 'in_progress',
+                 'limitations': ['Not an atomic snapshot or a complete list of invisible processes',
+                                 'Session locks cover this runtime root, not GUI or other runtime roots']}
+    record = directory / 'connection-discovery.json'
+    write_json(record, discovery)
+    matches = []
+    # 总预算耗尽后不再启动探测；当前客户端的编译和终止清理仍可能略超剩余预算。
+    deadline = started + args.timeout
+    for candidate in candidates:
+        observation = {'process': candidate['process'], 'port': candidate['port'],
+                       'port_basis': candidate['port_basis'], 'status': 'unresolved'}
+        began = time.monotonic()
         try:
-            if process.stat().st_uid != os.getuid():
-                continue
-            executable = (process / 'exe').resolve(strict=True)
-            # 已安装启动器的 _get_starccm_server_binary 使用 star-ccm+；
-            # 排除 Python 启动器、插件服务和 MPI 辅助程序的监听端口。
-            if not executable.is_relative_to(installation) or executable.name != 'star-ccm+':
-                continue
-            identity = process_identity(int(process.name))
-            if identity is None:
-                continue
-            for fd in (process / 'fd').iterdir():
-                link = os.readlink(fd)
-                if link.startswith('socket:[') and link[8:-1] in listeners:
-                    port = listeners[link[8:-1]]
-                    found[(identity['pid'], port)] = {'process': identity, 'port': port}
-        except (OSError, ValueError):
-            # 进程可能在枚举期间退出；后续连接前还会再次检查身份。
-            continue
-    return list(found.values())
+            remaining = deadline - began
+            if remaining <= 0:
+                raise RuntimeError('Candidate discovery time budget exhausted')
+            with probe_guard(directory.parent, candidate) as registered_records:
+                observation['registered_record_signatures'] = registered_records
+                if not endpoint_alive(candidate, process_identity):
+                    raise RuntimeError('Candidate endpoint changed before inspection')
+                run = directory / 'probes' / uuid.uuid4().hex
+                observation['artifact_directory'] = str(run)
+                # 探测只读取实际身份；路径在Python侧规范化比较，不能因符号链接别名误判。
+                probe_state = dict(state, ownership='external', current_file=None, **candidate)
+                data = lifecycle_execution.execute(probe_state, run, 'session-info', min(15, remaining))
+                if not endpoint_alive(candidate, process_identity):
+                    raise RuntimeError('Candidate endpoint changed during inspection')
+                if not isinstance(data, dict) or not isinstance(data.get('after'), dict) or 'status' not in data:
+                    raise RuntimeError('Candidate receipt has no structured identity metadata')
+                info = data['after']
+                version = info.get('star_version')
+                if (not isinstance(version, dict) or set(version) != {'release', 'build'}
+                        or any(not isinstance(value, str) or not value for value in version.values())
+                        or not isinstance(info.get('simulation_key'), str) or not info['simulation_key']
+                        or type(info.get('modified')) is not bool
+                        or 'session_path' not in info
+                        or not isinstance(info['session_path'], (str, type(None)))):
+                    raise RuntimeError('Candidate receipt has incomplete identity metadata')
+                if info['session_path'] and not Path(info['session_path']).is_absolute():
+                    raise RuntimeError('Candidate receipt contains a non-absolute session path')
+                observation.update(receipt_status=data['status'], observed=info,
+                                   client_returncode=data.get('client_returncode'),
+                                   transport_interrupted=data.get('transport_interrupted', False))
+                if version != args.star_version:
+                    observation['status'] = 'different_version'
+                elif data['status'] != 'ok':
+                    raise RuntimeError('Candidate identity inspection was rejected without a version mismatch')
+                elif source is not None and (not info['session_path']
+                        or Path(info['session_path']).resolve() != source):
+                    observation['status'] = 'different_file'
+                else:
+                    observation['status'] = 'matched'
+                    probe_state.update(current_file=info['session_path'] or None, modified=info['modified'],
+                                       simulation_key=info['simulation_key'], state='ready',
+                                       version_source='bound_version_verified_by_server',
+                                       registered_record_signatures=registered_records)
+                    matches.append(probe_state)
+        except (OSError, ValueError, RuntimeError, ModificationRejected) as error:
+            observation.update(status='unresolved', error={'type': type(error).__name__, 'message': str(error)})
+        observation['elapsed_seconds'] = time.monotonic() - began
+        discovery['probes'].append(observation)
+        write_json(record, discovery)
+    unresolved = sum(item['status'] == 'unresolved' for item in discovery['probes'])
+    discovery.update(status=('incomplete' if unresolved else
+                             'not_requested' if getattr(args, 'create', False) else 'completed'),
+                     elapsed_seconds=time.monotonic() - started)
+    summary = {'status': discovery['status'], 'scope': discovery['scope'], 'record': str(record),
+               'candidate_count': len(candidates), 'matched_count': len(matches),
+               'unresolved_count': unresolved, 'matching_ports': [item['port'] for item in matches[:16]],
+               'elapsed_seconds': discovery['elapsed_seconds']}
+    state['connection_discovery'] = summary
+    write_json(record, discovery)
+    write_json(directory / 'session.json', state)
+    if unresolved:
+        state['state'] = 'failed'
+        write_json(directory / 'session.json', state)
+        raise ConnectionDiscoveryIncomplete(summary)
+    return matches
 
 
 def connect(args, directory):
@@ -497,31 +606,19 @@ def start(args, directory):
                  'catalog_target': (dict(args.star_version) if
                                     BUNDLES.get(args.star_version['release']) == args.star_version['build'] else None),
                  'lifecycle_compilation': args.lifecycle_compilation}
-        matches = []
-        for candidate in ([] if getattr(args, 'create', False) else local_servers(star)):
-            if args.port is not None and candidate['port'] != args.port:
-                continue
-            probe_state = dict(state, ownership='external', **candidate)
-            # 先用最小只读请求识别当前加载文件，不生成全范围 Inspector 快照。
-            probe = directory / 'probes' / uuid.uuid4().hex
-            try:
-                from starbridge.bridge.runner import lifecycle_execution
-                data = lifecycle_execution.execute(probe_state, probe, 'session-info', min(args.timeout, 15))
-            except RuntimeError:
-                continue
-            info = data['after']
-            if (data['status'] == 'ok' and alive(probe_state) and (source is None or
-                    (info.get('session_path') and Path(info['session_path']).resolve() == source))):
-                matches.append(dict(probe_state, simulation_key=info['simulation_key'],
-                                    current_file=info.get('session_path') or None,
-                                    modified=info['modified'], state='ready',
-                                    version_source='bound_version_verified_by_server'))
+        matches = probe_candidates(args, directory, state, source)
         if len(matches) > 1:
             state['state'] = 'failed'
             write_json(directory / 'session.json', state)
             raise ValueError('Multiple STAR sessions match input; specify port to select one')
         if matches:
-            state = matches[0]
+            from .server_discovery import endpoint_alive
+            state.update(matches[0])
+            registered_records = state.pop('registered_record_signatures')
+            if not endpoint_alive(state, process_identity):
+                state['state'] = 'failed'
+                write_json(directory / 'session.json', state)
+                raise ModificationRejected('Matched endpoint changed before binding the connection')
             # 已登记的连接继续沿用其锁、引用世代和进程所有权；不能将自有服务误记为外部。
             for record in directory.parent.glob('*/session.json'):
                 try:
@@ -536,6 +633,11 @@ def start(args, directory):
                         # 同一加载对象的成功probe可补旧版本字段，但不能更换世代、所有权或绕过未知写锁。
                         with locked(record.parent):
                             existing = json.loads(record.read_text())
+                            expected = registered_records.get(str(record))
+                            if expected is None or session_signature(existing) != expected:
+                                # 其他请求可能已完成另存或修改；不能用早先的probe覆盖其新状态。
+                                raise OperationBusy('Existing session changed after candidate inspection; '
+                                                    'use its session_id or inspect it again before reconnecting')
                             if (not alive(existing) or existing.get('simulation_key') != state['simulation_key']):
                                 raise ValueError('Existing session identity changed while reconnecting')
                             if ('star_version' in existing or 'catalog_target' in existing) and session_version(existing) != state['star_version']:
@@ -544,15 +646,22 @@ def start(args, directory):
                                 refresh_request(record.parent, existing)
                                 existing['state'] = ('running' if existing.get('active_request') else
                                                      'uncertain' if existing.get('uncertain_request') else 'ready')
+                            if existing.get('active_request'):
+                                raise OperationBusy('Existing session became active while reconnecting')
                             existing.update(star_version=state['star_version'], catalog_target=state['catalog_target'],
                                             version_source=state['version_source'],
-                                            lifecycle_compilation=state['lifecycle_compilation'])
+                                            lifecycle_compilation=state['lifecycle_compilation'],
+                                            current_file=state['current_file'], modified=state['modified'],
+                                            connection_discovery=state['connection_discovery'])
                             write_json(record, existing)
-                        shutil.rmtree(directory)
+                        # 只保留诊断指向，不登记第二份端点绑定；后续探测不会为历史诊断重复加锁。
+                        write_json(directory / 'session.json', {
+                            'schema_version': 2, 'session_id': directory.name, 'state': 'disconnected',
+                            'reused_session_id': existing.get('session_id', str(record.parent)),
+                            'connection_discovery': state['connection_discovery']})
                         return existing
+            # 发现记录引用的只读探测凭据持续保留，按会话材料的正常清理策略过期。
             write_json(directory / 'session.json', state)
-            if not state.get('debug'):
-                shutil.rmtree(directory / 'probes', ignore_errors=True)
             return state
         if source is None and not getattr(args, 'create', False):
             state['state'] = 'failed'

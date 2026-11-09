@@ -53,7 +53,7 @@ def public_session(state):
             'catalog_target', 'lifecycle_compilation', 'current_file',
             'project_dir', 'modified', 'session_token', 'server_alive', 'active_request',
             'last_request', 'last_request_status', 'recovery_required', 'uncertain_request',
-            'last_reconciliation', 'pending_reconciliations')
+            'last_reconciliation', 'pending_reconciliations', 'connection_discovery')
     return {key: state[key] for key in keys if key in state}
 
 

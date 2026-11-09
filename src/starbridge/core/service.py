@@ -104,6 +104,13 @@ class Service:
             # 失败恢复信息与错误一起返回，客户端不必先翻项目文档；不根据错误猜测是否已执行 setter。
             from .interface_contract import recovery_guidance
             result['recovery'] = recovery_guidance(status, directory, state)
+            if isinstance(error, session_bridge.ConnectionDiscoveryIncomplete):
+                result['connection_discovery'] = error.discovery
+                result['recovery'] = {
+                    'automatic_retry': False,
+                    'instruction': '已有候选尚未全部判定，没有新建服务。查看 connection_discovery 的记录；'
+                                   '有明确可用端口时显式选择 port，否则先排查忙碌、身份变化或缺失凭据，'
+                                   '不要把未完成探测当成没有已打开算例。'}
             return result
 
     def get_contract(self):

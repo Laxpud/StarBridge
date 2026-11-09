@@ -18,7 +18,7 @@ SERVER_INSTRUCTIONS = (
 
 
 USAGE_INSTRUCTIONS = (
-    '当前实现优先连接本机 Linux STAR GUI／服务器，没有匹配会话时直接加载原算例。'
+    '当前实现优先连接本机 Linux STAR GUI／服务器；可见候选均核对完且没有匹配时才直接加载原算例，探测未完成不自动新开。'
     'MCP默认只列expand_capabilities/query/execute；按任务明确选择能力或方法，取得格式后经对应入口调用。'
     '已有格式可直接复用，不要求每次重新展开，也不根据关键词自动启用。'
     '完整get_contract方法及starbridge://contract资源保留为显式参考，不是正常任务的必经前置。'
@@ -121,7 +121,7 @@ PARAMETER_DESCRIPTIONS = {
     'project_dir': '项目绝对目录；省略采用算例所在目录，后续调用沿用。',
     'audit': '显式读取完整 Inspector 前后快照和 Diff 供审查；默认只核对目标与必要关联项。',
     'debug': '是否保留详细宏、执行计划和完整请求结果，默认 false。',
-    'input': '已有算例的绝对路径；优先连接匹配的 STAR，否则直接加载原文件。不指定时须给已有服务的 port 和 project_dir。',
+    'input': '已有算例的绝对路径；优先连接匹配的 STAR，可见候选均核对完且无匹配时才加载原文件。探测未完成返回诊断，不自动新开。不指定时须给已有服务的 port 和 project_dir。',
     'star': '匹配 release/Build 的 STAR 程序绝对路径或 PATH 名称，需要许可证；发现接口沿解析符号链接后的路径寻找安装 Javadoc，安装目录外的包装脚本无法定位文档，优先传实际安装内程序。',
     'port': '可选本机端口（1024–65535），用于选择已有服务；启动新服务时省略则分配空闲端口。',
     'output': '省略写回当前算例；另存为使用新的绝对 .sim 路径，父目录必须存在。',
@@ -407,7 +407,7 @@ def usage_contract():
             'execute_operation': '与属性修改相同的 before/properties；具体影响由操作契约决定。',
             'search_settings': 'result.matches[].object/property；检查 coverage，命中须重新描述读取。',
             'relocate_object': 'result.object.object_id；检查 state/errors，再描述读取。',
-            'session': 'result为会话记录；star_version是版本绑定，version_source区分检测/运行时核验；catalog_target可为null，lifecycle_compilation只证明最小模板编译。status只检查进程，不重新核验版本。',
+            'session': 'result为会话记录；star_version是版本绑定，version_source区分检测/运行时核验；catalog_target可为null，lifecycle_compilation只证明最小模板编译。connection_discovery保留候选/匹配/未决数量、耗时和发现记录路径；显式create不探测。发现未完成时错误同样附此摘要且不启动新服务。status只检查进程，不重新核验版本。',
             'save_session': 'result.output 是实际绝对路径；session_metadata 为保存时元数据，不是全量快照或独立重载验证。',
             'search_memory': 'result.candidates为有界摘要，保留memory_id/revision/certainty、summary及full_record获取参数；检查read_status/coverage/next_offset。完整代码和依据另用get_memory，不再返回candidates[].memory。',
             'list_recipes': 'result.recipes[] 包含参数、适用范围和证据；不连接 STAR。',
