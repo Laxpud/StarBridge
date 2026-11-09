@@ -475,7 +475,7 @@ def usage_contract():
                      'effect': 'read | mutate', 'scope': '调用者声明的目标、值与输出范围，不自动认证覆盖'},
             'source_execution': '所选安装JDK统一编译冻结源码/JAR，拒绝安装库/依赖/源码间重名类；STAR只编译无用户代码的薄启动宏，不二次编译用户程序，不抽取方法或删除package。运行时核对入口类来源后构造、绑定Simulation/原路径、直接execute。原构造器不保证已有Simulation；单请求共享类命名空间和静态状态，不自动注入包装器参数或业务结果。',
             'source_paths': 'working_directory作用于整个客户端；来源宏resolvePath各自沿用原文件位置。不复制算例/资源目录；支持JAR内资源，非空Manifest Class-Path和旧式JAR索引拒绝，外部数据与原生依赖不冻结。',
-            'compiler_boundary': '外部javac显式私有空processorpath，不只依赖-proc:none。通用宏向STAR显式传空用户classpath覆盖设置，完整源入口编译完成后才用独立URLClassLoader加载冻结依赖并临时设TCCL；不把用户JAR交给STAR编译器。实际cwd有javac Plugin服务描述符时派发前拒绝；安装/模块配置/环境/目录仍可信，不防同权限并发篡改。普通运行期SPI不同于嵌套STAR源宏编译，后者不自动继承依赖；加载器寿命不证明异步工作完成。',
+            'compiler_boundary': '外部javac显式私有空processorpath，不只依赖-proc:none。通用宏向STAR显式传空用户classpath覆盖设置；安装JDK预编译成功后，纯code及完整源码都用薄启动加载本次class及冻结依赖并临时设TCCL，不二次编译用户程序。仅纯code无法定位安装JDK时保留STAR自行编译；编译失败不回退。包装器/内部类及按需内联的对象解析器只从本次classes加载，其他类型/资源仍父优先；不把用户JAR交给STAR编译器。实际cwd有javac Plugin服务描述符时派发前拒绝；安装/模块配置/环境/目录仍可信，不防同权限并发篡改。普通运行期SPI不同于嵌套STAR源宏编译，后者不自动继承依赖；加载器寿命不证明异步工作完成。',
             'artifact_reading': {'method': 'read_execution_artifact', 'max_result_bytes': 32768,
                 'max_read_bytes': 65536, 'default_read_bytes': 8192,
                 'scope': '固定请求材料，不接受任意路径。成功result的UTF-8 JSON预算不含封套和协议转义，原始读取不先加载整份材料。',

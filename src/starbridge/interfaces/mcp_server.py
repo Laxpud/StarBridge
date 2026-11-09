@@ -436,8 +436,8 @@ def execute_macro(session_id: StrictStr, request_id: StrictStr, steps: list[dict
     可与普通回读步骤组合；来源/依赖字节纳入指纹，原文件变更后查询旧结果用get_execution。
     working_directory作用于整个客户端；完整宏的resolvePath仍基于各自原文件目录。
     不自动复制资源；支持JAR内资源；重名类、非空Manifest Class-Path和旧式JAR索引当前拒绝。
-    整个请求共用类命名空间；含完整源码时STAR只编译薄启动宏，用户程序不再二次编译。
-    纯code请求仍走原STAR源码编译路径，不把外部预编译成功当成已取消其二次编译。
+    整个请求共用类命名空间；安装JDK预编译成功后，两类请求都只让STAR编译薄启动，复用用户class。
+    仅纯code在无法定位安装JDK时保留STAR源码编译；预编译失败不回退重试，完整源码仍须安装JDK。
     外部javac使用独立空processorpath；STAR使用空用户classpath，入口编译后再加载冻结依赖。
     cwd中已有javac Plugin服务描述符时拒绝派发；安装/配置/目录仍可信，不防同权限并发篡改。
     运行期类/资源与SPI可使用该加载器，不保证嵌套STAR源码编译继承依赖或异步任务已结束。

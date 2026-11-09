@@ -129,6 +129,7 @@ def render_launch(request, directory):
     values = {'LAUNCH_CLASS': name, 'PROGRAM_CLASS': java_literal(program_class(request)),
               'PROGRAM_SOURCE': java_literal(str(directory / (program_class(request) + '.java'))),
               'CLASSES': java_literal(str(directory / 'classes')),
+              'LOCAL_DISCOVERY': java_literal(bool(request.get('object_bindings'))),
               'RUNTIME_PATHS': 'new String[] {' + ', '.join(java_literal(str(path)) for path in runtime_paths) + '}'}
     template = Path(__file__).resolve().parents[1] / 'java' / 'StarBridgeLaunch.java'
     return name, re.sub(r'__([A-Z_]+)__', lambda match: values[match.group(1)], source_text(template))
@@ -186,12 +187,13 @@ def check_class_conflicts(jars, classpath, classes):
         register(path.relative_to(classes).as_posix(), path)
 
 
-def compile_program(star, macro, directory, timeout, *, sources=(), classpath=()):
-    """用同安装 JDK 统一编译入口与明确源码，不改包名或借邻近版本补齐依赖。
+def compile_program(star, macro, directory, timeout, *, sources=(), classpath=(), generated_sources=()):
+    """一次编译用户程序与生成的薄启动，供客户端直接加载本请求的class。
 
-    仅旧的代码步骤保留交给 STAR 编译的兼容路径；多文件模式缺工具链必须拒绝。
-    编译器禁用注解处理，并以私有空 processorpath 隔绝 classpath 的插件发现；普通依赖
-    仍使用安装库及准备阶段已冻结的显式 JAR，不递归添加原源码目录，也不提供代码沙箱。
+    仅纯code在无法定位安装JDK时保留STAR自行编译的兼容路径；源码/JAR请求仍须拒绝。
+    generated_sources是受信执行器生成的入口，不把它误算为用户多文件请求而取消该回退；
+    编译失败不能回退重试。带辅助单元的编译使用空sourcepath，不隐式编译旁边的源码。
+    私有空processorpath隔绝编译classpath的插件发现；这不是运行代码沙箱。
     """
     executable = shutil.which(star)
     installation = _installation(str(Path(executable).resolve())) if executable else None
@@ -207,22 +209,25 @@ def compile_program(star, macro, directory, timeout, *, sources=(), classpath=()
     if any(os.pathsep in str(path) for path in dependencies):
         raise ValueError('Classpath file paths must not contain the platform classpath separator')
     source_options = []
-    if sources or classpath:
+    explicit_sources = bool(sources or classpath or generated_sources)
+    if explicit_sources:
         empty_sourcepath = directory / 'empty-sourcepath'
         empty_sourcepath.mkdir()
-        # 完整源码只编译显式单元，不让 javac 从工作目录或依赖 JAR 隐式找另一份 .java。
+        # 带薄启动的纯code也只编译显式单元；不改变其他调用者的既有单文件生命周期编译。
         source_options = ['-sourcepath', str(empty_sourcepath), '-implicit:none']
     process = _run_javac(compiler, ['-encoding', 'UTF-8', *source_options,
-        '-cp', os.pathsep.join(map(str, dependencies)), '-d', str(classes), str(macro), *map(str, sources)],
+        '-cp', os.pathsep.join(map(str, dependencies)), '-d', str(classes), str(macro),
+        *map(str, sources), *map(str, generated_sources)],
         directory, timeout, env=dict(os.environ, LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8'))
     (directory / 'compile.log').write_text(process.stdout + process.stderr)
     if process.returncode:
         raise ValueError('Macro compilation rejected before execution: ' + process.stderr[-6000:])
+    # 生成的启动宏不引入用户依赖；不能仅因增加它就给纯code附加全安装类名扫描。
     if sources or classpath:
         check_class_conflicts(jars, classpath, classes)
     return {'status': 'compiled', 'installation': str(root), 'compiler_isolation': _JAVAC_ISOLATION_POLICY,
-            **({'source_lookup': 'explicit_units_only', 'class_conflicts': 'none_observed'}
-               if sources or classpath else {})}
+            **({'source_lookup': 'explicit_units_only'} if explicit_sources else {}),
+            **({'class_conflicts': 'none_observed'} if sources or classpath else {})}
 
 
 def check_source_entries(request, directory):
@@ -279,15 +284,16 @@ def execute(state, directory, request, timeout, on_client_start, *, on_client_la
     result = directory / 'result.json'
     # 渲染校验在占用 ID 之前完成，确定的本地数据错误不会留下无终态的请求目录。
     text = render(state, request, result)
-    launch_name, launch_text = render_launch(request, directory) if request.get('source_bundle') else (None, None)
+    # 两类请求都准备薄启动候选；实际派发哪一个入口由下面的编译结果决定。
+    # 不伪造source_bundle或改变请求指纹，旧请求仍由会话层直接返回原凭据。
+    launch_name, launch_text = render_launch(request, directory)
     directory.parent.mkdir(parents=True, exist_ok=True)
     # 请求和源码先在临时目录完整准备，再原子发布 ID；中断不能占用一个缺少请求内容的 ID。
     with tempfile.TemporaryDirectory(prefix='.preparing-', dir=directory.parent) as temporary:
         pending = Path(temporary)
         (pending / 'macro-request.json').write_text(json.dumps(request, ensure_ascii=False, indent=2) + '\n')
         (pending / (program_class(request) + '.java')).write_text(text)
-        if launch_name is not None:
-            (pending / (launch_name + '.java')).write_text(launch_text)
+        (pending / (launch_name + '.java')).write_text(launch_text)
         source_paths, dependencies = [], []
         if request.get('source_bundle'):
             from starbridge.core.macro_sources import materialize_bundle
@@ -297,9 +303,7 @@ def execute(state, directory, request, timeout, on_client_start, *, on_client_la
         pending.rename(directory)
     macro = directory / (program_class(request) + '.java')
     sources = [directory / path for path in source_paths]
-    batch = directory / (launch_name + '.java') if launch_name is not None else macro
-    if launch_name is not None:
-        sources.append(batch)
+    launch = directory / (launch_name + '.java')
     classpath = [directory / path for path in dependencies]
 
     def reject(error):
@@ -320,11 +324,20 @@ def execute(state, directory, request, timeout, on_client_start, *, on_client_la
         working_directory = request.get('working_directory', directory)
         compiler_classpath = star_compiler_classpath(directory, working_directory)
         compilation = compile_program(state['star'], macro, directory, min(timeout, 90),
-                                      sources=sources, classpath=classpath)
+                                      sources=sources, classpath=classpath, generated_sources=[launch])
         check_source_entries(request, directory)
+        precompiled = compilation['status'] == 'compiled'
+        if precompiled:
+            # 明确的本地准备失败仍在派发前拒绝；不能因缺失产物改用旧入口重试。
+            for name in (program_class(request), launch_name):
+                if not (directory / 'classes' / (name + '.class')).is_file():
+                    raise ValueError('Required generated class is absent after compilation: ' + name)
+        batch = launch if precompiled else macro
         compilation.update(star_compiler_classpath='private_empty_directory',
                            cwd_plugin_provider='absent_at_preflight',
-                           runtime_loading_plan='dedicated_url_loader' if request.get('source_bundle') else 'star_macro_loader')
+                           runtime_loading_plan='dedicated_url_loader' if precompiled else 'star_macro_loader',
+                           runtime_loader_policy='request_local_generated_families_v1' if precompiled else 'star_managed',
+                           star_compiles='generated_launcher_only' if precompiled else 'program_source')
         (directory / 'compilation.json').write_text(json.dumps(compilation) + '\n')
         command = [state['star'], '-noretry', '-nbuserdir', str(directory.parent.parent / 'client-settings'),
                    '-classpath', str(compiler_classpath)]

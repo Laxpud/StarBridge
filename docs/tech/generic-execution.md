@@ -128,11 +128,14 @@ AI 直接使用实际版本的 Java API 编写、组合和执行任务宏，这�
 不能仅凭禁用注解处理，就认定 javac 不会运行编译扩展。实际两套安装的 Temurin 21.0.8+9／21.0.6+7 源码与字节码表明，javac 在编译前仍会发现 `com.sun.source.util.Plugin`、构造提供者并调用 `autoStart()`；返回 false 也不代表构造和该方法没有执行。STAR 的 `NeoScript` 内部同样使用 javac，仅设置空注解处理器列表，并未隔离这一插件路径。这是静态调用链确认，没有构造或运行插件样本。
 
 - Python 调用安装 javac 时，每次创建私有空 `-processorpath`，同时保留 `-proc:none` 和正常的安装库／显式依赖 classpath；相关编译缓存包含此策略，旧证明不会冒充新隔离。具体实现见[java_runtime.py](<../../src/starbridge/bridge/runner/java_runtime.py>)。
-- 通用宏向 STAR 显式传入新建空用户 `-classpath`，而非省略参数后回退用户设置。完整源码的[薄启动宏](<../../src/starbridge/bridge/java/StarBridgeLaunch.java>)在自身编译完成后，才用以 STAR loader 为父的独立 `URLClassLoader` 加载本次编译目录和冻结 JAR；不把原源码目录或整个工作目录加入运行 URL。线程 context loader 在调用期间设为该加载器，结束后恢复。
+- 通用宏向 STAR 显式传入新建空用户 `-classpath`，而非省略参数后回退用户设置。安装JDK预编译成功后，纯 `code` 与完整源码请求都使用[薄启动宏](<../../src/starbridge/bridge/java/StarBridgeLaunch.java>)；STAR只再次编译这个生成入口，用户程序直接复用本请求的class。只有纯code无法定位安装JDK时保留 `deferred_to_star`、交由STAR编译完整程序；编译失败、缺少产物或来源不符不能降级重试。旧请求仍读取旧凭据，不重新编译或迁移。
+- 薄启动编译后建立以STAR loader为父的独立运行加载器；包装器及其内部类、按需内联的对象解析器只从本次 `classes` 加载并核对来源，避免纯code沿用 `StarBridgeProgram` 类名时被父级同名类替代。其他类型、资源与SPI描述符保持父优先，不把原源码目录或整个工作目录加入运行URL。线程context loader在调用期间设为该加载器，结束后恢复；现有 `sim/parameters/shared/result/resolvePath` 上下文和身份检查后的初始化顺序不变。
 - 保留真实 `working_directory`，不通过改写 `user.dir` 冒充 Java 相对路径一致。STAR 编译还会加入当前目录，因此派发前拒绝其中已有的 `META-INF/services/com.sun.source.util.Plugin`，包括软链接；无法检查也不当作不存在。选定安装、NetBeans 模块、启动环境、父加载器和目录仍受信任，不能抵御同权限进程在检查后改写文件，**不是代码沙箱**。
 - 普通运行期类、资源和 SPI 可以使用该加载器；用户再次调用 STAR 的 `play`／`NeoScript` 编译嵌套源码时，不自动继承这些运行 URL。加载器不在同步入口刚返回时关闭，以免异步线程后续懒加载失败；其寿命随客户端结束，并不证明异步工作已完成。
 
-当前独立加载器在[两安装正常源码编译](<../../outputs/requirements-first/launcher-isolation-_9lgu76p/compilation-summary.json>)之后，已用于2602的[入口研究求解与业务回读](<../../outputs/requirements-first/inlet-results/records/study-execution-v2.json>)。原CSV解析类和报告类从冻结用户JAR加载，HTML模板通过类资源读取，实际来源见[记录](<../../outputs/requirements-first/inlet-results/results/provenance.txt>)；不是沿用旧加载器凭据。此证据限普通类与类资源读取，不覆盖SPI、嵌套源宏、异步加载或复杂依赖，也没有构造编译插件样本。
+先前独立URL加载器已在[两安装编译](<../../outputs/requirements-first/launcher-isolation-_9lgu76p/compilation-summary.json>)后用于2602的[入口研究求解与业务回读](<../../outputs/requirements-first/inlet-results/records/study-execution-v2.json>)，普通类来自冻结JAR，HTML来自类资源，见[当时的来源记录](<../../outputs/requirements-first/inlet-results/results/provenance.txt>)。这保留的是当时行为，不冒充本轮修改后的重跑。
+
+本轮将纯code接入薄启动，并限定生成类的本地加载范围；新入口已通过[两安装正常编译](<../../outputs/requirements-first/history-handoff/launcher-builds/compilation.json>)，2602纯code实际完成了[Cl监视器、plot轴及历史表接手关联读取](<../../outputs/requirements-first/history-handoff/load-inventory-execution.json>)，`compilation.star_compiles=generated_launcher_only`，客户端日志播放的是生成入口。该真实请求约7.141秒，但与上轮任务不同，不作为净节省时间基准。缺JDK回退、初始化异常和父级重名类的分支仍仅源码复核；新对象绑定分支、SPI、嵌套源宏、异步加载及复杂依赖未由这次任务覆盖，也没有构造插件或故障样本。
 
 ### 按需读取执行材料
 
