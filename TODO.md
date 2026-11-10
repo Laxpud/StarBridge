@@ -2,7 +2,7 @@
 
 ## 按最新需求重构 AI 宏工作流
 
-依据：[2026-11-06 需求](<StarBridge.md>)。工作分支：`feat/starbridge-requirements-first`。现有小算例和接口运行结果只证明[已经做过的范围](<docs/tech/generic-execution.md#当前实际证据与未完成项>)，不代表最新需求已完成。已有工作区改动保留；阶段提交只纳入本轮相关改动。
+依据：[2026-11-06 需求](<StarBridge.md>)。目标与当前差距见[目标及改进问题记录](<docs/specs/spec-2026-11-10-10-07.md>)；自动推进已暂停。工作分支：`feat/starbridge-requirements-first`。现有小算例和接口运行结果只证明[已经做过的范围](<docs/tech/generic-execution.md#当前实际证据与未完成项>)，不代表最新需求已完成。已有工作区改动保留；阶段提交只纳入本轮相关改动。
 
 ### 当前偏差
 
