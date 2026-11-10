@@ -27,6 +27,6 @@ Python 要求 3.11+，普通 CLI 使用标准库；MCP extra 声明 SDK `2.3.0` 
 
 ## 发布准备
 
-[`server.json`](../../server.json) 使用 `io.github.Laxpud/starbridge` 和 PyPI 包 `starbridge-cfd`；README 的 `mcp-name` 与其一致。Registry 元数据通过官方 `2025-12-11` JSON Schema 校验。`runtimeArguments --with starbridge-cfd[mcp]==0.1.0` 安装 MCP extra，发行包同名入口启动服务；本地 wheel 的 `uvx` 启动验证通过（用 `--find-links` 指向本地发行目录），发布后对应形式为 `uvx --with 'starbridge-cfd[mcp]==0.1.0' starbridge-cfd@0.1.0`。不同 Registry 消费者的实际解析仍需分别确认，Schema 通过不代表官方登记成功。[Registry PyPI 元数据规则](https://modelcontextprotocol.io/registry/package-types)要求已发布包的 README 中包含一致的身份标记。
+[`server.json`](../../server.json) 使用 `io.github.Laxpud/starbridge` 和 PyPI 包 `starbridge-cfd`；README 的 `mcp-name` 与其一致。Registry 元数据通过官方 `2025-12-11` JSON Schema 校验。`runtimeArguments --with starbridge-cfd[mcp]==0.1.1` 安装 MCP extra，发行包同名入口启动服务；此前 `0.1.0` 本地 wheel 的 `uvx` 启动验证通过（用 `--find-links` 指向本地发行目录），该历史结果不代表 `0.1.1` 已重新构建或验收，发布后对应形式为 `uvx --with 'starbridge-cfd[mcp]==0.1.1' starbridge-cfd@0.1.1`。不同 Registry 消费者的实际解析仍需分别确认，Schema 通过不代表官方登记成功。[Registry PyPI 元数据规则](https://modelcontextprotocol.io/registry/package-types)要求已发布包的 README 中包含一致的身份标记。
 
 发布物包括 wheel、源码包、同提交的 Skills、Registry 元数据和[安装兼容说明](../distribution.md)。三端安装证据及限制见[分发验证记录](../evidence/distribution.md)。外部发布仍须另获授权，并复核名称／身份可用性、生成固定发布 tag、记录最终校验和，再上传 PyPI、发布 Git Release 和登记 Registry。安装验收不代表“三个 Harness 的全部模型与算例工作流均已支持”；PyPI、Git Release 和 Registry 尚未发布；插件 Git 来源与市场安装状态见[三端插件安装](../distribution.md#三端插件安装)。
