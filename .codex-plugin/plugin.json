@@ -1,7 +1,7 @@
 {
   "name": "starbridge",
   "version": "0.1.0",
-  "description": "Inspect STAR-CCM+ cases and make controlled changes through local MCP tools and a shared audit skill.",
+  "description": "Operate STAR-CCM+ through local MCP; includes a minimal skill-loading check.",
   "author": {
     "name": "Laxpud"
   },
@@ -18,8 +18,8 @@
   "mcpServers": "./integrations/plugin/codex.mcp.json",
   "interface": {
     "displayName": "StarBridge",
-    "shortDescription": "STAR-CCM+ tools and case audit",
-    "longDescription": "Inspect STAR-CCM+ cases and make controlled changes through local MCP tools and a shared audit skill.",
+    "shortDescription": "STAR-CCM+ MCP and Skill test",
+    "longDescription": "Operate STAR-CCM+ through local MCP; includes a minimal skill-loading check.",
     "developerName": "Laxpud",
     "category": "Productivity",
     "capabilities": [
@@ -28,7 +28,7 @@
     ],
     "websiteURL": "https://github.com/Laxpud/StarBridge",
     "defaultPrompt": [
-      "Use $starbridge:starbridge-case-audit to inspect this STAR-CCM+ case."
+      "Use $starbridge:starbridge-install-test to check whether the bundled test skill is loaded."
     ]
   }
 }

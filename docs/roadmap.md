@@ -42,7 +42,7 @@ GUI 接入、保存及特定恢复场景已取得真实运行证据；更广覆�
 
 价值：将已有读写能力组织成可复用的算例工作流。
 
-已有 [starbridge-case-audit](../skills/starbridge-case-audit/SKILL.md) 只读算例审查 Skill 随三端插件交付。后续候选包括 `mesh-setup`、`overset-mesh`、`rotor-case`、`oge-case`、`nwse-case`、`vof-setup` 和 `solver-setup`，具体交付范围另行确定。
+旧`starbridge-case-audit`最初用于安装测试，已按用户要求删除；当前仅提供[最小安装测试Skill](<../skills/starbridge-install-test/SKILL.md>)，不作为领域能力。`mesh-setup`、`overset-mesh`、`rotor-case`、`oge-case`、`nwse-case`、`vof-setup`和`solver-setup`仍只是历史候选，是否值得实现及交付范围另行确定。
 
 Skills 按已有能力分批推进：只读审查使用发现和读取能力，配置工作流使用相应写入能力，无需等待所有功能齐备。
 

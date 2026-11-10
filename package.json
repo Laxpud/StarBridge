@@ -1,7 +1,7 @@
 {
   "name": "@laxpud/dsh-starbridge",
   "version": "0.1.0",
-  "description": "Inspect STAR-CCM+ cases and make controlled changes through local MCP tools and a shared audit skill.",
+  "description": "Operate STAR-CCM+ through local MCP; includes a minimal skill-loading check.",
   "type": "module",
   "main": "integrations/deepseek-harness/index.js",
   "files": [

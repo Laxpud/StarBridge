@@ -52,7 +52,7 @@ bundle 插入自己的 `starbridge` 配置行，不替换 profile 的工具或 S
 
 ### 确认安装可用
 
-连接当前源码后，默认应看到`starbridge.expand_capabilities`、`starbridge.query`和`starbridge.execute`三个入口；业务方法不直接列出不表示不支持。需要完整参考时，经`query`调用`get_contract`取得schema 2契约，正常任务先按需展开相关格式。插件安装还应在宿主中找到`starbridge-case-audit`；单独MCP接入不自动安装Skill。已安装的旧提交可能返回旧契约或工具列表，应核对实际版本后重连；工具展示名可能被宿主改写。连接与Skill加载不证明完成真实算例审查。
+连接当前源码后，默认应看到`starbridge.expand_capabilities`、`starbridge.query`和`starbridge.execute`三个入口；业务方法不直接列出不表示不支持。需要完整参考时，经`query`调用`get_contract`取得schema 2契约，正常任务先按需展开相关格式。插件安装还可检查是否发现`starbridge-install-test`；它仅用于Skill加载测试，不是算例工作流，单独MCP接入不自动安装Skill。已安装的旧提交可能返回旧契约或工具列表，应核对实际版本后重连；工具展示名可能被宿主改写。连接与Skill加载不证明完成真实算例审查。
 
 安装不自动打开 STAR。算例连接、读取和显式保存的参数见[MCP 契约](tech/mcp.md)；已做过的客户端检查及限制见[安装证据](evidence/distribution.md#本地安装验证2026-11-03)。
 
@@ -150,22 +150,22 @@ profile 应已有 `@deepseek-ai/dsh-system-prompt`、`@deepseek-ai/dsh-tools`，
 
 DSH 会清理传给子进程的部分环境变量，必须通过模板 `env` 显式补入实际必需项。探测启动与重连不能作为自动恢复写入的依据。显式环境传入与长调用的既有依据，以及自动重连和其他 profile 的限制，见[历史运行证据](evidence/distribution.md#历史运行证据2026-11-01)。[官方 MCP client](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/mcp/mcp-client)是插件配置依据。
 
-项目 Skill 可通过下一节的 `-a universal` 安装到 `.agents/skills/`。用户级 DSH 应把 `starbridge-case-audit/` 直接放入 `~/.dsh/skills/`，或在文件系统 provider 的 `customSkillDirs` 中显式指定目录；`skills --global -a universal` 的 `~/.config/agents/skills/` 不等于 DSH 默认用户扫描目录。参考[官方 Skill provider](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/skill/skill-filesystem)。
+项目 Skill 可通过下一节的 `-a universal` 安装到 `.agents/skills/`。用户级 DSH 应把 `starbridge-install-test/` 直接放入 `~/.dsh/skills/`，或在文件系统 provider 的 `customSkillDirs` 中显式指定目录；`skills --global -a universal` 的 `~/.config/agents/skills/` 不等于 DSH 默认用户扫描目录。参考[官方 Skill provider](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/skill/skill-filesystem)。
 
 ### 安装与维护 Skill
 
-当前交付[starbridge-case-audit](<../skills/starbridge-case-audit/SKILL.md>)，按实际版本Java API组织只读宏，并按需使用资料和记忆；结构化发现/描述/读取是可选辅助，不是宏审查的前置条件。它要求schema 2及声明的三个入口和业务方法，具体见Skill元数据；结构化发现的版本范围另由服务查询结果决定。没有MCP、契约不兼容或缺少能力时应报告缺口，不能假装完成。审查不会自动修改设置、保存、运行网格或求解。
+当前仅提供最小的[starbridge-install-test](<../skills/starbridge-install-test/SKILL.md>)安装测试Skill。显式调用后预期只返回`STARBRIDGE_SKILL_LOADED`，不调用工具、MCP或STAR，不访问网络或读写文件；Skill本身无需算例、许可证或MCP连接。它不是业务能力，不能用该标记证明MCP或算例功能可用。旧审查Skill已删除，历史安装记录不作为新样本已经在各宿主运行通过的依据。
 
 当前可从本地仓库安装：
 
 ```bash
 npx skills@1.7.4 add /absolute/path/to/StarBridge \
-  --skill starbridge-case-audit -a codex -a claude-code -a universal
+  --skill starbridge-install-test -a codex -a claude-code -a universal
 ```
 
 同样可只选所需目标；DSH 项目使用 `universal`。默认项目作用域，Codex 与 Claude Code 可按需要加 `--global`；DSH 全局目录另按上节处理。
 
-正式发布后使用不可变提交或已发布 tag 定位来源，例如 `https://github.com/Laxpud/StarBridge/tree/v0.1.0/skills/starbridge-case-audit`；**当前 tag 尚不存在**。初期 Python `0.1.0` 与同次发布的 Skill 配套，Skill 的契约版本为 schema 2，依赖的方法记录在 frontmatter `metadata`。锁文件记录来源不等于发布验收；不要用浮动主分支代替已验收组合。
+安装测试应固定实际源码提交；只有已发布的tag才能作为来源，不使用尚不存在的`v0.1.0`。测试Skill不依赖StarBridge契约schema或业务方法，也不与Python版本绑定。锁文件记录来源不等于安装、发现和模型加载均已通过；不要用浮动主分支代替已核对的来源。
 
 更新程序时安装新版本到新的固定环境，再用相同 `--name starbridge` 和相同作用域重新执行 `add-mcp`，检查差异只涉及该服务。回退时重新指向保留的旧版本环境。Skill 更新或回退用明确 tag／提交来源重新执行 `skills add`；`skills update` 会跟随来源更新，不适合作为固定发布组合的默认升级动作。软件回退不会还原已经保存的算例。
 
@@ -173,7 +173,7 @@ npx skills@1.7.4 add /absolute/path/to/StarBridge \
 
 ```bash
 npx add-mcp@2.6.0 remove starbridge -a codex -a claude-code
-npx skills@1.7.4 remove starbridge-case-audit
+npx skills@1.7.4 remove starbridge-install-test
 ```
 
 DSH 只删除对应 profile 的 `mcp-starbridge` 条目及选定目录下的该 Skill，不删除其他插件或整个扫描目录。移除前显式处理仍在运行的会话；配置移除不会结束它们。

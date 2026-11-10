@@ -2,7 +2,7 @@
 
 [安装说明](../distribution.md)
 
-以下原文记录各批安装及运行结果，历史行为不能代替当前链路的实测。
+以下原文记录各批安装及运行结果，历史行为不能代替当前链路的实测。文中的`starbridge-case-audit`是已删除的旧安装样本；当前[最小安装测试Skill](<../../skills/starbridge-install-test/SKILL.md>)不继承这些宿主验证结论。
 
 ## 本地安装验证（2026-11-03）
 

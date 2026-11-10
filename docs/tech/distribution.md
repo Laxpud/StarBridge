@@ -20,7 +20,7 @@ Python 生产代码统一位于 `src/starbridge/`。构建出的 `starbridge-cfd
 | [.codex-plugin/](../../.codex-plugin/)、[.claude-plugin/](../../.claude-plugin/) | Codex 和 Claude Code 插件声明 |
 | [integrations/plugin/](../../integrations/plugin/) | 宿主 MCP 启动配置 |
 | [package.json](../../package.json)、[DSH 适配器](../../integrations/deepseek-harness/) | DSH bundle、provider 和可打包文件范围 |
-| [skills/](../../skills/) | 三端共用的 Skill 正文及 `agents/openai.yaml` |
+| [安装测试Skill](<../../skills/starbridge-install-test/SKILL.md>)及[显示配置](<../../skills/starbridge-install-test/agents/openai.yaml>) | 三端共用的最小加载样本，仅返回固定标记；不提供业务工作流或调用MCP/STAR |
 | [server.json](../../server.json) | 待发布的 MCP Registry 元数据 |
 
 Python 要求 3.11+，普通 CLI 使用标准库；MCP extra 声明 SDK `2.3.0` 和 JSON Schema 依赖。STAR 安装、许可证、本机 Javadoc 与 Java 编译条件见[架构依赖](architecture.md#源码对应关系)。`my-awesome-vibekits` 仓库维护聚合 catalog 和三端市场索引，不复制这里的业务源码。

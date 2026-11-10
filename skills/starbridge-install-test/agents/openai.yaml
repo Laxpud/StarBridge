@@ -1,0 +1,4 @@
+interface:
+  display_name: "StarBridge Skill安装测试"
+  short_description: "仅返回固定标记，检查Skill是否被加载"
+  default_prompt: "使用 $starbridge-install-test 测试Skill加载。"
