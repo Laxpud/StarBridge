@@ -2,7 +2,7 @@
 
 [返回项目入口](README.cn.md) · [工具契约](tech/mcp.md) · [维护者分发说明](tech/distribution.md)
 
-适用范围：三端插件、会话接入与运行简化里程碑。Codex、Claude Code 和 DeepSeek Harness（DSH）优先使用插件；其他 stdio 宿主或源码用户使用[源码与通用接入](#源码与通用接入)。
+适用范围：当前仓库的插件/源码接入方式，程序基线`f7eef68`；市场已安装提交可能不同，不能从本页推断最新源码已经发布。Codex、Claude Code和DeepSeek Harness（DSH）可使用对应插件；需要确定当前代码时使用[源码与通用接入](#源码与通用接入)。首次连接后按[使用说明](<usage.md>)开展任务。
 
 插件从自身 Git 源码启动程序。Python 发行包名为 `starbridge-cfd`，当前本地版本 `0.1.0` 尚未发布到 PyPI；安装结果与未覆盖范围集中在[分发验证记录](evidence/distribution.md)。
 
@@ -52,7 +52,7 @@ bundle 插入自己的 `starbridge` 配置行，不替换 profile 的工具或 S
 
 ### 确认安装可用
 
-更新到当前源码对应版本并重新连接 MCP 后，应能取得 `starbridge.get_contract` 的 schema 2 契约，并在宿主中找到 `starbridge-case-audit`。本轮 schema 2 迁移尚未发布，已安装旧版本仍可能返回 schema 1。工具展示名可能由宿主改写，应按服务及描述辨认。MCP 连接与 Skill 加载是两项检查；它们不证明已经完成真实算例审查。
+连接当前源码后，默认应看到`starbridge.expand_capabilities`、`starbridge.query`和`starbridge.execute`三个入口；业务方法不直接列出不表示不支持。需要完整参考时，经`query`调用`get_contract`取得schema 2契约，正常任务先按需展开相关格式。插件安装还应在宿主中找到`starbridge-case-audit`；单独MCP接入不自动安装Skill。已安装的旧提交可能返回旧契约或工具列表，应核对实际版本后重连；工具展示名可能被宿主改写。连接与Skill加载不证明完成真实算例审查。
 
 安装不自动打开 STAR。算例连接、读取和显式保存的参数见[MCP 契约](tech/mcp.md)；已做过的客户端检查及限制见[安装证据](evidence/distribution.md#本地安装验证2026-11-03)。
 
@@ -154,7 +154,7 @@ DSH 会清理传给子进程的部分环境变量，必须通过模板 `env` 显
 
 ### 安装与维护 Skill
 
-当前交付 [starbridge-case-audit](../skills/starbridge-case-audit/SKILL.md)，用于按实际对象和值只读检查算例。它要求契约 schema 2 及当前发现／描述／读取能力；发现接口的版本范围由服务查询结果决定。没有 MCP、契约不兼容或缺少能力时应报告缺口，不能假装完成。审查不会自动修改、保存、运行网格或求解。
+当前交付[starbridge-case-audit](<../skills/starbridge-case-audit/SKILL.md>)，按实际版本Java API组织只读宏，并按需使用资料和记忆；结构化发现/描述/读取是可选辅助，不是宏审查的前置条件。它要求schema 2及声明的三个入口和业务方法，具体见Skill元数据；结构化发现的版本范围另由服务查询结果决定。没有MCP、契约不兼容或缺少能力时应报告缺口，不能假装完成。审查不会自动修改设置、保存、运行网格或求解。
 
 当前可从本地仓库安装：
 

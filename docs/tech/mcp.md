@@ -1,6 +1,8 @@
 # MCP 与共享 Core API
 
-[项目入口](../README.cn.md) · [技术文档](index.md) · [当前架构](architecture.md)
+[任务用法](<../usage.md>) · [技术入口](<index.md>) · [当前架构](<architecture.md>)
+
+核对基线：`f7eef68`的公开方法与契约。当前接口格式与历史协议度量分开记录；变更后的代码须重启MCP进程才能生效。
 
 MCP 和 JSON CLI 共用 Core Service。正常任务以实际版本的 Java API／宏为主：按需取得资料和可靠代码，在同一已加载会话组织读取、判断、修改与回读，再检查逐步凭据和实际结果。结构化对象接口是可选辅助；它们使用契约 schema 2 的 `object_id` 与 `property_id`，结构操作有独立入口，不作为普通属性赋值。
 
@@ -38,7 +40,7 @@ MCP 进程不热重载 Python。源码或插件升级后，应先处理执行中
 
 这一层只改变入口和契约获取，不增加一次 STAR 往返。展开不读取 API 正文、记忆条目或算例；查询和执行才调用选定业务方法，已有方法格式可以直接复用。完整契约的 `usage.workflow.task` 描述正常宏任务，`structured_read/structured_write` 是可选路径；`usage.defaults` 来自 Core 签名，是可覆盖的省略行为。
 
-当前默认仍是三个稳定工具，业务方法已增至28个。[本轮真实 stdio MCP 度量](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/entry-metrics.json>)为默认定义4120字节、28个业务方法完整定义63608字节；[工作能力展开](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/work-contracts.json>)一次返回9个方法，result为24588字节，无后续页。这是同口径 JSON 定义大小，不是 token 数或端到端提速。
+程序基线`f7eef68`默认提供三个稳定工具，当前业务方法共30个（含`search_guide/read_guide`）。以下保留新增指南方法之前的[历史 stdio MCP 度量](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/entry-metrics.json>)：当时默认定义4120字节、28个业务方法完整定义63608字节；[工作能力展开](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/work-contracts.json>)一次返回9个方法，result为24588字节，无后续页。这是同口径 JSON 定义大小，不是 token 数或端到端提速。
 
 提交 `91a87f7` 时的真实 stdio MCP [默认定义](<../../outputs/requirements-first/on-demand/final-entry-tools.json>)与[同口径 UTF-8 JSON 度量](<../../outputs/requirements-first/on-demand/final-entry-metrics.json>)记录为4118字节、当时27个业务方法完整定义为59369字节；这些是新增材料读取方法和调整默认页大小之前的历史值，不是本轮结果，也不是 token 数或总任务提速比例。按需路径已取得[工作方法格式](<../../outputs/requirements-first/on-demand/final-work-contracts.json>)、[已关闭会话的原研究凭据](<../../outputs/requirements-first/on-demand/study-receipt.json>)、[记忆候选](<../../outputs/requirements-first/on-demand/memory-candidates.json>)和[完整记忆](<../../outputs/requirements-first/on-demand/reviewed-memory.json>)；通过 `execute` [记录上轮已有研究经验](<../../outputs/requirements-first/on-demand/recorded-study-memory.json>)后，按相关任务[再次检索到该经验](<../../outputs/requirements-first/on-demand/source-reuse-candidates.json>)，没有启动 STAR 或为记忆另行验证。只读／写入分类及参数异常分支另有静态复核，不冒充全部故障已实跑。
 
@@ -52,7 +54,9 @@ MCP 进程不热重载 Python。源码或插件升级后，应先处理执行中
 | `discover_installations` | `star` 或 `search_roots`，可选 `timeout` | 有界探测实际版本，不加载算例、不自动选择 |
 | `get_capabilities` | 可选 `release/build` | 目录类型、执行和发现能力；不是当前实例条件 |
 | `search_api` | `query`；`installation` 或 `session_id`，可选 `kind/offset/limit` | 官方类／成员索引候选及来源；不搜索正文，不连接 STAR；按[结果预算](<#api-资料的预算与续页>)分页 |
-| `read_api` | `java_class`；`installation` 或 `session_id`，可选 `member/offset/limit` | 签名、说明、文中代码及真实继承声明；检查 `read_status/coverage`、成员及类链接[两种续页位置](<#api-资料的预算与续页>)；任务用法见[资料使用](<generic-execution.md#按任务取得实际版本的-api-资料>) |
+| `read_api` | `java_class`；`installation` 或 `session_id`，可选 `member` 或 `members`、`offset/limit` | 单成员或同类最多32个成员共享读取；`member/members`互斥。保留签名、说明、继承及各选择器覆盖，见[资料使用](<generic-execution.md#按任务取得实际版本的-api-资料>)和[续页规则](<#api-资料的预算与续页>) |
+| `search_guide` | `query`；`installation` 或 `session_id`，可选 `language/offset/limit` | 实际安装用户指南标题/摘要检索；不是全文或独立宏库搜索，不连接STAR |
+| `read_guide` | `topic`；`installation` 或 `session_id`，可选 `language/offset/limit_chars/link_offset/link_limit/expected_sha256` | 有界正文、代码窗口与链接；代码块完整不代表宏可独立执行，见[指南读取](<generic-execution.md#用户指南宏示例与操作前提>) |
 | `find_objects` | `type_id`，可选 `name/parent_id/offset/limit` | `objects[]`；名称精确匹配，子类型使用父对象 ID |
 | `browse_tree` | 可选 `object_id/cursor/offset/limit/scope/max_nodes` | `object` 与 `objects[]`；展开树的一层，不读取属性值 |
 | `search_settings` | `query`，可选 `expand/max_nodes/max_depth/scope/limit/cursor` | `matches[].object/property` 与覆盖信息；默认仅搜索缓存 |
@@ -80,6 +84,8 @@ MCP 进程不热重载 Python。源码或插件升级后，应先处理执行中
 资源 `starbridge://contract` 与 `get_contract.result` 同源，`starbridge://catalog/{release}` 与该 release 的能力查询同源。精确 Build 查询使用工具。
 
 ## API 资料的预算与续页
+
+`read_api`的`members`是同一类的非空成员选择器数组，最多32项，与`member`互斥。联合页共享类准备和预算，返回`selectors`及`selected_by`，顺序沿官方声明而非输入数组；一个选择器成功不代表整组完整。指南采用正文字符窗口及独立链接分页，不套用本节的成员分页，见[指南读取规则](<generic-execution.md#用户指南宏示例与操作前提>)。
 
 `search_api/read_api` 的成功 `result` 也按上述 JSON 口径限制为32 KiB，`budget.serialized_bytes` 包含计数字段本身。`limit` 默认20、允许1–100；它是条目上限，不保证一页能放下该数量。续页使用返回的 `next_offset`，不要按 `limit` 累加；整类读取还要兼顾下面的类链接游标。搜索按完整候选分页，读取按完整成员或其错误记录推进；`coverage.processed` 包含已经表达的读取错误，因此续页不能用成功成员数自行推算。`page_end_reason` 区分结果结束、条数上限、响应预算及越界起点。
 
