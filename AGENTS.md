@@ -10,6 +10,11 @@
 | 项目定位与需求 | [StarBridge.md](<StarBridge.md>) |
 | 后续候选与未来安排 | [路线图](<docs/roadmap.md>) |
 
+## 本地安装与市场同步
+
+- [DSH 本地安装脚本](<scripts/dsh_local_install.py>)：将本地源码打包并安装到指定 DSH profile。
+- [市场同步脚本](<scripts/sync_vibekits_release.py>)：根据 GitHub Release 更新 Vibekits 元数据并创建待审查 PR。
+
 ## README 维护
 
 - 修改公开内容导致与 README 已有内容产生冲突时，仅同步修正 [README.md](<README.md>) 和 [README.cn.md](<docs/README.cn.md>) 中受影响的已有内容，使其与公共事实对齐；无冲突不顺带修改。未经用户明确授权，不新增内容；删除任何 README 现有内容前须征得用户同意。

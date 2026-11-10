@@ -4,6 +4,10 @@
 
 以下原文记录各批安装及运行结果，历史行为不能代替当前链路的实测。文中的`starbridge-case-audit`是已删除的旧安装样本；当前[最小安装测试Skill](<../../skills/starbridge-install-test/SKILL.md>)不继承这些宿主验证结论。
 
+## DSH 本地脚本安装检查（2026-11-10）
+
+在 DSH `0.2.2-rc.1`、隔离 `DSH_HOME` 和 `starbridge-isolated` profile 中，通过当前未发布工作区的本地安装脚本打包并安装 `0.1.1` 快照。安装命令完成，profile 声明引用了独立 `.tgz`，`--dump-config` 显示 StarBridge bundle，安装目录包含当前安装测试 Skill。pnpm 提示 Skill 审批与 peer 依赖警告；本次未启动模型、MCP 或 STAR，未核验 Skill 的实际加载和同版本重新安装，也未修改日常 profile。沙箱中 pnpm 存储锁因只读文件系统失败后，经批准在沙箱外重跑隔离安装成功。该结果不代表其他 DSH 版本或 profile 已验证。
+
 ## 本地安装验证（2026-11-03）
 
 | 客户端 | 安装方式与实际结果 |

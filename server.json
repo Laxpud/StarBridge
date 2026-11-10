@@ -3,7 +3,7 @@
   "name": "io.github.Laxpud/starbridge",
   "title": "StarBridge",
   "description": "Inspect STAR-CCM+ cases and perform controlled, verified configuration writes on Linux.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "repository": {
     "url": "https://github.com/Laxpud/StarBridge",
     "source": "github"
@@ -13,13 +13,13 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "starbridge-cfd",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "runtimeHint": "uvx",
       "runtimeArguments": [
         {
           "type": "named",
           "name": "--with",
-          "value": "starbridge-cfd[mcp]==0.1.1"
+          "value": "starbridge-cfd[mcp]==0.1.2"
         }
       ],
       "transport": {"type": "stdio"}

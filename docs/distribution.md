@@ -4,7 +4,7 @@
 
 适用范围：当前仓库的插件/源码接入方式，程序基线`f7eef68`；市场已安装提交可能不同，不能从本页推断最新源码已经发布。Codex、Claude Code和DeepSeek Harness（DSH）可使用对应插件；需要确定当前代码时使用[源码与通用接入](#源码与通用接入)。首次连接后按[使用说明](<usage.md>)开展任务。
 
-插件从自身 Git 源码启动程序。Python 发行包名为 `starbridge-cfd`，当前本地版本 `0.1.1` 尚未发布到 PyPI；安装结果与未覆盖范围集中在[分发验证记录](evidence/distribution.md)。
+插件从自身 Git 源码启动程序。Python 发行包名为 `starbridge-cfd`，当前本地版本 `0.1.2` 尚未发布到 PyPI；安装结果与未覆盖范围集中在[分发验证记录](evidence/distribution.md)。
 
 ## 三端插件安装
 
@@ -36,13 +36,18 @@ Codex 使用插件根目录相对 `cwd` 启动，MCP 启动等待为 180 秒，�
 
 ### DeepSeek Harness
 
-DSH 原生 bundle 为 `@laxpud/dsh-starbridge`，`engines.dsh` 和两个官方 MCP／Skill peer 的版本范围均为 `*`，不设置宿主版本上下限。适配器依赖宿主提供的插件注册、MCP client 配置及文件系统 Skill provider 接口，没有按 DSH 版本号分支；开发依赖仍固定为 `0.2.1-rc.2`，仅作为开发基线。放宽声明不代表所有历史／未来版本或其他桌面封装均已验证，实际连接与 Skill 加载仍需确认，既有验证范围见[安装证据](<evidence/distribution.md#本地安装验证2026-11-03>)。从本地仓库准备和安装：
+DSH 原生 bundle 为 `@laxpud/dsh-starbridge`，`engines.dsh` 和两个官方 MCP／Skill peer 的版本范围均为 `*`，不设置宿主版本上下限。适配器依赖宿主提供的插件注册、MCP client 配置及文件系统 Skill provider 接口，没有按 DSH 版本号分支；开发依赖仍固定为 `0.2.1-rc.2`，仅作为开发基线。放宽声明不代表所有历史／未来版本或其他桌面封装均已验证，实际连接与 Skill 加载仍需确认，既有验证范围见[安装证据](<evidence/distribution.md#本地安装验证2026-11-03>)。
+
+从本地工作区直接打包并安装，不经过 Vibekits：
 
 ```bash
-npm pack --ignore-scripts --pack-destination /absolute/path/to/output
-# 替换 profile 名称和生成的 tgz 路径；不覆盖现有 profile。
-dsh plugin --profile <profile> add /absolute/path/to/output/laxpud-dsh-starbridge-0.1.1.tgz --config.auto-install-peers=false
+# 在 StarBridge 仓库根目录执行；明确替换为需要修改的 profile。
+python3 scripts/dsh_local_install.py --profile <profile>
+# 只创建包、不修改 profile：
+python3 scripts/dsh_local_install.py --pack-only
 ```
+
+脚本需要 Python 3、npm 和 DSH；它对当前工作区执行 `npm pack --ignore-scripts`，包括未提交的随包文件，再用 `dsh plugin --profile ... add` 安装。每次生成独立的 `.tgz` 快照，默认保存在 `${XDG_DATA_HOME:-~/.local/share}/starbridge/dsh-packages/`，可用 `--output-dir` 指定其他持久目录。profile 可能通过 `file:` 路径引用该包，不要在仍需重装时删除快照。它不是源码热更新：修改后重新执行脚本，并在目标 profile 重新加载后确认实际代码、MCP 和 Skill；同版本重复安装效果仍需按实际 DSH／pnpm 版本核对。脚本会修改指定 profile，不自动修改其他 profile，也不会更改市场或发布版本。首次启动插件仍可能需要联网准备 Python 依赖。
 
 包内只有可直接加载的 JavaScript 和共享源码，不需要安装时构建。DSH 的官方 MCP／Skill peer 由宿主提供；使用 `auto-install-peers=false` 避免 pnpm 再安装另一份宿主服务。pnpm 可能提示包内 skills 的审批或未物理安装 peer；是否可用应以 DSH 中的 MCP 连接和 Skill 加载结果为准，无需将本插件 Skill 复制到其他宿主。
 
@@ -70,7 +75,7 @@ bundle 插入自己的 `starbridge` 配置行，不替换 profile 的工具或 S
 uv build --out-dir dist
 uv venv /absolute/path/to/starbridge-env
 uv pip install --python /absolute/path/to/starbridge-env/bin/python \
-  '/absolute/path/to/starbridge_cfd-0.1.1-py3-none-any.whl[mcp]'
+  '/absolute/path/to/starbridge_cfd-0.1.2-py3-none-any.whl[mcp]'
 /absolute/path/to/starbridge-env/bin/starbridge contract
 ```
 
@@ -79,7 +84,7 @@ uv pip install --python /absolute/path/to/starbridge-env/bin/python \
 **仅在该版本正式发布到 PyPI 后**，才可使用：
 
 ```bash
-uvx --from 'starbridge-cfd[mcp]==0.1.1' starbridge-mcp
+uvx --from 'starbridge-cfd[mcp]==0.1.2' starbridge-mcp
 ```
 
 包名 `starbridge` 已被其他项目占用，因此使用 `starbridge-cfd`；查询未占用不代表名称已经保留。稳定入口如下：
@@ -112,7 +117,7 @@ npx add-mcp@2.6.0 /absolute/path/to/starbridge-env/bin/starbridge-mcp \
 
 ```bash
 npx add-mcp@2.6.0 "$(command -v uvx)" \
-  --args=--from --args='starbridge-cfd[mcp]==0.1.1' --args=starbridge-mcp \
+  --args=--from --args='starbridge-cfd[mcp]==0.1.2' --args=starbridge-mcp \
   --name starbridge -a codex -a claude-code
 ```
 
@@ -165,7 +170,7 @@ npx skills@1.7.4 add /absolute/path/to/StarBridge \
 
 同样可只选所需目标；DSH 项目使用 `universal`。默认项目作用域，Codex 与 Claude Code 可按需要加 `--global`；DSH 全局目录另按上节处理。
 
-安装测试应固定实际源码提交；只有已发布的tag才能作为来源，不使用尚不存在的`v0.1.1`。测试Skill不依赖StarBridge契约schema或业务方法，也不与Python版本绑定。锁文件记录来源不等于安装、发现和模型加载均已通过；不要用浮动主分支代替已核对的来源。
+安装测试应固定实际源码提交；只有已发布的 tag 才能作为来源，不使用尚不存在的 tag。测试 Skill 不依赖 StarBridge 契约 schema 或业务方法，也不与 Python 版本绑定。锁文件记录来源不等于安装、发现和模型加载均已通过；不要用浮动主分支代替已核对的来源。
 
 更新程序时安装新版本到新的固定环境，再用相同 `--name starbridge` 和相同作用域重新执行 `add-mcp`，检查差异只涉及该服务。回退时重新指向保留的旧版本环境。Skill 更新或回退用明确 tag／提交来源重新执行 `skills add`；`skills update` 会跟随来源更新，不适合作为固定发布组合的默认升级动作。软件回退不会还原已经保存的算例。
 

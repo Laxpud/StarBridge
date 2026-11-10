@@ -1,0 +1,76 @@
+name: Release and propose Vibekits sync
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+# 发布由手动触发或现有 GitHub Release 触发；市场写权限只通过专用 token 提供。
+permissions:
+  contents: write
+
+concurrency:
+  group: starbridge-vibekits-release
+  cancel-in-progress: false
+
+jobs:
+  release-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout released source or selected main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+          fetch-depth: 0
+      - name: Checkout Vibekits main
+        uses: actions/checkout@v4
+        with:
+          repository: Laxpud/my-awesome-vibekits
+          ref: main
+          path: .vibekits-sync
+          token: ${{ secrets.VIBEKITS_SYNC_TOKEN }}
+      - name: Check versions and publication prerequisites
+        id: prepare
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -eu
+          python3 scripts/release_version.py
+          VERSION=$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')
+          TAG="v$VERSION"
+          SHA=$(git rev-parse HEAD)
+          MAIN=$(git ls-remote origin refs/heads/main | cut -f1)
+          test "$SHA" = "$MAIN" || { echo 'Source checkout must match remote main.' >&2; exit 1; }
+          python3 -c 'import subprocess, sys; text = subprocess.check_output(["python3", ".vibekits-sync/scripts/sync_plugin_metadata.py", "--help"], text=True); sys.exit(0 if "--release-info" in text else "Vibekits main must first include its release-info-aware synchronizer.")'
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            test "$EVENT_REF" = refs/heads/main || { echo 'Run this workflow on main.' >&2; exit 1; }
+          else
+            test "$RELEASE_TAG" = "$TAG" || { echo 'Release tag and package version differ.' >&2; exit 1; }
+          fi
+          printf 'tag=%s\n' "$TAG" >> "$GITHUB_OUTPUT"
+      - name: Publish GitHub Release when manually requested
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          set -eu
+          # 已发布版本不重新创建；后续同步会核对 tag 的准确提交与发布时间。
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; checking it before synchronization."
+          else
+            # 不接管已有 tag，避免以旧 tag 意外发布其他提交。
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+              echo "Tag $TAG already exists without a release; inspect it manually." >&2
+              exit 1
+            fi
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes
+          fi
+          git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+      - name: Generate and open market PR
+        env:
+          GH_TOKEN: ${{ secrets.VIBEKITS_SYNC_TOKEN }}
+          VIBEKITS_CHECKOUT: ${{ github.workspace }}/.vibekits-sync
+        run: python3 scripts/sync_vibekits_release.py
