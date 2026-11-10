@@ -36,7 +36,7 @@ Codex 使用插件根目录相对 `cwd` 启动，MCP 启动等待为 180 秒，�
 
 ### DeepSeek Harness
 
-DSH 原生 bundle 为 `@laxpud/dsh-starbridge`，当前声明支持官方 `0.2.1-rc.2`，不将其他桌面封装视为已经通过验证。从本地仓库准备和安装：
+DSH 原生 bundle 为 `@laxpud/dsh-starbridge`，`engines.dsh` 和两个官方 MCP／Skill peer 的版本范围均为 `*`，不设置宿主版本上下限。适配器依赖宿主提供的插件注册、MCP client 配置及文件系统 Skill provider 接口，没有按 DSH 版本号分支；开发依赖仍固定为 `0.2.1-rc.2`，仅作为开发基线。放宽声明不代表所有历史／未来版本或其他桌面封装均已验证，实际连接与 Skill 加载仍需确认，既有验证范围见[安装证据](<evidence/distribution.md#本地安装验证2026-11-03>)。从本地仓库准备和安装：
 
 ```bash
 npm pack --ignore-scripts --pack-destination /absolute/path/to/output
