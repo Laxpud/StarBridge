@@ -4,7 +4,7 @@
 
 本文维护当前源码的执行、资料与记忆约定；在`f7eef68`基础上增加方法源码读取、结果视图和资源交付，不改变宏执行器。历史业务记录见[任务依据](<../evidence/generic-execution.md>)，不能将其视为本轮新运行结果；未完成工作见[TODO](<../../TODO.md>)。
 
-AI 直接使用实际版本的 Java API 编写、组合和执行任务宏，这是正常操作方式，不必先尝试结构化接口。已有可靠代码、工作记忆和参数化方法适用时优先复用；需要补查时通过 `search_api`／`read_api` 获取官方资料。结构化属性接口仅在已有契约确实节省成本时作为可选辅助。两者使用同一个已加载会话。通用入口不要求逐功能添加目录适配，也不创建算例副本；生命周期与宏已脱离目录的精确版本名单，但仍要求真实安装检测、所选安装 JDK 预编译和运行时版本／对象身份匹配。未登记版本可尝试通用路径，不因此获得结构化支持或全部 API 已验证的声明。
+AI 可以依据自身知识、当前对象信息和已有代码直接编写、组合和执行任务宏，不必先尝试结构化接口或查阅文档。优先复用适用代码；只有具体写法、版本、语义、副作用或必要前提存在疑问时才定向补查官方资料，不要求先执行失败，也不逐个核验有把握的 getter。结构化属性接口仅在已有契约确实节省成本时作为可选辅助。两者使用同一个已加载会话。通用入口不要求逐功能添加目录适配，也不创建算例副本；生命周期与宏已脱离目录的精确版本名单，但仍要求真实安装检测、所选安装 JDK 预编译和运行时版本／对象身份匹配。未登记版本可尝试通用路径，不因此获得结构化支持或全部 API 已验证的声明。
 
 ## 按任务取得实际版本的 API 资料
 
@@ -200,28 +200,45 @@ reconcile_execution(session_id, request_id, expected_review_token, assessment)
 
 ## 工作记忆的记录与使用
 
-四个记忆接口无需 STAR 会话，也不会触发计算或额外验证：
+五个记忆接口无需 STAR 会话，不会触发计算或额外验证。知识回答“下次怎么做”，案例只简短说明认识从何而来，两者分别存储。
 
 | 方法 | 用途 |
 | --- | --- |
-| `search_memory(query, context?, limit?, project_dir?, offset?)` | 用已有任务信息检索有界候选摘要；空查询可浏览，按 `next_offset` 继续。完整代码与依据不随搜索返回。 |
-| `get_memory(memory_id, project_dir?)` | 获取完整场景、做法、参数约定、例外及依据。 |
-| `record_memory(entry, project_dir?)` | 创建新记录；禁止覆盖已有 ID。 |
-| `update_memory(memory_id, expected_revision, changes, project_dir?)` | 根据新观察或纠正更新当前修订；冲突先重读，`changes` 是顶层替换。 |
+| `search_memory(query, context?, limit?, project_dir?, offset?)` | 只搜索知识，默认返回五条短摘要；空查询可分页浏览。 |
+| `get_memory(memory_id, project_dir?)` | 读取方法、代码、参数和必要限制；不返回或打开案例证据。 |
+| `get_memory_evidence(memory_id, project_dir?, evidence_id?, offset?, limit?)` | 仅在明确追溯、审计或纠错时读取关联的精简证据，不是复用知识的前置。 |
+| `record_memory(entry, project_dir?)` | 新建知识，可选证据另存；禁止覆盖已有 ID，只返回写入确认。 |
+| `update_memory(memory_id, expected_revision, changes, project_dir?)` | 按修订更新知识或追加必要证据；可选知识字段用 null 删除，只返回写入确认。 |
 
-搜索的 `candidates[]` 保留真实 `memory_id/revision/certainty/storage_scope`，`summary` 提供问题、适用条件、做法、实际效果和证据范围的字段摘录；`has_recipe` 与 `material_counts` 标明另有多少材料。每项摘录有 `text/truncated`，结构化说明还标记是否省略其他元数据；首条例外不能代表全部例外。使用 `full_record` 的方法及参数调用 `get_memory`，审阅完整记录并比较当前修订；不从摘要补造代码或未展示的适用条件。
+### 知识检索与普通读取
 
-成功搜索的 `result` 最多32 KiB，按默认分隔符的 UTF-8 JSON 计量，不含外层封套或协议转义，也不承诺错误响应预算。到达预算时不跳过候选，`next_offset` 按实际返回数推进；分页、摘要省略及匹配说明摘录通过 `read_status/coverage` 明示。保持原 `query/context/project_dir` 翻页，不用可能已摘录的查询回显重造输入。当前仍完整读取和排序所选层的记录，每页重新计算；累计扫描 I/O、内存和时间未有全局预算，也没有跨页快照。返回更短不等于整个检索过程已经低成本。
+有助于减少重复探索时再检索，已有适用上下文不重查。`query` 使用少量明确关键词，按空白分词且全部匹配知识字段；`context` 只影响排序。案例证据、来源引用、备份及证据 ID 不参与匹配。它是词法匹配而非语义搜索，不应堆入一串同义词或要求自然语言召回。
 
-记录必填 `problem`、`applicability`、`approach`、`observed_effect`、`source`、`evidence`、`evidence_scope`、`certainty`。说明字段使用文字或带 `description` 的对象；`evidence` 是非空说明列表。未观察效果或未验证范围应直接说明，不因字段必填而额外验证。
+`candidates[]` 保留 `memory_id/revision/certainty/storage_scope`；`summary` 只摘录问题、条件、做法及首条例外，`has_recipe` 表示另有代码。按需使用 `full_record` 指引读取知识全文并核对修订；普通读取不附实际案例的数值、路径、观察结果或验证经过。`evidence_ids` 只是关联标识，不授权或要求自动读取案例。
 
-`certainty` 区分 `user_rule`、`single_observation`、`validated` 和 `uncertain`。这是带依据范围的记录，不是系统认证；一次成功不能自动成为通用规则。可选 `references` 保存资料及具体位置，`exceptions` 保留例外。
+成功搜索的 `result` 最多32 KiB，按默认分隔符的 UTF-8 JSON 计量，不含封套。到达预算时在完整候选边界分页，按 `next_offset` 继续；`read_status/coverage` 标明分页与摘录。翻页保持原输入，不用摘录回显重造查询。知识记录仍全量读取和排序，累计扫描 I/O、内存和时间未全局有界，也没有跨页快照；证据和备份子目录不参与扫描。
 
-`recipe` 保存完整 `code`、`imports` 和参数契约 `parameters`。每个参数至少有 `type`、`description` 和 `required`；可记录单位及条件。复用前定位当前对象、填写当前参数，不直接复用旧会话 ID、对象名和数值。存储和检索只处理方法数据，不自动执行或替换引用；显式 `execute_recipe` 才按当前契约绑定对象并执行。
+### 分别记录方法与精简案例
 
-默认记忆位于用户运行根的 `memory/`；显式 `project_dir` 启用项目 `.starbridge/memory/` 覆盖层。读取不建目录；写入采用文件锁、修订比较和原子替换。损坏或读取失败明确报告，不伪装成无匹配。当前只保留最新修订，不提供完整历史审计；词法检索也不保证语义召回。
+知识 schema 2 必填 `problem/applicability/approach/certainty`，说明使用非空文字；可选 `title/tags/exceptions/recipe`。优先保留可迁移的调用顺序、参数化代码和实际踩坑，不把任务经过、项目对象名、路径、结果数值或当前状态当成方法主体。适用条件和必要限制仍须保留。
 
-内置 `starccm-unit-expression` 来自需求中的用户规则：`<1 deg>` 正确、`1 <deg>` 错误，明确未额外执行软件验证。
+`certainty` 取 `user_rule/single_observation/validated/uncertain`，它不是系统认证。单次观察可以形成带条件的可复用方法，不能宣称已经普遍验证。`recipe` 保存 `code/imports/parameters`，每个参数至少含 `type/description/required`；当前对象必须重新定位，不能默认历史引用。存储、检索和普通读取均不执行方法；`execute_recipe` 才显式绑定并执行，返回的记忆方法元数据也不附案例。
+
+`entry.evidence` 或 `changes.evidence` 可选，只需一段 `summary`，按需附 `kind/references/limitations`。`kind` 区分用户规则、资料、编译、运行及未知依据；引用最多八处既有材料。整条格式化证据最多4 KiB，这是上限而非应填长度，通常几句话和一两个引用即可。不复制原始数据、完整日志或项目交接，不为填证据额外运行、验证或生成报告；重复成功没有新信息时不追加案例。
+
+写入回执仅返回 `memory_id/revision/schema_version/storage_scope/evidence_added`。证据读取默认20条，单次 result 最多32 KiB；省略 `evidence_id` 时分页读取关联证据，指定时只读该知识已引用的 ID。它不打开外部引用材料，也不补做验证。
+
+### 共享目录、迁移与失败边界
+
+原目录规则不变：默认是用户运行根的 `memory/`，显式 `project_dir` 使用项目 `.starbridge/memory/` 覆盖层；有共享目录约定的项目继续沿用该位置。知识文件位于根目录，证据位于 `evidence/<memory_id>/`。读取不建目录，写入采用系统锁、修订比较和逐文件原子替换。先写证据、再提交知识引用；失败可能留下未引用证据，但不会把它加入普通查询。提交结果未知时先读知识修订，不盲目重放或重做算例。
+
+schema 1 混合记录不能直接作为知识返回；普通入口报告 `MemoryMigrationRequiredError`，仅给 ID/修订，不把旧正文塞入上下文，也不伪装成无匹配。维护者明确审阅原文件后，用 `update_memory` 按原修订提供四个知识必填字段，可附精简证据；需要保留的可选方法字段也须显式提供。迁移前记录保存在 `legacy/<memory_id>-r<revision>.json`，不参与查询。迁移不是对旧记录自动摘要，更不会将一次成功升级为通用验证。
+
+只保留最新知识修订及显式关联的证据，不提供完整历史审计。内置单位表达式知识与用户来源说明同样分离；`<1 deg>` 正确、`1 <deg>` 错误，不表示本轮额外运行了软件。
+
+### 非 STAR 测试
+
+安装 MCP 可选依赖后，在仓库根运行 `python -m unittest discover -s tests -v`。只检查存储机制可运行 `python -m unittest discover -s tests -p test_memory.py -v`。测试使用临时目录并禁止会话操作，覆盖证据隔离、迁移、修订冲突、持久化失败、预算分页及真实 SDK 的参数与路由契约；它们不证明 STAR Java 行为或 CFD 正确性。
 
 ## 当前实际证据与未完成项
 

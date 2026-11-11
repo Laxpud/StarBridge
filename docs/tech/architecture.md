@@ -38,7 +38,7 @@ Core与Runner是调用进程中的Python代码，不是另一个常驻服务。M
 
 算例操作复用已打开的STAR服务，但每次请求仍使用临时批处理客户端；客户端结束不自动关闭服务。连接优先复用匹配算例，必要时才启动自有服务并加载原文件，不默认创建保护副本。独立[文件Runner](<bridge-file.md>)保留自己的每次加载、另存和重载契约，不等同共享会话路径。
 
-运行根默认是`~/.starbridge`，可用`STARBRIDGE_HOME`覆盖；项目记忆是项目目录中的`.starbridge/memory/`覆盖层。源码/JAR快照、凭据和缓存不是算例备份。存储与清理规则只在[会话说明](<bridge-session.md#运行数据与项目产物>)维护；插件依赖环境的独立位置见[分发维护](<distribution.md>)。
+运行根默认是`~/.starbridge`，可用`STARBRIDGE_HOME`覆盖；项目记忆仍是显式项目目录中的`.starbridge/memory/`覆盖层，可沿用项目约定的共享位置。知识与精简案例证据分别保存，普通检索和读取只处理知识；结构及迁移见[工作记忆](<generic-execution.md#工作记忆的记录与使用>)。源码/JAR快照、凭据和缓存不是算例备份。存储与清理规则只在[会话说明](<bridge-session.md#运行数据与项目产物>)维护；插件依赖环境的独立位置见[分发维护](<distribution.md>)。
 
 ## Python组件（C4 L3）
 

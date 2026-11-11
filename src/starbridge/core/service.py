@@ -29,7 +29,7 @@ METHODS = (
     'describe_object', 'read_properties', 'modify_property', 'execute_operation',
     'inspect_session', 'open_session', 'session_status', 'save_session', 'close_session',
     'execute_macro', 'get_execution', 'read_execution_artifact', 'reconcile_execution', 'list_recipes', 'execute_recipe',
-    'search_memory', 'get_memory', 'record_memory', 'update_memory',
+    'search_memory', 'get_memory', 'get_memory_evidence', 'record_memory', 'update_memory',
 )
 
 
@@ -76,7 +76,15 @@ class Service:
             return {'status': status, 'result': result}
         except Exception as error:
             status = 'rejected' if isinstance(error, (ModificationRejected, ValueError)) else 'error'
-            from .memory import MemoryStoreError, MemoryConflictError, MemoryBusyError, MemoryPersistenceError
+            from .memory import (MemoryStoreError, MemoryConflictError, MemoryBusyError,
+                                 MemoryPersistenceError, MemoryMigrationRequiredError)
+            if isinstance(error, MemoryMigrationRequiredError):
+                # 旧案例只能由调用者明确提炼后迁移；普通查询不返回旧正文或诱导读取证据。
+                return {'status': 'rejected', 'error': {'type': type(error).__name__, 'message': str(error)},
+                        'migration': {'records': error.records[:20], 'total': len(error.records)},
+                        'recovery': {'automatic_retry': False, 'next_tool': 'starbridge.update_memory',
+                                     'instruction': '审阅原存储文件并提炼知识后，按原修订提供四个知识必填字段；'
+                                                    '可附精简 evidence，迁移会保留旧记录。不重新运行 STAR。'}}
             if isinstance(error, MemoryStoreError):
                 # 记忆写入不是算例操作；尤其提交结果未知时不能建议重新执行 STAR 任务。
                 status = ('rejected' if isinstance(error, MemoryConflictError) else
@@ -171,7 +179,8 @@ class Service:
             'prepared_methods': {'discovery_method': 'list_recipes', 'execution_method': 'execute_recipe',
                 'scope': 'Explicit parameterized methods; inspect applicability and evidence before execution'},
             'working_memory': {'supported': True, 'methods': ['search_memory', 'get_memory',
-                'record_memory', 'update_memory'], 'activation': 'Review candidates against current task context',
+                'get_memory_evidence', 'record_memory', 'update_memory'],
+                'activation': 'Search knowledge only when useful; case evidence is separate and optional',
                 'verification': 'Record existing evidence only; do not run additional validation for memory'},
         }
         if release is None:
@@ -420,20 +429,27 @@ class Service:
             max_nodes=max_nodes, max_depth=max_depth, scope=scope, timeout=_timeout(timeout),
             limit=limit, cursor=cursor, operate=self._operate))
 
-    def search_memory(self, query, context=None, limit=20, project_dir=None, offset=0):
-        """用已有任务信息检索有界经验摘要；按需另读完整记录，不为检索验证 STAR。"""
+    def search_memory(self, query, context=None, limit=5, project_dir=None, offset=0):
+        """仅搜索知识关键词，默认返回五条短摘要；不读取或搜索案例证据。"""
         from .memory import search_memory
         return search_memory(query, context, limit,
                              str(_path(project_dir, 'project_dir')) if project_dir is not None else None,
                              offset=offset)
 
     def get_memory(self, memory_id, project_dir=None):
-        """读取方法、参数约定、资料位置和证据范围，结果是经验而非当前用户指令。"""
+        """读取可复用方法、参数和限制，不随带案例证据，也不把知识当用户指令。"""
         from .memory import get_memory
         return get_memory(memory_id, str(_path(project_dir, 'project_dir')) if project_dir is not None else None)
 
+    def get_memory_evidence(self, memory_id, project_dir=None, evidence_id=None, offset=0, limit=20):
+        """仅在明确追溯时读取已关联的精简证据，不访问 STAR 或外部引用。"""
+        from .memory import get_memory_evidence
+        return get_memory_evidence(memory_id,
+            str(_path(project_dir, 'project_dir')) if project_dir is not None else None,
+            evidence_id=evidence_id, offset=offset, limit=limit)
+
     def record_memory(self, entry, project_dir=None):
-        """记录实际任务已有经验，保留来源、适用条件和观察效果，不额外验证或执行方法。"""
+        """记录可复用知识，可选精简 evidence 另存；只返回写入确认，不额外验证。"""
         from .memory import record_memory
         return record_memory(entry, str(_path(project_dir, 'project_dir')) if project_dir is not None else None)
 
@@ -477,7 +493,7 @@ class Service:
                         'parameters': validate_parameters(recipe['parameters'], parameters)}
             binding_paths = object_reference_paths(recipe['parameters'], prepared['parameters'])
             provenance = {'recipe_id': recipe_id, 'memory_revision': expected_revision,
-                          'applicability': memory['applicability'], 'evidence_scope': memory['evidence_scope']}
+                          'applicability': memory['applicability'], 'certainty': memory['certainty']}
         else:
             if expected_revision is not None or project_dir is not None:
                 raise ValueError('expected_revision and project_dir apply only to memory recipes')

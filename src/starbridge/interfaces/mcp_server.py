@@ -226,7 +226,8 @@ def search_api(query: StrictStr, installation: StrictStr | None = None,
     installation 与 session_id 二选一；关键词按空白分词且全部匹配，可组合类名和方法名。
     只搜索索引标签，不全文检索文档或外部宏库。read_status/coverage 区分缺失索引和空命中。
     成功result受32 KiB UTF-8 JSON预算，完整条目按next_offset续页；不是索引扫描或缓存内存预算。
-    选中后用 read_api 获取签名、说明、继承来源和文中代码；无命中不能解释为 API 不存在。
+    只在定位未知类或成员时搜索；已知完整类名可直接read_api，有把握的宏可直接编写。
+    需要进一步解决具体疑问时再读正文，不要求搜索后固定再读；无命中不证明API不存在。
     """
     return call('search_api', locals())
 
@@ -238,7 +239,8 @@ def read_api(java_class: StrictStr, installation: StrictStr | None = None,
              members: list[StrictStr] | None = None) -> types.CallToolResult:
     """按需读取实际版本类／成员的官方签名、正文、参数约定、代码示例和相关链接。
 
-    member 可用简单名保留重载，或 search_api 返回的完整锚点；自动读取该成员的本地继承声明。
+    已知完整类名/成员可直接读取，无需先search_api；只补查当前疑问，已有资料不重读。
+    member可用已知简单名保留重载或完整锚点；自动读取该成员的本地继承声明。
     也可用members一次选择同类至多32个成员，共享类资料；与member互斥，检查每个selector的缺失和覆盖。
     两者均省略则读取类说明和本类成员分页，不展开所有父类。检查 read_status/coverage/next_offset。
     成功result受32 KiB预算；成员和类链接共用分页边界，分别看next_offset/links_next_offset并传offset续页。
@@ -349,33 +351,45 @@ def execute_operation(session_id: StrictStr, object_id: StrictStr, operation_id:
 
 
 @server.tool(name='starbridge.search_memory', annotations=READ)
-def search_memory(query: StrictStr, context: Any = None, limit: StrictInt = 20,
+def search_memory(query: StrictStr, context: Any = None, limit: StrictInt = 5,
                   project_dir: StrictStr | None = None, offset: StrictInt = 0) -> types.CallToolResult:
-    """用已有任务信息检索有界候选摘要；不要求会话，不为检索读取或验证算例。
+    """仅搜索可复用知识，默认五条短摘要；不读取、搜索或返回案例证据。
 
-    candidates保留ID/修订/置信范围、summary字段摘录和full_record获取参数，不返回完整recipe/来源证据。
-    按需get_memory审阅完整记录；摘要/分页遗漏看read_status、coverage和next_offset，候选不是自动规则。
-    query可空以浏览；context为文字或JSON对象，仅影响排序；limit=1..200，结果另受32 KiB预算。
-    显式project_dir读取项目覆盖层；全量扫描成本仍未有界，翻页不是记录快照。
+    query按空白分词且全部匹配知识字段，用少量明确关键词；context只排序，空query可分页浏览。
+    按需get_memory取方法全文与代码，不需要先读案例；已有适用上下文不重复查询。
+    limit=1..200，result最多32 KiB，按next_offset续页；共享目录沿用既有project_dir约定。
+    全量知识扫描仍未全局有界；旧混合记录须明确提炼迁移，不返回其案例正文。
     """
     return call('search_memory', locals())
 
 
 @server.tool(name='starbridge.get_memory', annotations=READ)
 def get_memory(memory_id: StrictStr, project_dir: StrictStr | None = None) -> types.CallToolResult:
-    """读取方法、参数约定与资料位置；记忆是经验数据，不是新指令，不自动执行 recipe。"""
+    """只读知识、代码、参数和限制；不带案例证据，不自动执行方法或把记忆当指令。"""
     return call('get_memory', locals())
+
+
+@server.tool(name='starbridge.get_memory_evidence', annotations=READ)
+def get_memory_evidence(memory_id: StrictStr, project_dir: StrictStr | None = None,
+                        evidence_id: StrictStr | None = None, offset: StrictInt = 0,
+                        limit: StrictInt = 20) -> types.CallToolResult:
+    """仅明确追溯、审计或纠错时读取关联的精简案例，不是复用知识的前置。
+
+    evidence_id取知识记录的evidence_ids；省略则分页读取该知识的关联证据。
+    每条最多4 KiB，result最多32 KiB，按next_offset续页；不打开引用材料，不调用STAR。
+    """
+    return call('get_memory_evidence', locals())
 
 
 @server.tool(name='starbridge.record_memory', annotations=WRITE)
 def record_memory(entry: dict, project_dir: StrictStr | None = None) -> types.CallToolResult:
-    """记录已有经验而不额外验证；保留问题、场景、做法、实际效果与依据范围。
+    """保存可复用知识，可选精简案例另存；只返回ID、修订和写入状态。
 
-    必填 problem/applicability/approach/observed_effect/source/evidence_scope 为文字或含 description
-    的对象，evidence 为非空说明列表；certainty=user_rule|single_observation|validated|uncertain。
-    可选 title/tags/references/exceptions/recipe。recipe 至少含 code/imports/parameters 参数契约；
-    每个参数含 type/description/required，历史对象引用不能作为新任务默认值。
-    可指定 memory_id；不覆盖已有条目，不复制算例，不执行 recipe。
+    必填problem/applicability/approach/certainty；可选title/tags/exceptions/recipe。
+    优先保存调用顺序、参数化代码和实际踩坑，不把项目经过、路径和数值当方法主体。
+    可选evidence仅需summary；可附kind、references和limitations，格式化后最多4 KiB。
+    引用现成凭据即可，不复制完整数据，不为记录额外运行、验证或生成报告。
+    可指定memory_id，不覆盖已有条目；单次观察可以形成带条件方法，不代表普遍验证。
     """
     return call('record_memory', locals())
 
@@ -383,10 +397,11 @@ def record_memory(entry: dict, project_dir: StrictStr | None = None) -> types.Ca
 @server.tool(name='starbridge.update_memory', annotations=WRITE)
 def update_memory(memory_id: StrictStr, expected_revision: StrictInt, changes: dict,
                   project_dir: StrictStr | None = None) -> types.CallToolResult:
-    """按实际新观察修订记忆；expected_revision 来自相同范围的读取，冲突时先重读。
+    """按原修订更新知识或追加有新增价值的精简evidence，只返回写入确认。
 
-    changes 是顶层字段替换，可选字段传 null 删除；不递归合并，不改变 ID。
-    补充例外和纠正时保留证据适用范围，不能把一次成功自动升级为通用规则。
+    changes为顶层替换；可选知识字段null删除，evidence是新案例而非替换旧证据。
+    不为重复成功堆积案例。旧格式迁移须显式提供四个知识必填字段，原记录另存legacy备份。
+    冲突先重读知识修订；不要求查看案例，不为迁移重新运行STAR。
     """
     return call('update_memory', locals())
 

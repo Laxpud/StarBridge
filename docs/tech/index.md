@@ -11,7 +11,7 @@
 | 文档 | 负责的内容 |
 |---|---|
 | [MCP 与共享 Core API](mcp.md) | 公开工具、参数、结果、JSON CLI 与恢复约定 |
-| [通用执行与工作记忆](<generic-execution.md>) | Java步骤/完整宏、源码依赖、编译加载、API与指南、凭据和方法记忆；历史运行记录另见[任务依据](<../evidence/generic-execution.md>) |
+| [通用执行与工作记忆](<generic-execution.md>) | Java步骤/完整宏、源码依赖、编译加载、API与指南、凭据，以及分离的知识和精简案例证据；历史运行记录另见[任务依据](<../evidence/generic-execution.md>) |
 | [STAR 会话接入](bridge-session.md) | 连接已有 STAR、启动自有服务、保存、断开及运行数据 |
 | [运行时发现](runtime-discovery.md) | 沿实际对象树导航、分页、读取、搜索及受控赋值 |
 

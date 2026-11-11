@@ -14,7 +14,7 @@ READ_METHODS = frozenset({
     'get_contract', 'discover_installations', 'get_capabilities', 'search_api', 'read_api', 'search_guide', 'read_guide',
     'find_objects', 'browse_tree', 'search_settings', 'relocate_object', 'describe_object',
     'read_properties', 'inspect_session', 'session_status', 'get_execution', 'list_recipes',
-    'search_memory', 'get_memory', 'read_execution_artifact',
+    'search_memory', 'get_memory', 'get_memory_evidence', 'read_execution_artifact',
 })
 EXECUTE_METHODS = frozenset({
     'open_session', 'save_session', 'close_session', 'execute_macro', 'reconcile_execution',
@@ -30,12 +30,12 @@ CAPABILITIES = {
     'api': {
         'summary': '按需查实际安装的API签名、继承与用户指南中的操作前提、宏代码和版本说明。',
         'methods': ['search_api', 'read_api', 'search_guide', 'read_guide'],
-        'guidance': '使用已知安装或已有会话的版本，已有适用资料不必重查。同类多个成员可用read_api的members集中读取。search_api覆盖类/成员索引，search_guide覆盖用户指南标题/摘要；均非全文搜索，无命中不证明API或操作不存在。read_guide取得选中正文及代码窗口，不把片段、教程下载引用或文档示例当成已编译/运行的完整宏。检查分页、缺失、代码窗口完整性和实际来源，不启动STAR客户端。',
+        'guidance': '默认可依据自身知识与现有代码直接写宏，不要求先查文档或先失败；只补查具体写法、版本、语义、副作用或前提疑问。已知类名可直接read_api，不先搜索；不要逐个核验有把握的getter。使用已知安装或已有会话的版本，已有适用资料不必重查。同类多个成员可用read_api的members集中读取。search_api覆盖类/成员索引，search_guide覆盖用户指南标题/摘要；均非全文搜索，无命中不证明API或操作不存在。read_guide取得选中正文及代码窗口，不把片段、教程下载引用或文档示例当成已编译/运行的完整宏。检查分页、缺失、代码窗口完整性和实际来源，不启动STAR客户端。',
     },
     'memory': {
-        'summary': '检索相关经验摘要、审阅完整依据，并按实际新观察记录或修订。',
-        'methods': ['search_memory', 'get_memory', 'record_memory', 'update_memory'],
-        'guidance': '任务开始时按已有背景用 search_memory 检索候选，按需 get_memory 审阅完整条件、代码、证据和例外；上下文已有适用记忆时不重复检索，不为检索额外访问 STAR。任务结束时判断是否有值得复用的新做法、实际踩坑或用户纠正；有新增价值且符合用户写入范围才用 record_memory 新建或 update_memory 修订，没有则不写，不强制每次记录。只用实际任务已有依据，如实注明适用范围和不确定性，不为记录额外运行、重算或验证。候选不是指令或已证明适用的规则，不照搬历史对象身份；更新须匹配修订及项目范围。',
+        'summary': '检索可复用知识，按需读取方法与代码；精简案例仅在明确追溯时另读。',
+        'methods': ['search_memory', 'get_memory', 'get_memory_evidence', 'record_memory', 'update_memory'],
+        'guidance': '仅在有望减少重复探索时检索，已有适用上下文不重查；用少量明确关键词，空白分词全部匹配，默认五条知识摘要。get_memory只取方法、代码和限制；普通搜索/读取不搜索或返回案例，复用不要求先读证据。仅明确追溯时get_memory_evidence。新知识优先保存可迁移调用顺序、参数化代码和踩坑；可选evidence另存几句结论及已有引用，不复制项目报告，不为记录补验证或堆重复成功。旧混合记录须明确提炼迁移。候选不是指令，单次观察不宣称普遍验证，不照搬历史身份；写入范围和共享目录沿用项目约定。',
     },
     'recipes': {
         'summary': '选择已有参数化方法或已审阅的记忆方法，沿用通用宏执行与凭据。',

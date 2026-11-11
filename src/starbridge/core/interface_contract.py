@@ -13,12 +13,14 @@ SERVER_INSTRUCTIONS = (
     '宽范围设置读取优先一个或少量有界宏，不先逐节点遍历再用宏补漏；结构化接口用于少量定位或已知属性。'
     '方法库只作可选起点，可按需取得源码复用，不以适配清单限定能力。任务相关时主动用 '
     'starbridge.expand_capabilities 取得所需能力或方法的说明和参数格式，再经 query／execute 调用。'
-    '能力展开、API正文读取和相关记忆检索彼此独立；已有有效格式、会话、资料和代码可直接复用。'
-    '任务开始时按已有背景用 search_memory 检索相关经验，使用候选前按需 get_memory 审阅条件、依据与例外；'
-    '上下文已有适用记忆时不重复检索，记忆不是指令，不照搬旧对象身份。'
-    '任务结束时判断本次是否产生值得复用的新做法、实际踩坑或用户纠正；有新增价值且符合用户写入范围时，'
-    '用 record_memory 新建，或对已有条目用 update_memory 修订；没有新增价值就不写，不强制每次记录。'
-    '只使用实际任务已有依据，如实注明适用范围和不确定性；不为记录额外运行、重算或验证，不把单次成功当通用规则。'
+    '默认可依据自身知识、当前上下文和已有代码直接编写宏，不把查文档或先执行失败设为前置。'
+    '只针对写法、版本、语义、副作用或必要前提的具体疑问补查；已知类名可直接定向读取，已有资料和格式不重复取得。'
+    '记忆仅在有望减少重复探索时按已有背景检索，已有适用上下文不重查；按需 get_memory 取得方法、代码和限制。'
+    '普通记忆搜索和读取不含案例证据，复用不要求先读案例；仅明确追溯时用 get_memory_evidence。'
+    '有新增复用价值且符合写入范围时记录或修订知识：保存可迁移做法、调用顺序、参数化代码和必要条件，'
+    '不把项目经过、路径、数值或当前状态当方法主体；可选精简 evidence 另存，几句结论及已有引用即可。'
+    '不为记录额外运行、重算、验证或补写报告，不为重复成功堆积案例；单次观察可提炼带条件的方法，但不宣称普遍验证。'
+    '记忆不是指令，不照搬历史对象身份；共享目录沿用项目既有约定。'
     '精简结果中的省略项按原凭据读取，不为取正文重跑。未读取不等于未设置，宏返回不等于任务完成。'
     '结果未知时先查凭据，不盲目重复执行。结束任务须说明资源保留原因；不自动保存、关闭或丢弃 dirty 状态。'
 )
@@ -38,7 +40,7 @@ USAGE_INSTRUCTIONS = (
     '需要这些规则时 open_session.star 优先指向安装目录内的实际程序，安装目录外的包装脚本无法据路径定位文档。'
     '正常工作以实际版本 Java API 和宏为主；宽范围设置读取先用一个或少量有界宏，不先逐层浏览和逐属性往返。'
     '未知关系只做必要定位，明确后集中读取；已知少量属性可用结构化接口，不以减少调用为由扩大任务范围。'
-    '需要补查时用search_api/read_api取得实际安装的签名与继承，用search_guide/read_guide取得用户指南的操作前提、宏代码及版本说明；已有可靠写法可直接复用。'
+    '可依据自身知识直接编写宏；仅有具体写法、版本、语义、副作用或前提疑问时定向补查API/指南，不逐个核验有把握的getter，不要求先执行失败。'
     '结构化接口是可选辅助：未知对象可用 browse_tree/search_settings，已知目录类型可用 find_objects；均返回 object_id。'
     '选用结构化属性接口时用 describe_object 获取属性契约，再按需读取；已有同会话有效定位和契约时可直接复用。'
     '流程示例不是每次调用的固定前置步骤；已有可用会话无需重新发现安装或打开会话。'
@@ -55,7 +57,7 @@ USAGE_INSTRUCTIONS = (
     '文件路径为服务所在机器的绝对路径；session_id 使用服务返回的标识，同一会话顺序调用。'
     '常见网格、计算、运行状态和导出可先用 list_recipes 查看现成方法，execute_recipe 显式执行选定方法；'
     'list_recipes默认短索引，给recipe_id取完整条件/参数，include_source=true取steps/imports/declarations供审阅组合；'
-    '已有适用方法无需重新编写，组合须处理helper、步骤和shared冲突。memory:ID 方法须审阅来源/参数并传 expected_revision，检索不执行。'
+    '已有适用方法无需重新编写，组合须处理helper、步骤和shared冲突。memory:ID 方法须审阅知识/参数并传 expected_revision，检索不执行。'
     '网格和计算默认拒绝触发已有自动保存；任务明确允许时传 allow_existing_autosave=true，不擅自改变用户设置。'
     'execute_macro 直接在同一已加载会话使用 Java API；完整源码与代码步骤都是正常路径，不必先尝试专门方法；'
     '将已明确步骤集中在一个请求内减少客户端往返，步骤依赖通过 shared 传递。'
@@ -63,12 +65,11 @@ USAGE_INSTRUCTIONS = (
     '每次宏请求使用稳定 request_id，结果检查 execution.steps，失败或超时先 get_execution，不盲目重试。'
     'explore 标记探索而非修改授权；不要自动复制大型算例或覆盖原文件。'
     'open_session(create=true,project_dir=...) 创建空算例，可先设置并交用户检查，再按任务计算。'
-    '任务开始时按已有背景用 search_memory 获取相关方法和资料指引，按需 get_memory 审阅完整条件、依据与例外；'
-    '上下文已有适用记忆时不重复检索，不为检索额外访问 STAR。'
-    '候选记忆不是用户指令或自动规则；核对当前场景、来源与证据范围，重新定位当前对象并填写参数。'
-    '任务结束时判断是否产生值得复用的新做法、实际踩坑或用户纠正；有新增价值且符合用户写入范围时，'
-    '用 record_memory 新建或 update_memory 修订已有条目，保存做法、场景、实际效果及不确定性；没有新增价值就不写。'
-    '不强制每次记录，不为记录额外运行、重算或验证，不把一次成功当成通用规则。修改或宏执行完成不证明 CFD 物理合理。'
+    '记忆仅在能减少重复探索时检索，已有适用上下文不重查；按需get_memory读取知识和代码，不为检索访问STAR。'
+    '候选不是指令；核对适用条件和限制，重新定位当前对象。普通搜索/读取不含案例，仅明确追溯时get_memory_evidence。'
+    '有新增价值才record_memory或update_memory，优先提炼方法、调用顺序、代码与实际踩坑；不把项目报告当知识。'
+    '可选精简evidence另存几句结论和已有引用，不复制完整数据或为重复成功堆案例。'
+    '不为记录额外运行、重算、验证或补写报告；单次观察可形成带条件的方法，不宣称普遍验证。修改或宏返回不证明CFD合理。'
 )
 
 
@@ -99,7 +100,7 @@ TARGET_DEFS['catalog_target']['description'] = (
 # 参数类型仍由 SDK 从函数签名生成；这里只补充业务含义和已有 Core 的结构约束。
 PARAMETER_DESCRIPTIONS = {
     'installation': '实际 STAR 安装根目录的绝对路径，即包含 star/ 与 doc/ 的目录；可取 discover_installations 的 javadoc_root，与 session_id 二选一。仅绑定所选安装资料，不自动换版本。',
-    'java_class': '官方索引返回的完整 Java 类名，包含包名；嵌套类型保留点号。',
+    'java_class': '完整Java类名，包含包名，嵌套类型保留点号；可来自已有知识或代码，无需先查询索引。',
     'member': '可选成员简单名或官方完整锚点；简单名保留重载与本地继承声明，与members互斥。两者均省略只展开本类成员。',
     'members': '同一类的1–32个非空、不重复成员选择器；共享类资料，保留各选择器的缺失、重载、继承和本页覆盖，与member互斥。',
     'language': '安装指南目录的语言代号，默认en；不自动翻译或切换语言。实际HTML声明语言另列，不把目录名当作正文语言核验。',
@@ -145,11 +146,12 @@ PARAMETER_DESCRIPTIONS = {
     'port': '可选本机端口（1024–65535），用于选择已有服务；启动新服务时省略则分配空闲端口。',
     'output': '省略写回当前算例；另存为使用新的绝对 .sim 路径，父目录必须存在。',
     'discard': '仅用于自有后台服务：false 检查修改标志，true 明确放弃内存状态。外部会话始终只断开。',
-    'memory_id': '记录或检索返回的稳定记忆 ID；不是会话对象引用。',
-    'context': '已经掌握的任务背景文字或 JSON 对象，只参与候选排序；不为检索额外收集算例设置。',
-    'entry': '完整经验记录：problem/applicability/approach/observed_effect/source/evidence/evidence_scope/certainty；未知范围和未观察效果须如实说明。可选 recipe 保存参数化方法。',
-    'expected_revision': '相同 project_dir 范围读取的当前正整数修订号；冲突时重读，不能覆盖并发纠正。',
-    'changes': '记忆可编辑字段的顶层替换；可选字段 null 删除，不能改系统字段。',
+    'memory_id': '记录或检索返回的稳定知识 ID；不是会话对象引用。',
+    'evidence_id': '仅显式追溯时使用的证据 ID，来自知识的evidence_ids；省略则分页读取关联证据。',
+    'context': '已有任务背景文字或JSON对象，只影响知识排序；不为检索收集设置或额外访问STAR。',
+    'entry': '知识必填problem/applicability/approach/certainty；可选代码和限制。可选精简evidence单独存储，不复制项目报告。',
+    'expected_revision': '相同project_dir范围读取的当前正整数修订；冲突重读知识即可，不要求阅读案例。',
+    'changes': '知识字段顶层替换；可选字段null删除。evidence仅追加有新增价值的精简案例，不能修改系统字段。',
     'create': '显式从零创建空算例，须给 project_dir 且不能给 input；不加载、复制或保存文件。',
     'recipe_id': 'list_recipes索引中的内置方法ID；list_recipes省略时只取索引。execute_recipe也接受memory:加已审阅记忆ID，须expected_revision与相同project_dir。',
     'include_source': '仅list_recipes选中一个recipe_id时可为true，返回原始steps/imports/declarations供审阅和组合；不绑定参数或执行源码。',
@@ -176,6 +178,37 @@ def locator_schema():
         object_schema({'source': {'const': 'runtime'}, 'path': {'type': 'array', 'minItems': 1,
             'maxItems': 64, 'items': object_schema({'name': TEXT, 'java_class': TEXT})}}),
     ]}
+
+
+def memory_entry_schema(update=False):
+    """公开知识与精简证据的分离格式，不允许把旧案例字段继续写入知识正文。"""
+    evidence = object_schema({
+        'summary': TEXT,
+        'kind': {'enum': ['user_rule', 'documentation', 'compilation', 'execution', 'uncertain']},
+        'references': {'type': 'array', 'maxItems': 8, 'items': TEXT},
+        'limitations': TEXT,
+    }, ['summary'])
+    parameter = {'type': 'object', 'properties': {
+        'type': {'enum': ['string', 'number', 'integer', 'boolean', 'object', 'array', 'object_reference']},
+        'description': TEXT, 'required': {'type': 'boolean'}},
+        'required': ['type', 'description', 'required'], 'additionalProperties': True}
+    recipe = {'type': 'object', 'properties': {'code': TEXT,
+        'imports': {'type': 'array', 'items': TEXT},
+        'parameters': {'type': 'object', 'additionalProperties': parameter}},
+        'required': ['code', 'imports', 'parameters'], 'additionalProperties': True}
+    optional = {'title': TEXT, 'tags': {'type': 'array', 'items': TEXT},
+                'exceptions': {'type': 'array', 'items': TEXT}, 'recipe': recipe}
+    if update:
+        optional = {key: {'anyOf': [value, {'type': 'null'}]} for key, value in optional.items()}
+    fields = {'problem': TEXT, 'applicability': TEXT, 'approach': TEXT,
+              'certainty': {'enum': ['user_rule', 'single_observation', 'validated', 'uncertain']},
+              **optional, 'evidence': evidence}
+    if not update:
+        fields['memory_id'] = {**TEXT, 'pattern': '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'}
+    result = object_schema(fields, [] if update else ['problem', 'applicability', 'approach', 'certainty'])
+    if update:
+        result['minProperties'] = 1
+    return result
 
 
 def tool_input_schema(method, schema):
@@ -236,10 +269,18 @@ def tool_input_schema(method, schema):
             parameters['link_limit'].update(minimum=1, maximum=100)
             parameters['expected_sha256'].update(pattern='^[0-9a-f]{64}$')
     if method == 'search_memory':
-        parameters['query']['description'] = '经验或资料关键词，可为空以浏览；结果只是候选，不能推断条件已满足。'
-        parameters['limit'].update(maximum=200, description='候选摘要数上限，允许1–200；结果另受32 KiB预算，按next_offset继续。')
-        parameters['offset'].update(maximum=2147483647, description='候选排序序列起点；续页保持query/context/project_dir，不提供记录快照。')
+        parameters['query'].update(maxLength=4000, description='少量明确的知识关键词，按空白分词且全部匹配知识字段；空查询浏览。案例证据不参与搜索。')
+        parameters['limit'].update(maximum=200, description='默认五条短知识摘要，可选1–200；result另受32 KiB预算，按next_offset继续。')
         parameters['context'].update(type=['string', 'object', 'null'])
+    if method in ('search_memory', 'get_memory_evidence'):
+        parameters['offset'].update(maximum=2147483647, description='结果序列的非负起点，按next_offset续页；没有记录快照。')
+        parameters['limit']['maximum'] = 200
+    if method == 'get_memory_evidence':
+        parameters['evidence_id'].update(pattern='^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$')
+        parameters['limit']['description'] = '显式证据读取的条数上限，1–200，默认20；result另受32 KiB预算。'
+    if method in ('record_memory', 'update_memory'):
+        field = 'entry' if method == 'record_memory' else 'changes'
+        parameters[field].update(memory_entry_schema(update=method == 'update_memory'))
     if method == 'read_execution_artifact':
         from .execution_artifacts import ARTIFACTS, MAX_READ_BYTES
         parameters['artifact']['enum'] = list(ARTIFACTS)
@@ -251,8 +292,8 @@ def tool_input_schema(method, schema):
                             'then': {'properties': {'offset': {'const': 0}}}}]
     if 'expected_revision' in parameters:
         parameters['expected_revision'].update(minimum=1)
-    if method in ('search_memory', 'get_memory', 'record_memory', 'update_memory'):
-        parameters['project_dir']['description'] = '可选现有项目绝对目录；读取时项目覆盖用户及种子，写入时显式选择项目范围。'
+    if method in ('search_memory', 'get_memory', 'get_memory_evidence', 'record_memory', 'update_memory'):
+        parameters['project_dir']['description'] = '可选现有项目绝对目录；沿用项目既有共享目录规则。项目覆盖用户及种子，写入时显式选择范围。'
     if method == 'execute_recipe':
         parameters['parameters']['description'] = '按所选方法的 parameters 契约填写当前任务参数；不从历史记忆自动补对象、路径或单位。'
         parameters['expected_revision']['description'] = 'memory:ID 方法必须填写已审阅的正整数修订；内置方法不提供。'
@@ -419,7 +460,7 @@ def usage_contract():
             'discovery_javadoc': '运行时规则要求安装内 doc/client/html/type-search-index.js；star 应指向实际安装内启动器，不能靠外部包装脚本定位 Javadoc。'},
         'documentation': {
             'selection': 'installation 取实际安装根目录，或 session_id 使用会话绑定安装；二选一。会话版本与安装资料不符时拒绝，不替换版本。',
-            'search': 'search_api 查询官方类名和成员索引，不受结构化适配清单限制；按任务关键词缩小范围后 read_api。',
+            'search': '只在定位未知类或成员时搜索索引；已知类名可直接read_api，需要正文才读，不把搜索和阅读设为写宏前置。',
             'read': 'read_api获取签名、说明、参数约定、文中代码和来源；member可选简单名称或完整锚点，也可用members集中读同类一组成员，检查selectors各自缺失与覆盖，保留重载和本地继承声明。',
             'guide': 'search_guide搜索所选安装/语言指南的标题摘要；read_guide取主题正文及代码窗口、相关链接和API别名。正文以Unicode码点续读，代码范围为半开区间，完整窗口不等于独立完整宏。指南包版本必须与安装Build一致；不下载教程文件或执行文档代码。',
             'coverage': 'read_status、coverage.errors、next_offset区分缺失、外部资料未读和成员分页；类链接另查links_next_offset/links_coverage，与成员共用offset及页边界。必要正文摘录在content_truncations明示；full_text_ref相对result指向完整来源。签名、来源和错误不裁剪，最低资料无法表示时明确报预算错误；查询不到不是API不存在。两个搜索入口均非全文搜索，也不检索外部独立宏库或社区资料；指南代码块按当前主题单独取得，外部教程引用不是已取得源码。',
@@ -428,7 +469,7 @@ def usage_contract():
             'reuse': '返回实际版本、来源路径和内容摘要；进程内有界缓存按安装和文件身份失效。已获取且适用的资料不必重复查询。'},
         'workflow': {
             'task': ['明确本次任务范围与探索/执行意图；复用已知会话、对象访问方法和相关资料',
-                     '按已知项目背景检索工作记忆，审阅条件与依据；可靠代码可直接复用，有疑问再补查实际版本 API',
+                     '有助于减少探索时才检索知识；按需读取条件、代码和限制，不先读案例；可直接依据自身知识写宏，有具体疑问再补查',
                      '用 Java API 编写或组合任务宏；将明确读取、判断、修改和回读集中到适当步骤，不逐功能等待适配',
                      '需要新会话时再 open_session；同一算例连续操作沿用 session_id，不默认复制或每步重载',
                      'execute_macro 使用稳定 request_id；检查每步结果、缺失范围及未知状态，失败先 get_execution',
@@ -467,7 +508,7 @@ def usage_contract():
             'relocate_object': 'result.object.object_id；检查 state/errors，再描述读取。',
             'session': 'result为会话记录；star_version是版本绑定，version_source区分检测/运行时核验；catalog_target可为null，lifecycle_compilation只证明最小模板编译。connection_discovery保留候选/匹配/未决数量、耗时和发现记录路径；显式create不探测。发现未完成时错误同样附此摘要且不启动新服务。status只检查进程，不重新核验版本。',
             'save_session': 'result.output 是实际绝对路径；session_metadata 为保存时元数据，不是全量快照或独立重载验证。',
-            'search_memory': 'result.candidates为有界摘要，保留memory_id/revision/certainty、summary及full_record获取参数；检查read_status/coverage/next_offset。完整代码和依据另用get_memory，不再返回candidates[].memory。',
+            'search_memory': 'result.candidates为有界摘要，保留memory_id/revision/certainty、summary及full_record获取参数；检查read_status/coverage/next_offset。方法全文和代码另用get_memory，案例证据不随搜索或普通读取返回。',
             'list_recipes': '默认view=index，仅含短索引及detail调用参数；选recipe_id读取参数、条件和依据；include_source=true返回source.steps/imports/declarations，不绑定参数或执行STAR。',
             'execute_recipe': 'result.recipe 保存方法来源；检查 result.execution 的逐步状态和各步骤返回的实际状态。',
             'execute_macro': 'result.execution.status/steps；来源步骤仅证明entrypoint_returned，reported_results标明未提供业务结果。artifacts提供编译与客户端日志路径/大小，不把completed等同任务完成。',
@@ -515,19 +556,21 @@ def usage_contract():
             'idempotency': '同会话request_id与请求内容及显式源代码/JAR字节绑定；相同内容只返回原凭据。源文件改变或删除后查询旧结果使用get_execution，不重做操作。',
             'intent': 'execute 为明确任务，explore 为探索。两者均不自动获取试改或覆盖权限。'},
         'working_memory': {
-            'methods': ['search_memory', 'get_memory', 'record_memory', 'update_memory'],
-            'required_entry_fields': ['problem', 'applicability', 'approach', 'observed_effect',
-                                      'source', 'evidence', 'evidence_scope', 'certainty'],
-            'description_format': '说明字段为非空文字或带 description 的 JSON 对象；evidence 为非空说明列表。',
+            'schema_version': 2,
+            'methods': ['search_memory', 'get_memory', 'get_memory_evidence', 'record_memory', 'update_memory'],
+            'required_entry_fields': ['problem', 'applicability', 'approach', 'certainty'],
+            'description_format': '知识说明使用非空文字，不附项目案例元数据；evidence可选，独立记录只需summary。',
             'certainty': ['user_rule', 'single_observation', 'validated', 'uncertain'],
-            'optional_entry_fields': ['memory_id', 'title', 'tags', 'references', 'exceptions', 'recipe'],
-            'recipe': {'code': '完整方法源码，按调用者选择使用，不自动执行', 'imports': 'Java 导入名称数组',
-                       'parameters': '参数名到 {type,description,required} 的映射；对象需当前重新定位，不能默认旧 ID。'},
-            'update': 'expected_revision 保护并发修订；changes 顶层替换，可选字段 null 删除。',
-            'activation': '只根据现有任务信息检索摘要；候选不是自动规则，按full_record取得完整记录后核对当前修订、场景、依据和例外。',
-            'search_budget': '成功result按默认分隔符UTF-8 JSON计量不超过32 KiB，不含协议封套。摘要和query/context回显均可能摘录；续页保持原输入，不用摘录重造查询。全层扫描成本仍未全局有界，分页非快照，坏文件不静默跳过。',
-            'evidence': '仅记录实际任务已有依据，不为验证标签额外启动计算或验证。',
-            'storage': '默认 STARBRIDGE_HOME/memory 或 ~/.starbridge/memory；显式项目范围可覆盖用户记录。'},
+            'optional_entry_fields': ['memory_id', 'title', 'tags', 'exceptions', 'recipe', 'evidence'],
+            'recipe': {'code': '可复用方法源码，不自动执行', 'imports': 'Java导入名称数组',
+                       'parameters': '参数名到{type,description,required}的映射；当前对象必须重新定位。'},
+            'update': 'expected_revision保护并发修订；可选知识字段null删除，evidence仅追加有新增价值的案例；写入只返回确认。',
+            'activation': '有助于减少探索才搜索，已有上下文不重查；按需get_memory取得知识和代码，不要求先读案例。',
+            'search': '默认五条摘要；空白关键词全部匹配知识，context只排序。证据、引用、备份和证据ID不参与匹配。',
+            'search_budget': '成功result最多32 KiB UTF-8 JSON，不含协议封套；按next_offset续页。全层知识扫描仍未全局有界，分页非快照，损坏不静默跳过。',
+            'evidence': '独立存储几句summary及可选kind/references/limitations；每条最多4 KiB。仅明确追溯时get_memory_evidence，普通搜索、读取和写入回执不返回案例。不为记录额外验证或复制数据。',
+            'storage': '保留STARBRIDGE_HOME/memory或~/.starbridge/memory及显式项目覆盖；沿用共享目录规则。知识在根目录，证据在evidence/<memory_id>/。',
+            'migration': '旧混合记录不在普通查询中投影；用update_memory按原修订提供四个知识必填字段及可选精简证据，旧记录保留legacy备份。'},
         'locator_schema': locator_schema(),
         'references': '新关联按 write_contract 使用 {object_id: find_objects 返回的 ID}；expected 保持原始读取格式。',
         'structural_operation': {

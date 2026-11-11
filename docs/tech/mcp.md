@@ -40,7 +40,7 @@ MCP 进程不热重载 Python。源码或插件升级后，应先处理执行中
 
 这一层只改变入口和契约获取，不增加一次 STAR 往返。展开不读取 API 正文、记忆条目或算例；查询和执行才调用选定业务方法，已有方法格式可以直接复用。完整契约的 `usage.workflow.task` 描述正常宏任务，`structured_read/structured_write` 是可选路径；`usage.defaults` 来自 Core 签名，是可覆盖的省略行为。
 
-程序基线`f7eef68`默认提供三个稳定工具，当前业务方法共30个（含`search_guide/read_guide`）。以下保留新增指南方法之前的[历史 stdio MCP 度量](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/entry-metrics.json>)：当时默认定义4120字节、28个业务方法完整定义63608字节；[工作能力展开](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/work-contracts.json>)一次返回9个方法，result为24588字节，无后续页。这是同口径 JSON 定义大小，不是 token 数或端到端提速。
+默认仍提供三个稳定工具，当前业务方法共31个（含显式案例读取`get_memory_evidence`）；知识与精简证据分离的格式及旧记录迁移见[工作记忆约定](<generic-execution.md#工作记忆的记录与使用>)。以下保留新增指南方法之前的[历史 stdio MCP 度量](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/entry-metrics.json>)：当时默认定义4120字节、28个业务方法完整定义63608字节；[工作能力展开](<../../outputs/requirements-first/bounded-interface-a2nqrbgm/work-contracts.json>)一次返回9个方法，result为24588字节，无后续页。这是同口径 JSON 定义大小，不是 token 数或端到端提速。
 
 提交 `91a87f7` 时的真实 stdio MCP [默认定义](<../../outputs/requirements-first/on-demand/final-entry-tools.json>)与[同口径 UTF-8 JSON 度量](<../../outputs/requirements-first/on-demand/final-entry-metrics.json>)记录为4118字节、当时27个业务方法完整定义为59369字节；这些是新增材料读取方法和调整默认页大小之前的历史值，不是本轮结果，也不是 token 数或总任务提速比例。按需路径已取得[工作方法格式](<../../outputs/requirements-first/on-demand/final-work-contracts.json>)、[已关闭会话的原研究凭据](<../../outputs/requirements-first/on-demand/study-receipt.json>)、[记忆候选](<../../outputs/requirements-first/on-demand/memory-candidates.json>)和[完整记忆](<../../outputs/requirements-first/on-demand/reviewed-memory.json>)；通过 `execute` [记录上轮已有研究经验](<../../outputs/requirements-first/on-demand/recorded-study-memory.json>)后，按相关任务[再次检索到该经验](<../../outputs/requirements-first/on-demand/source-reuse-candidates.json>)，没有启动 STAR 或为记忆另行验证。只读／写入分类及参数异常分支另有静态复核，不冒充全部故障已实跑。
 
@@ -71,10 +71,11 @@ MCP 进程不热重载 Python。源码或插件升级后，应先处理执行中
 | `get_execution` | `request_id` | 原宏凭据、读取诊断、活动状态、可用审阅 token，以及固定材料清单与读取指引；不重做操作 |
 | `read_execution_artifact` | `request_id/artifact`，可选 `offset/limit_bytes/tail/expected_version` | 按需读取固定执行材料的字节窗口；区分缺失、变化与正文不完整，见[材料读取](<#按需读取执行材料>)；不启动 STAR、不解除未知结果 |
 | `reconcile_execution` | `request_id/expected_review_token/assessment` | 根据已有依据显式接受当前状态；不重放、不保存、不追认旧任务完成，见[接受条件与边界](<generic-execution.md#根据已有观察接受当前状态>) |
-| `search_memory` | `query`，可选 `context/limit/offset/project_dir` | 有界候选摘要与 `full_record` 获取指引；检查摘录及 `next_offset`，不返回完整代码与依据列表 |
-| `get_memory` | `memory_id`，可选 `project_dir` | 完整做法、场景和证据范围 |
-| `record_memory` | `entry`，可选 `project_dir` | 记录实际任务已有依据，不额外验证或执行方法 |
-| `update_memory` | `memory_id/expected_revision/changes`，可选 `project_dir` | 乐观并发修订，保留例外与纠正 |
+| `search_memory` | `query`，可选 `context/limit/offset/project_dir` | 默认五条知识摘要；空白关键词全部匹配知识，context只排序，不搜索或返回案例证据 |
+| `get_memory` | `memory_id`，可选 `project_dir` | 方法、代码、参数与限制，不打开或返回案例证据 |
+| `get_memory_evidence` | `memory_id`，可选 `project_dir/evidence_id/offset/limit` | 仅明确追溯时分页读取关联的精简证据，不是复用前置，不打开引用材料 |
+| `record_memory` | `entry`，可选 `project_dir` | 新建知识，可选精简evidence另存，只返回ID、修订和写入确认 |
+| `update_memory` | `memory_id/expected_revision/changes`，可选 `project_dir` | 按修订更新知识或追加必要证据；旧格式明确提炼后迁移并保留备份 |
 | `inspect_session` | 可选 `timeout` | Inspector 范围快照，不表示全算例导出 |
 | `open_session` | `input`、`port+project_dir` 或 `create=true+project_dir` | 优先连接匹配算例；显式 create 从零创建空算例 |
 | `session_status` | 无其他必填参数 | 状态、进程身份与未确认请求；不启动 Java 客户端 |
