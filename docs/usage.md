@@ -1,6 +1,6 @@
 # 使用StarBridge完成算例任务
 
-适用范围：程序基线`f7eef68`。先按[安装与接入说明](<distribution.md>)连接MCP；本页按任务说明操作，完整字段由[接口文档](<tech/mcp.md>)和按需契约提供。示例只展示格式，不表示已经在读者算例上执行。
+适用范围：当前源码接口（含宏优先指导、方法源码读取、精简返回与资源摘要）；已有STAR运行依据仍按各证据页的历史基线解释。先按[安装与接入说明](<distribution.md>)连接MCP；本页按任务说明操作，完整字段由[接口文档](<tech/mcp.md>)和按需契约提供。示例只展示格式，不表示已经在读者算例上执行。
 
 ## 接手一个已有算例
 
@@ -28,7 +28,9 @@
 
 ## 读取、修改或执行一组明确操作
 
-**准备：**明确当前对象、单位/坐标系、允许的操作与输出范围；优先复用已有可靠代码。普通任务直接使用Java API，不要求先尝试结构化工具。
+**准备：**明确当前对象、单位/坐标系、允许的操作与输出范围；优先复用已有可靠代码。连续体、模型、材料等宽范围设置读取，先组织一个或少量有界宏，不先逐节点浏览再用宏补漏。结构化接口用于少量定位或已知属性；需要依据新信息判断时保留分轮，不为了合并而扩大范围。
+
+已有方法可先用 `list_recipes()` 取得短索引，再用 `list_recipes(recipe_id="solver.status", include_source=true)` 读取选中方法的参数、依据及原始 `source.steps/imports/declarations`。原样执行用 `execute_recipe` 保留参数校验；修改或组合源码后用 `execute_macro`，注意 helper、步骤名和 `shared` 冲突，参数契约不是本次绑定值。已有完整Java宏继续通过 `macro.entry_source/entry_class` 原样复用；不需要将每个业务功能封装成新的工具。
 
 **操作：**通过`starbridge.execute`调用`execute_macro`，把相关读取、条件判断、修改和回读组织为步骤。现成方法适用时可调用`execute_recipe`，但方法列表不是能力上限。完整宏可原样附带显式辅助源码/JAR；当前纯code没有顶层依赖参数，详见[完整宏用法](<tech/generic-execution.md#原样复用完整宏与辅助源码>)。
 
@@ -53,11 +55,15 @@
 {"method":"get_execution","arguments":{"session_id":"<current session_id>","request_id":"<original request_id>"}}
 ```
 
+`execute_macro/execute_recipe/get_execution` 默认 `result_view="compact"`：逐步状态、错误及未知标志不变，只对 `execution.steps[].result` 使用合计16 KiB预算。超预算的业务结果整项省略，`result_projection.omitted` 给出步骤、原凭据JSON Pointer和字节数；省略正文可能包含局部错误，不能据 `completed` 宣称任务完整。需要正文时用相同 `session_id/request_id` 调用 `get_execution(result_view="full")`，不重新执行宏；原凭据超过既有解析上限或损坏时仍按 `receipt_read` 报告，full不绕过限制。
+
 按返回指引用`read_execution_artifact`读取日志或凭据窗口。日志只有路径不意味着需要重新运行；查询成功也不会自动解除此前未知写入。只有审阅已有依据和当前状态后，才能在支持的范围内使用`reconcile_execution`；它不回滚、不重做，也不认证原任务完成。详见[状态与恢复](<tech/generic-execution.md#完成与恢复>)。
 
 ## 在GUI接手、保存或结束工作
 
 需要向用户说明位置时，使用`objects.gui_locations`现成方法取得标准树路径和必要标签；注明观察范围，不冒充另一窗口的选中状态、布局或已刷新缓存。
+
+任务完成时同时报告会话结果的 `resources`，或宏结果中的 `session_state.resources`：服务器是否仍保留、身份匹配的登记进程RSS、最近记录的dirty/活动状态，以及保留原因与关闭边界。内存只是本机非原子观测，未登记进程不在统计内；该摘要不新建STAR客户端，不证明文件未变，也不授权清理。
 
 修改内存、保存当前文件、另存新文件、断开连接是不同动作。按任务明确调用`save_session/close_session`；有修改标志时不能为结束工作擅自保存或`discard`。外部会话的断开不停止用户STAR服务。具体条件见[保存和断开](<tech/bridge-session.md#保存和断开>)。
 

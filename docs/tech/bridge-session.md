@@ -45,6 +45,12 @@ python3 bridge/runner/session_bridge.py save --session-id SESSION_ID \
 
 `status` 读取会话记录并核对进程身份，不启动 Java 客户端；`modified` 是最近成功请求的值。`inspect` 读取既有 Inspector 范围，不表示完整设置导出。表达式、标签及目录修改的调用方式见[修改说明](modifier.md)与[目录修改](catalog-modifier.md)；这些修改仍只作用于内存。
 
+### 任务结束时的资源说明
+
+共享Core的会话结果增加 `resources`；宏执行及查询结果位于 `session_state.resources`。摘要只读取本机登记的服务器、启动器和已知请求客户端进程（用 `role` 区分），`client_activity` 另说明记录中的请求状态而非整个客户端进程组已停止的证明；核对PID、启动时刻、进程组和系统启动标识后取得RSS；读取前后身份变化、退出、不可读均明确保留状态。`observed_rss_bytes` 只汇总成功观察的登记进程，不代表完整进程树或PSS，共享页可能重复计算；没有读到数值时返回 `null`，不猜零占用。
+
+`modified`、活动请求及恢复标志来自调用方已有会话记录，资源摘要本身不新建STAR客户端、不刷新dirty状态、不保存或关闭。任务交付须说明 `ownership`、`disposition` 和 `close_considerations`：外部服务只允许断开；自有服务存在dirty、活动或未知状态时保留并由用户决定。即使没有已知阻碍，真正关闭仍须显式调用，并由原生命周期逻辑重新检查。连接已断开也不等于所有进程已退出。
+
 ## 保存和断开
 
 `save_session(session_id)` 写回 STAR 当前加载文件。给出 `output` 时另存为；目标必须是新的 `.sim` 文件且父目录已存在，避免覆盖无关算例。没有保存路径时必须指定 `output`。保存前会刷新同一加载对象的当前路径，以跟随用户在 GUI 中的另存为；结果的 `output` 是实际绝对路径。保存不自动关闭或重新加载。当前保存与关闭前检查只读取会话身份、路径和修改标志，不为这两个动作遍历完整 Inspector；保存结果使用 `session_metadata`，完整审查另调用 `inspect_session`。

@@ -174,6 +174,9 @@ def execution_result(directory, request_id, state=None):
             'source_files': len(request['source_bundle']['files']),
             'dependency_jars': len(request['source_bundle']['dependencies']),
             'scope': 'Explicit source and JAR bytes only; external data and native dependencies are not frozen'}
+    # 任务结果与驻留资源一并交付；仅读取已登记进程，不额外启动客户端或自动关闭会话。
+    from .session_store import public_session
+    result['session_state'] = public_session(state)
     # 本次读取成功不等于先前写入已确认；重放与新调用都显式保留当前会话的限制。
     for key in ('active_request', 'uncertain_request'):
         if state.get(key):

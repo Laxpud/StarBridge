@@ -2,7 +2,7 @@
 
 [任务用法](<../usage.md>) · [技术入口](<index.md>) · [当前架构](<architecture.md>)
 
-核对基线：`f7eef68`的公开方法与契约。当前接口格式与历史协议度量分开记录；变更后的代码须重启MCP进程才能生效。
+当前源码契约在`f7eef68`基础上增加方法短索引/源码读取、宏结果视图与会话资源摘要；不改变执行架构。历史协议度量保留原基线，不能作为本轮STAR运行依据。变更后的代码须安装并重启MCP连接才能生效。
 
 MCP 和 JSON CLI 共用 Core Service。正常任务以实际版本的 Java API／宏为主：按需取得资料和可靠代码，在同一已加载会话组织读取、判断、修改与回读，再检查逐步凭据和实际结果。结构化对象接口是可选辅助；它们使用契约 schema 2 的 `object_id` 与 `property_id`，结构操作有独立入口，不作为普通属性赋值。
 
@@ -173,6 +173,14 @@ MCP `content` 中只返回一份 Core JSON 文本，不重复提供 `structuredC
 会话一次只接受一个 Bridge 请求；状态查询可同时读取记录。只读成功不会解除既有 `uncertain_request`。结构化修改不保存；通用 Java 及 STAR 既有自动保存可能写文件，现成网格／求解方法会先检查。`save_session` 返回实际 `output` 和保存时的 `session_metadata`，不再附带全量 Inspector 快照；需要审查时单独 `inspect_session`。需要持久化验收时重新加载、定位和读取。保存后仍可能 `modified=true`，不能为关闭而擅自丢弃状态。
 
 ## 迁移与兼容边界
+
+本轮四项改进保持三个默认入口及业务方法数不变：
+
+- `list_recipes(recipe_id=null, include_source=false)` 默认返回短索引，列表响应 `schema_version=2`、`view=index`；不能再从默认列表直接取参数。指定一个 `recipe_id` 返回详情，`include_source=true` 再返回原始 `source.steps/imports/declarations`。方法本身仍为版本1，执行准备和指纹不变；详情中保留 `memory_recipe_schema`。未知方法和未选择方法就请求源码均明确拒绝。
+- `execute_macro/execute_recipe/get_execution` 新增 `result_view=compact|full`，默认compact。小业务结果保持原样；超出合计16 KiB预算的 `steps[].result` 整项省略，原路径/字节数保留在 `result_projection.omitted`。预算不裁剪初始化、步骤状态、步骤错误和未知标志，也不是整个响应的大小上限。省略正文可能包含局部业务错误，须先读取才能判断业务完成；要求旧的完整业务结果形状时显式传full。
+- 视图只改变传输，不进入宏请求指纹、不改磁盘凭据。`get_execution(result_view=full)`读取原结果而不重跑；超出既有32 MiB凭据解析上限时仍返回诊断，可用材料窗口读取。
+- 会话结果新增 `resources`，宏结果新增 `session_state.resources`；其中RSS只包含可核对身份的登记进程，dirty是最近记录，不是新的STAR观察。详情见[任务结束时的资源说明](<bridge-session.md#任务结束时的资源说明>)。
+
 
 当前 MCP 默认列表改为三个稳定入口。原业务工具仍注册，原始 MCP `tools/call` 可以按旧名字调用，但客户端可能拒绝显示隐藏工具，或为隐藏名字额外请求工具列表；新接入应使用 `query/execute`，不依赖这种兼容方式。JSON CLI 的业务方法名和调用封套不变，结构化对象契约仍为 schema 2。`search_memory` 响应另有明确迁移：`candidates[].memory` 改为摘要、真实 ID／修订及 `full_record` 获取参数，完整材料通过 `get_memory` 取得；输入新增可选 `offset`，存储与完整读取格式未变。
 

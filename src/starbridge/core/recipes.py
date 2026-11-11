@@ -652,14 +652,41 @@ try {{
     return recipes
 
 
-def list_recipes():
-    """列出内置方法参数、适用条件和依据，不加载 STAR，也不返回历史对象绑定。"""
-    return {'schema_version': SCHEMA_VERSION,
-            'recipes': [{key: deepcopy(value) for key, value in recipe.items()
-                         if key not in ('steps', 'imports', 'declarations')}
-                        for recipe in _builtins().values()],
-            'evidence_notice': 'Inspect each method evidence and actual execution receipts; no blanket real-operation coverage or physical validity is implied',
-            'memory_recipe_schema': deepcopy(RECIPE_SCHEMA)}
+def list_recipes(recipe_id=None, include_source=False):
+    """默认仅返回方法索引，选中后再取完整条件；源码可用于审阅、修改和组合宏。
+
+    include_source 必须明确选择一个方法，避免默认把整个方法库塞入上下文。返回的
+    parameters 仍是参数契约，不是实际绑定；execute_recipe 继续通过原准备器校验。
+    """
+    if type(include_source) is not bool:
+        raise ValueError('include_source must be a boolean')
+    methods = _builtins()
+    if recipe_id is not None and (not isinstance(recipe_id, str) or recipe_id not in methods):
+        raise ValueError(f'Unknown built-in recipe: {recipe_id!r}')
+    if include_source and recipe_id is None:
+        raise ValueError('include_source requires an explicit recipe_id')
+    # 列表视图由全量详情改为索引，单独提升响应版本；方法定义/参数/执行指纹仍沿用版本1。
+    result = {'schema_version': 2,
+              'view': 'detail' if recipe_id is not None else 'index',
+              'evidence_notice': 'Review applicability and evidence; a listed method is not proof of current task coverage or physical validity'}
+    if recipe_id is None:
+        result['recipes'] = [{
+            'recipe_id': recipe['recipe_id'], 'title': recipe['title'], 'description': recipe['description'],
+            'effects': sorted({step['effect'] for step in recipe['steps']}),
+            'detail': {'method': 'list_recipes', 'arguments': {'recipe_id': recipe['recipe_id']}},
+        } for recipe in methods.values()]
+        result['reuse'] = 'Select one method for parameters and evidence; add include_source=true for unchanged steps/imports/declarations. Methods are optional starting points, not a capability whitelist.'
+    else:
+        recipe = methods[recipe_id]
+        result['memory_recipe_schema'] = deepcopy(RECIPE_SCHEMA)
+        result['recipes'] = [{key: deepcopy(value) for key, value in recipe.items()
+                              if key not in ('steps', 'imports', 'declarations')}]
+        if include_source:
+            result['source'] = {key: deepcopy(recipe[key]) for key in ('steps', 'imports', 'declarations')}
+            result['source_usage'] = ('Pass reviewed source fields to execute_macro with current parameters and a new request_id. '
+                'parameters in recipes[] are contracts, not bindings. When combining methods, resolve helper/step-name conflicts and shared state; do not concatenate blindly. '
+                'Use execute_recipe for unchanged parameter validation and object-reference binding.')
+    return result
 
 
 def prepare_recipe(recipe_id, parameters):

@@ -15,7 +15,7 @@
 
 StarBridge helps AI agents write, reuse, and execute macros against the installed STAR-CCM+ Java API through a local [MCP interface or shared JSON CLI](docs/tech/mcp.md). Structured inspection and modification are optional helpers, not the limit of simulation operations. It is in early development.
 
-- **Read settings:** browse simulation objects, find properties, and read their current values and relationships. See [runtime discovery](docs/tech/runtime-discovery.md) and [catalog reads](docs/tech/catalog-runtime.md) for coverage and value formats.
+- **Read settings:** for broad inspections, prefer reusing one or a few bounded macros to read task-relevant values and relationships; use structured browsing for limited object location or known properties. See [macro usage](<docs/usage.md>) for the normal workflow, and [runtime discovery](docs/tech/runtime-discovery.md) and [catalog reads](docs/tech/catalog-runtime.md) for structured coverage and value formats.
 - **Make controlled changes:** check the target, expected old value, and required constraints before applying a change, then read back the result. Supported properties, method changes, and validation evidence are documented in the [modification guide](docs/tech/catalog-modifier.md).
 - **Save explicitly:** structured session edits remain in memory until a save request writes the current file or saves a new one. Java execution and STAR's existing automatic-save settings have their own effects; prepared mesh and solver methods check those settings before execution. The separate file workflow saves to a new file and reloads it for verification. See [session operations](docs/tech/bridge-session.md) and the [file Bridge guide](docs/tech/bridge-file.md).
 

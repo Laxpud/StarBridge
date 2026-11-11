@@ -13,7 +13,7 @@
 
 StarBridge 帮助 AI Agent 通过本机 [MCP 或共享 JSON CLI](tech/mcp.md)，依据实际安装的 STAR-CCM+ Java API 编写、复用和执行宏。结构化检查与修改是可选辅助，不是算例操作的能力上限。项目目前处于早期开发阶段。
 
-- **读取设置**：浏览算例对象、查找属性，读取当前值和关联关系。覆盖范围与值格式见[运行时发现](tech/runtime-discovery.md)和[目录读取](tech/catalog-runtime.md)。
+- **读取设置**：宽范围检查优先复用一个或少量有界宏，集中读取任务相关的当前值和关联关系；结构化浏览用于少量对象定位或已知属性。正常工作路径见[宏使用说明](<usage.md>)，结构化覆盖范围与值格式见[运行时发现](tech/runtime-discovery.md)和[目录读取](tech/catalog-runtime.md)。
 - **受控修改**：写入前核对目标、预期旧值及必要约束，写入后回读结果。已适配属性、方法切换及验证记录见[修改说明](tech/catalog-modifier.md)。
 - **显式保存**：结构化会话修改保留在内存中，收到保存指令后才写回当前文件或另存为；Java 执行和 STAR 既有自动保存仍有其自身影响，现成网格／计算方法会先检查这些设置。独立文件流程则另存新文件并重新加载核对。具体操作见[会话说明](tech/bridge-session.md)和[文件 Bridge](tech/bridge-file.md)。
 

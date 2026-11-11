@@ -48,13 +48,15 @@ def session_version(state):
 
 
 def public_session(state):
-    """返回连接所需的状态，实际版本与目录适配分别报告，不要求调用者管理内部进程。"""
+    """返回连接状态及只读资源摘要；版本、目录适配和进程内存分别报告，不执行收尾动作。"""
     keys = ('session_id', 'state', 'ownership', 'star_version', 'version_source',
             'catalog_target', 'lifecycle_compilation', 'current_file',
             'project_dir', 'modified', 'session_token', 'server_alive', 'active_request',
             'last_request', 'last_request_status', 'recovery_required', 'uncertain_request',
             'last_reconciliation', 'pending_reconciliations', 'connection_discovery')
-    return {key: state[key] for key in keys if key in state}
+    from .session_resources import resource_summary
+    return {**{key: state[key] for key in (*keys, 'host', 'port') if key in state},
+            'resources': resource_summary(state)}
 
 
 def artifact_path(state, kind, filename, output=None):

@@ -443,19 +443,21 @@ class Service:
         return update_memory(memory_id, expected_revision, changes,
                              str(_path(project_dir, 'project_dir')) if project_dir is not None else None)
 
-    def list_recipes(self):
-        """列出可直接使用的参数化方法、证据与完成边界，不连接 STAR 或自动选择方法。"""
+    def list_recipes(self, recipe_id=None, include_source=False):
+        """先取方法短索引；明确选中后读取参数、依据及可组合源码，不连接 STAR。"""
         from .recipes import list_recipes
-        return list_recipes()
+        return list_recipes(recipe_id, include_source)
 
     def execute_recipe(self, session_id, request_id, recipe_id, parameters=None,
-                       expected_revision=None, project_dir=None, timeout=180):
+                       expected_revision=None, project_dir=None, timeout=180, result_view='compact'):
         """执行显式选中的内置方法或 memory:ID，复用同一宏通道的逐步凭据。
 
         记忆必须先审阅且提供当前修订；检索本身从不执行方法。未声明影响时按 mutate
         保守处理，不把来源或一次成功当成当前适用性证明。已有输出不影响旧请求重放。
         """
         from .recipes import prepare_recipe, validate_recipe, validate_parameters, object_reference_paths
+        from .result_view import validate_result_view, project_execution
+        validate_result_view(result_view)
         binding_paths = []
         if not isinstance(recipe_id, str) or not recipe_id:
             raise ValueError('recipe_id must be non-empty text')
@@ -487,11 +489,11 @@ class Service:
         result = self._execute_bound_macro(session_id, request_id, timeout=timeout,
                     binding_paths=binding_paths,
                     **{key: prepared[key] for key in ('steps', 'imports', 'declarations', 'parameters')})
-        return {**result, 'recipe': provenance}
+        return project_execution({**result, 'recipe': provenance}, result_view, session_id, request_id)
 
     def execute_macro(self, session_id, request_id, steps, parameters=None, imports=None,
                       declarations='', intent='execute', timeout=180, object_parameters=None,
-                      working_directory=None):
+                      working_directory=None, result_view='compact'):
         """一次连接组合代码方法体和原样完整宏，返回持久逐步凭据；相同标识不重复执行。
 
         macro 步骤显式选择入口、辅助源码及 JAR，保持原宏自身上下文与路径语义；
@@ -500,10 +502,13 @@ class Service:
         使用当前 STAR 宏 API 的完整能力。effect 和 scope 是调用者的影响及读取范围声明，
         不是代码沙箱或自动覆盖保证。explore 不授予试改当前用户算例的额外权限。
         """
+        from .result_view import validate_result_view, project_execution
+        validate_result_view(result_view)
         parameters = {} if parameters is None else parameters
         paths = objects.parameter_reference_paths(parameters, object_parameters)
-        return self._execute_bound_macro(session_id, request_id, steps, parameters, imports,
-                                         declarations, intent, timeout, paths, working_directory)
+        result = self._execute_bound_macro(session_id, request_id, steps, parameters, imports,
+                                          declarations, intent, timeout, paths, working_directory)
+        return project_execution(result, result_view, session_id, request_id)
 
     def _execute_bound_macro(self, session_id, request_id, steps, parameters=None, imports=None,
                              declarations='', intent='execute', timeout=180, binding_paths=None,
@@ -515,13 +520,14 @@ class Service:
                           object_bindings=bindings, working_directory=working_directory)
         return self._operate(session_id, 'macro', _timeout(timeout), macro_request=request)
 
-    def get_execution(self, session_id, request_id):
-        """读取宏执行凭据和当前会话状态，断开后仍可查询，不启动客户端或重复执行。"""
+    def get_execution(self, session_id, request_id, result_view='compact'):
+        """读取已有凭据和资源摘要；full 取完整业务结果，不启动客户端或重复执行。"""
         from .macros import execution_result
+        from .result_view import validate_result_view, project_execution
+        validate_result_view(result_view)
         state = self._operate(session_id, 'status')
         result = execution_result(session_directory(session_id), request_id, state)
-        result['session_state'] = public_session(state)
-        return result
+        return project_execution(result, result_view, session_id, request_id)
 
     def read_execution_artifact(self, session_id, request_id, artifact, offset=0, limit_bytes=8192,
                                 tail=False, expected_version=None):

@@ -392,19 +392,23 @@ def update_memory(memory_id: StrictStr, expected_revision: StrictInt, changes: d
 
 
 @server.tool(name='starbridge.list_recipes', annotations=READ)
-def list_recipes() -> types.CallToolResult:
-    """列出网格、计算、运行状态及导出方法的参数、适用范围和证据；不连接或执行 STAR。
+def list_recipes(recipe_id: StrictStr | None = None,
+                 include_source: StrictBool = False) -> types.CallToolResult:
+    """默认返回方法短索引；给 recipe_id 读取参数、条件与证据，不连接 STAR。
 
-    内置方法是常用起点，不是宏能力上限。实际计算前仍需准备网格、物理模型与边界。
-    工作记忆的方法由 search_memory/get_memory 读取，不混入已验证内置方法的列表。
+    选定方法后 include_source=true 可取原始 steps/imports/declarations 供直接复用，
+    不必重新研究或从结果反推源码；合并时须处理步骤名、helper 和 shared 冲突。
+    参数契约不是绑定值。原样执行优先 execute_recipe；记忆方法另经 get_memory 审阅。
+    方法库不是能力清单，不要求通用宏先经过此入口。
     """
-    return call('list_recipes', {})
+    return call('list_recipes', locals())
 
 
 @server.tool(name='starbridge.execute_recipe', annotations=MACRO_WRITE)
 def execute_recipe(session_id: StrictStr, request_id: StrictStr, recipe_id: StrictStr,
                    parameters: dict | None = None, expected_revision: StrictInt | None = None,
-                   project_dir: StrictStr | None = None, timeout: StrictFloat = 180) -> types.CallToolResult:
+                   project_dir: StrictStr | None = None, timeout: StrictFloat = 180,
+                   result_view: StrictStr = 'compact') -> types.CallToolResult:
     """执行明确选中的参数化方法，沿用宏的稳定请求标识和逐步凭据，不自动执行检索候选。
 
     内置 ID 与参数来自 list_recipes。memory:ID 执行先前审阅的记忆方法，必须提供对应
@@ -425,7 +429,8 @@ def execute_macro(session_id: StrictStr, request_id: StrictStr, steps: list[dict
                   declarations: StrictStr = '', intent: StrictStr = 'execute',
                   timeout: StrictFloat = 180,
                   object_parameters: list[StrictStr] | None = None,
-                  working_directory: StrictStr | None = None) -> types.CallToolResult:
+                  working_directory: StrictStr | None = None,
+                  result_view: StrictStr = 'compact') -> types.CallToolResult:
     """用当前安装的完整 Java 宏 API 集中完成明确步骤，不受目录适配白名单限制。
 
     steps 每项有 id/effect/scope，code与macro二选一；effect=read或mutate，导出/保存/计算均为mutate。
@@ -450,13 +455,21 @@ def execute_macro(session_id: StrictStr, request_id: StrictStr, steps: list[dict
     不证明物理有效性或自动验证读取范围。代码有完整宏权限，effect 是声明而非沙箱。
     request_id 须为稳定任务标识：重发同一内容只返回原凭据，变更内容须新标识。
     超时或部分完成先 get_execution，不盲目重试。explore 仅标记探索，不授权试改或自动复制。
+    result_view=compact 只对 steps[].result 使用合计16 KiB预算；超出的整项结果显式省略，
+    不裁剪步骤状态/错误。用 get_execution(result_view=full) 取正文，不重新执行。
+    完成时说明 session_state.resources 的驻留资源和关闭边界，不自动保存或丢弃。
     """
     return call('execute_macro', locals())
 
 
 @server.tool(name='starbridge.get_execution', annotations=READ)
-def get_execution(session_id: StrictStr, request_id: StrictStr) -> types.CallToolResult:
-    """查询通用宏的逐步凭据与会话状态；不重复执行，关闭后仍可读取已有凭据。"""
+def get_execution(session_id: StrictStr, request_id: StrictStr,
+                  result_view: StrictStr = 'compact') -> types.CallToolResult:
+    """查询已有逐步凭据和资源摘要；compact 明示省略大业务结果，full 返回完整业务正文。
+
+    状态、错误和原始凭据不改写；省略正文可能包含局部读取错误，不能据 completed 宣称任务完整。
+    不重复执行，关闭后仍可读取已有凭据；大日志或凭据也可用 read_execution_artifact 定向取窗口。
+    """
     return call('get_execution', locals())
 
 
@@ -561,7 +574,9 @@ def session_status(session_id: StrictStr) -> types.CallToolResult:
     """查询已知 session_id 的记录和当前进程存活情况，不启动 Java 或重新核对 Build。
 
     result 包含 state、server_alive、active_request、last_request、last_request_status（字段可缺省）。
-    用于断开、超时或 uncertain 后排查；ready 不等于上次修改成功，需结合请求结果。
+    resources 列出身份匹配的登记进程、RSS观测和保留/关闭说明；不扫描全机，不自动清理。
+    modified 是最近成功请求的观察，不为摘要刷新STAR；RSS合计可能重复计算共享页且不覆盖未登记子进程。
+    用于任务收尾、断开、超时或 uncertain 后排查；ready 不等于上次修改成功，需结合请求结果。
     执行中也可查询状态；state=running 表示请求未结束，uncertain_request 标识未确认写入。此工具不重试操作。
     """
     return call('session_status', locals())

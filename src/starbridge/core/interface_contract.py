@@ -10,10 +10,12 @@ from copy import deepcopy
 SERVER_INSTRUCTIONS = (
     'StarBridge 帮助 AI 使用实际版本的 STAR-CCM+ Java API 编写、复用和执行宏，'
     '接手已有 GUI 算例或在后台连续工作，并按需获取 API 资料、执行依据与工作记忆。'
-    '宏是正常操作方式，不以结构化适配清单限定能力。任务相关时主动用 '
+    '宽范围设置读取优先一个或少量有界宏，不先逐节点遍历再用宏补漏；结构化接口用于少量定位或已知属性。'
+    '方法库只作可选起点，可按需取得源码复用，不以适配清单限定能力。任务相关时主动用 '
     'starbridge.expand_capabilities 取得所需能力或方法的说明和参数格式，再经 query／execute 调用。'
     '能力展开、API正文读取和相关记忆检索彼此独立；已有有效格式、会话、资料和代码可直接复用。'
-    '未读取不等于未设置，宏返回不等于任务完成；结果未知时先查凭据，不盲目重复执行。'
+    '精简结果中的省略项按原凭据读取，不为取正文重跑。未读取不等于未设置，宏返回不等于任务完成。'
+    '结果未知时先查凭据，不盲目重复执行。结束任务须说明资源保留原因；不自动保存、关闭或丢弃 dirty 状态。'
 )
 
 
@@ -29,7 +31,8 @@ USAGE_INSTRUCTIONS = (
     '通用入口可用与预编译通过不代表该版本全部API或任务行为已验证；每个用户宏仍单独编译。'
     '运行时发现要求 runtime_discovery.supported=true；属性读取与写入规则编译还需对应安装的本机 Javadoc。'
     '需要这些规则时 open_session.star 优先指向安装目录内的实际程序，安装目录外的包装脚本无法据路径定位文档。'
-    '正常工作以实际版本 Java API 和宏为主，按任务直接定位对象并组织读取、条件判断、修改和回读。'
+    '正常工作以实际版本 Java API 和宏为主；宽范围设置读取先用一个或少量有界宏，不先逐层浏览和逐属性往返。'
+    '未知关系只做必要定位，明确后集中读取；已知少量属性可用结构化接口，不以减少调用为由扩大任务范围。'
     '需要补查时用search_api/read_api取得实际安装的签名与继承，用search_guide/read_guide取得用户指南的操作前提、宏代码及版本说明；已有可靠写法可直接复用。'
     '结构化接口是可选辅助：未知对象可用 browse_tree/search_settings，已知目录类型可用 find_objects；均返回 object_id。'
     '选用结构化属性接口时用 describe_object 获取属性契约，再按需读取；已有同会话有效定位和契约时可直接复用。'
@@ -41,11 +44,13 @@ USAGE_INSTRUCTIONS = (
     '支持标志不保证当前实例或新值可写。禁止伪造 ID、旧值、单位或未经依据的 Java 调用。'
     '结构化修改只作用于内存；宏中的保存、计算、导出等必须属于已明确的任务范围。'
     'save_session 保存后若需持久化验证，须新会话重载并重新定位读取，不把此检查变成每次操作的固定前提。'
-    '保存、关闭和丢弃均为显式操作，客户端退出不会关闭 STAR。'
+    '保存、关闭和丢弃均为显式操作，客户端退出不会关闭 STAR。任务收尾须报告resources中的驻留进程、保留原因和关闭边界；'
+    'modified来自最近记录，不能自动清零或discard。effect=read不是原生-readonly或文件不变证明。'
     'uncertain 或客户端超时不证明操作已撤销；查询 session_status，不自动重试、回滚或保存。'
     '文件路径为服务所在机器的绝对路径；session_id 使用服务返回的标识，同一会话顺序调用。'
     '常见网格、计算、运行状态和导出可先用 list_recipes 查看现成方法，execute_recipe 显式执行选定方法；'
-    '已有适用方法无需重新编写。memory:ID 方法须先审阅来源/参数并传 expected_revision，检索不触发执行。'
+    'list_recipes默认短索引，给recipe_id取完整条件/参数，include_source=true取steps/imports/declarations供审阅组合；'
+    '已有适用方法无需重新编写，组合须处理helper、步骤和shared冲突。memory:ID 方法须审阅来源/参数并传 expected_revision，检索不执行。'
     '网格和计算默认拒绝触发已有自动保存；任务明确允许时传 allow_existing_autosave=true，不擅自改变用户设置。'
     'execute_macro 直接在同一已加载会话使用 Java API；完整源码与代码步骤都是正常路径，不必先尝试专门方法；'
     '将已明确步骤集中在一个请求内减少客户端往返，步骤依赖通过 shared 传递。'
@@ -139,7 +144,9 @@ PARAMETER_DESCRIPTIONS = {
     'expected_revision': '相同 project_dir 范围读取的当前正整数修订号；冲突时重读，不能覆盖并发纠正。',
     'changes': '记忆可编辑字段的顶层替换；可选字段 null 删除，不能改系统字段。',
     'create': '显式从零创建空算例，须给 project_dir 且不能给 input；不加载、复制或保存文件。',
-    'recipe_id': 'list_recipes 返回的内置方法 ID，或 memory: 加已审阅的记忆 ID；记忆方法须提供 expected_revision 与原读取范围的 project_dir。',
+    'recipe_id': 'list_recipes索引中的内置方法ID；list_recipes省略时只取索引。execute_recipe也接受memory:加已审阅记忆ID，须expected_revision与相同project_dir。',
+    'include_source': '仅list_recipes选中一个recipe_id时可为true，返回原始steps/imports/declarations供审阅和组合；不绑定参数或执行源码。',
+    'result_view': 'compact默认保留全部执行状态，仅对steps[].result使用合计16 KiB预算，超出整项省略并明示取回入口；full保留业务结果。省略可能隐藏局部业务错误，须审阅后判断完成。仅改变返回视图，不改变请求指纹/磁盘凭据，不重新执行。',
     'request_id': '1–80 个 ASCII 字母、数字、下划线或短横线的稳定任务标识；同会话重复内容仅返回旧凭据，不重新执行。',
     'expected_review_token': 'get_execution.result.review.token 的当前值；绑定原请求、凭据摘要、会话及最近请求。证据或会话改变后须重新审阅，不凭旧标识解除限制。',
     'assessment': '调用者根据已有依据作出的明确判断，含 observations、accepted_scope、remaining_scope 和 evidence；只接受当前状态继续，不认证任务完成，不要求为确认另跑验证。',
@@ -184,6 +191,11 @@ def tool_input_schema(method, schema):
     }.items():
         if name in parameters:
             parameters[name].update(bounds)
+    if 'result_view' in parameters:
+        parameters['result_view']['enum'] = ['compact', 'full']
+    if method == 'list_recipes':
+        result['allOf'] = [{'if': {'properties': {'include_source': {'const': True}}, 'required': ['include_source']},
+                           'then': {'required': ['recipe_id'], 'properties': {'recipe_id': {'type': 'string', 'minLength': 1}}}}]
     if 'scope' in parameters:
         parameters['scope']['enum'] = ['simulation', 'all']
     if method in ('search_api', 'read_api', 'search_guide', 'read_guide'):
@@ -424,6 +436,14 @@ def usage_contract():
             'persist': ['显式 save_session；省略 output 写回，指定新路径另存',
                         '需要独立重载时先处理原会话，再重新打开文件，用 relocate_object(locator) 取得新引用',
                         '重新描述读取，不能沿用旧 object_id；用户 GUI 是否关闭另按任务决定']},
+        'result_projection': {
+            'default': 'execute_macro/execute_recipe/get_execution 默认 result_view=compact；只限制 steps[].result 合计16 KiB，不是响应总上限。',
+            'omissions': 'result_projection.omitted 明示整项业务结果的步骤/原凭据JSON Pointer/字节数；业务结果可能含局部错误，未审阅不能宣称任务完整。步骤状态、初始化、错误、未知标志及凭据不变。',
+            'retrieval': 'get_execution(result_view=full) 返回原凭据可解析的完整业务结果；也可 read_execution_artifact 取窗口，不重跑宏。视图不参加执行指纹。'},
+        'resource_handoff': {
+            'location': '会话结果的 resources；宏结果的 session_state.resources。',
+            'observation': '只读取登记且身份匹配的本机进程RSS；不是整机/完整进程树PSS，modified是最近记录而非新STAR查询。',
+            'action': '说明保留原因；外部连接仅断开，自有dirty/未知状态须用户决定；没有自动保存、关闭或discard。'},
         'result_paths': {
             'envelope': 'MCP content 中单份 JSON {status,result} 或 {status,error,session_state?,recovery}。',
             'discover_installations': 'result.installations[]；检查 coverage，不是全机清单。',
@@ -441,14 +461,14 @@ def usage_contract():
             'session': 'result为会话记录；star_version是版本绑定，version_source区分检测/运行时核验；catalog_target可为null，lifecycle_compilation只证明最小模板编译。connection_discovery保留候选/匹配/未决数量、耗时和发现记录路径；显式create不探测。发现未完成时错误同样附此摘要且不启动新服务。status只检查进程，不重新核验版本。',
             'save_session': 'result.output 是实际绝对路径；session_metadata 为保存时元数据，不是全量快照或独立重载验证。',
             'search_memory': 'result.candidates为有界摘要，保留memory_id/revision/certainty、summary及full_record获取参数；检查read_status/coverage/next_offset。完整代码和依据另用get_memory，不再返回candidates[].memory。',
-            'list_recipes': 'result.recipes[] 包含参数、适用范围和证据；不连接 STAR。',
+            'list_recipes': '默认view=index，仅含短索引及detail调用参数；选recipe_id读取参数、条件和依据；include_source=true返回source.steps/imports/declarations，不绑定参数或执行STAR。',
             'execute_recipe': 'result.recipe 保存方法来源；检查 result.execution 的逐步状态和各步骤返回的实际状态。',
             'execute_macro': 'result.execution.status/steps；来源步骤仅证明entrypoint_returned，reported_results标明未提供业务结果。artifacts提供编译与客户端日志路径/大小，不把completed等同任务完成。',
             'get_execution': '读取原凭据和receipt_read诊断；缺失、损坏与读取失败不冒充未执行。artifacts列固定材料状态/大小/元数据version，artifact_reader保留实际会话范围并指向有界读取。review提供当前审阅token/can_accept，reconciliation与原execution状态分开，evidence_current指出依据是否变化；不重新执行。',
             'read_execution_artifact': 'result.text只含明确请求材料的字节窗口；查看read_status/coverage/encoding、range与next_offset。缺失/不可读/版本不符不等于空文件，日志与原始receipt片段不是已验证执行状态；不轮询STAR或解除未知状态。',
             'reconcile_execution': 'result.reconciliation记录调用者接受的当前状态与依据，不证明原任务完成；检查session_state是否还有其他uncertain_request/pending_reconciliations。'},
         'prepared_methods': {
-            'discovery': 'list_recipes 取得内置方法与参数；记忆方法先 get_memory 审阅适用范围、源码和依据。',
+            'discovery': 'list_recipes()取短索引；选recipe_id取参数/依据，include_source=true取可复用源码；记忆方法先get_memory审阅，不把目录变成固定前置。',
             'execution': 'execute_recipe 使用稳定 request_id 和实际参数；memory:ID 必须 expected_revision 与相同 project_dir。',
             'autosave': '网格与求解默认拒绝可能触发的已有自动保存；允许时显式 allow_existing_autosave=true，不擅自改配置。',
             'exports': '内置导出只写新的绝对目标路径；记忆 Java 不受该保护。',

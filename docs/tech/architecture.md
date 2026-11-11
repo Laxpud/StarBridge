@@ -2,7 +2,7 @@
 
 [返回技术入口](<index.md>) · [日常使用](<../usage.md>) · [需求](<../../StarBridge.md>) · [当前任务](<../../TODO.md>)
 
-核对基线：`f7eef68`的程序实现；2026-11-10同步文档。通用宏是正常操作路径，结构化对象接口是可选辅助。本文说明当前组件如何协作；实际运行范围见[历史任务依据](<../evidence/generic-execution.md>)，不能把源码核对当作新的STAR验证。
+当前源码在`f7eef68`架构基础上补充方法源码读取、结果视图和资源摘要；临时客户端与服务生命周期未改变。通用宏是正常操作路径，结构化对象接口是可选辅助。本文说明当前组件如何协作；实际运行范围见[历史任务依据](<../evidence/generic-execution.md>)，不能把源码核对当作新的STAR验证。
 
 ## 系统上下文（C4 L1）
 
@@ -64,7 +64,7 @@ flowchart TD
 1. Service校验方法和参数。需要对象参数绑定时，先准备当前引用；完整宏的显式源码/JAR由准备模块读取、摘要并冻结，不递归复制工程。
 2. 会话Runner管理互斥、进程与加载对象身份。执行器在派发前用所选安装JDK编译，成功后让STAR只编译薄启动器，再加载本请求的用户程序与冻结依赖。
 3. Java包装器在身份与对象绑定通过后开始用户初始化，按步骤记录结果。完整来源宏保持自身构造、路径和`execute()`语义，不自动获得包装器的参数或业务结果容器。
-4. Python整理持久凭据。相同请求不重新执行；失败、部分完成或未知结果保留原状态，由调用者核查后决定下一步。详细契约见[通用执行](<generic-execution.md>)。
+4. Python整理持久凭据，并独立生成compact/full传输视图与登记进程资源摘要，不改原凭据、不额外启动客户端。相同请求不重新执行；失败、部分完成或未知结果保留原状态，由调用者核查后决定下一步。详细契约见[通用执行](<generic-execution.md>)。
 
 当前纯代码没有顶层`sources/classpath`参数；显式辅助源码/JAR属于完整宏步骤。预编译成功的包装器类族使用本次类目录，其他类型与资源保留父优先；未完成的helper加载扩展不是当前实现。
 
@@ -85,6 +85,7 @@ Linux进程身份、会话锁和对象引用帮助确定当前目标，但不阻
 | [macros.py](<../../src/starbridge/core/macros.py>)、[macro_sources.py](<../../src/starbridge/core/macro_sources.py>) | 通用请求校验、指纹、完整宏及依赖冻结与物化。 |
 | [recipes.py](<../../src/starbridge/core/recipes.py>)、[memory.py](<../../src/starbridge/core/memory.py>) | 展开现成或记忆方法；记录、检索和修订经验，检索不自动执行。 |
 | [execution_receipt.py](<../../src/starbridge/core/execution_receipt.py>)、[execution_review.py](<../../src/starbridge/core/execution_review.py>)、[execution_artifacts.py](<../../src/starbridge/core/execution_artifacts.py>) | 凭据读取、已有依据审阅及日志/请求材料的有界窗口读取。 |
+| [result_view.py](<../../src/starbridge/core/result_view.py>)、[session_resources.py](<../../src/starbridge/core/session_resources.py>) | 独立于执行的结果传输视图、登记进程RSS与保留原因；不改凭据、不自动保存或关闭。 |
 | [session_bridge.py](<../../src/starbridge/bridge/runner/session_bridge.py>)、[server_discovery.py](<../../src/starbridge/bridge/runner/server_discovery.py>)、[lifecycle_execution.py](<../../src/starbridge/bridge/runner/lifecycle_execution.py>) | 服务发现、会话请求与生命周期派发。 |
 | [macro_execution.py](<../../src/starbridge/bridge/runner/macro_execution.py>)、[java_runtime.py](<../../src/starbridge/bridge/runner/java_runtime.py>) | 安装库编译、类冲突检查、启动器生成与客户端执行。 |
 | [StarBridgeLaunch.java](<../../src/starbridge/bridge/java/StarBridgeLaunch.java>)、[StarBridgeProgram.java](<../../src/starbridge/bridge/java/StarBridgeProgram.java>) | 薄启动和任务包装器，分别处理运行加载与逐步初始化/执行凭据。 |

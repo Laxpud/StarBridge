@@ -25,7 +25,7 @@ CAPABILITIES = {
         'summary': '接手或创建算例，以任意 Java API／完整宏连续工作，读取凭据并显式保存或关闭。',
         'methods': ['discover_installations', 'open_session', 'execute_macro', 'get_execution',
                     'read_execution_artifact', 'session_status', 'save_session', 'close_session', 'reconcile_execution'],
-        'guidance': '宏是正常操作方式，不必先查询结构化支持。复用已有会话与可靠代码，集中组织读取、判断、修改和回读；不默认复制算例。使用稳定请求标识，未知或局部结果先取原凭据，不盲目重发。编译和入口返回不等于任务完成；按需用 read_execution_artifact 取日志窗口或编译材料，不因只有路径就重做任务。保存与关闭须属于明确任务。任意宏即使声明只读也经 execute 调用，不是沙箱。',
+        'guidance': '宽范围设置读取优先一个或少量有界宏；不要先逐层 browse_tree/describe_object/read_properties 再用宏补漏。未知关系只做必要定位，明确后合并读取；已知少量属性才选结构化接口。已有格式、会话和可靠代码直接复用，不默认 get_capabilities 或完整契约。execute_macro/get_execution 默认 compact，超预算业务结果明示省略，需完整结果用 get_execution(result_view=full) 或材料窗口，不能为取正文重跑宏。任务结束报告 session_state.resources 中的驻留资源与保留原因；dirty/未知状态须用户决策，不自动保存或 discard。任意宏即使 effect=read 仍非沙箱，不等于 STAR 原生只读模式。',
     },
     'api': {
         'summary': '按需查实际安装的API签名、继承与用户指南中的操作前提、宏代码和版本说明。',
@@ -40,14 +40,14 @@ CAPABILITIES = {
     'recipes': {
         'summary': '选择已有参数化方法或已审阅的记忆方法，沿用通用宏执行与凭据。',
         'methods': ['list_recipes', 'execute_recipe'],
-        'guidance': '已有合适方法可以直接复用，但方法库不是 STAR 能力清单或使用宏的前置步骤。记忆方法须审阅完整记录、匹配修订并填当前参数。网格／计算方法默认拒绝触发已有自动保存；不以执行返回证明收敛。',
+        'guidance': 'list_recipes默认短索引；给recipe_id取得参数/适用性/依据，再按需include_source=true取得原始steps/imports/declarations。原样执行用execute_recipe保留参数校验；组合源码时处理步骤/helper/shared冲突并传当前参数，不重复研究已有代码。方法库不是STAR能力清单或固定前置。记忆方法先get_memory审阅、匹配修订，不照搬旧身份。网格/计算默认拒绝触发已有自动保存；返回不证明收敛。',
     },
     'structured': {
         'summary': '可选的对象发现、属性契约和结构化读写；不是使用 Java API 的必经步骤。',
         'methods': ['get_capabilities', 'find_objects', 'browse_tree', 'search_settings',
                     'relocate_object', 'describe_object', 'read_properties', 'modify_property',
                     'execute_operation', 'inspect_session'],
-        'guidance': '先确认目录／发现对实际版本的支持，不冒用邻近目录。已有对象和契约可复用；写入使用真实读取的完整 expected。检查逐项状态和覆盖，未读取不能当作未设置。结构化不支持不限制通用宏能力，也不要求逐功能补适配。',
+        'guidance': '适用于少量定位、已知属性或受控修改，不作为宽范围设置读取的默认路径。反复遍历节点仍只是在找读取目标时，应改用有界宏批量返回任务相关数据，而不是继续展开全树。只有选择结构化路径时才核对其版本支持，不能用get_capabilities作为宏的前置门槛。已有对象/契约可复用；写入须当前完整expected。保留错误和覆盖，不把未读取当未设置。',
     },
     'reference': {
         'summary': '明确需要时取得完整历史接口契约，不作为正常任务的固定前置调用。',
