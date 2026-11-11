@@ -1,0 +1,26 @@
+{
+  "applicability": "当前安装的用户指南与 Javadoc；资料阅读不等于编译、运行或当前算例条件核实。",
+  "approach": "已有适用材料直接复用。只有操作前提或版本疑问时，用 search_guide 定位 simulation history 或宏主题并定向读正文；检查包版本、代码窗口完整性和来源变化。只在签名确有缺口时 read_api，已知类名不先搜索，同类成员可集中取得。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-09T04:31:11.308209+00:00",
+  "evidence_ids": [
+    "a7c593fb835d4870b658370478705a5f"
+  ],
+  "exceptions": [
+    "同一主题 GUID 跨版本不保证正文一致；目录语言不保证正文语言。",
+    "教程下载引用不代表源码已取得，动画帧不保证对应每个真实记录状态。"
+  ],
+  "memory_id": "installed-guide-postprocessing",
+  "problem": "方法签名不足以说明历史回放的操作前提，指南代码片段也不等于完整可运行宏。",
+  "revision": 2,
+  "schema_version": 2,
+  "tags": [
+    "guide",
+    "SolutionHistory",
+    "宏材料",
+    "资料",
+    "postprocessing"
+  ],
+  "title": "按具体疑问复用安装指南与宏材料",
+  "updated_at": "2026-11-11T12:23:07.320352+00:00"
+}

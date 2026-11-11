@@ -1,0 +1,27 @@
+{
+  "applicability": "STAR 2602 的表面网格控制与报告选择配置；不覆盖全部 selector 族和所有动态求值。",
+  "approach": "通过 SurfaceCustomMeshControl.getGeometryObjectsInput() 取得选择输入；getQuery() 为 null 时读 getSelected()，否则保留 predicate/modifiers 而不假装已求值。根 manager 优先用 ManagerManager.has 取得已有实例。逐 getter 保留错误，表达式定义与求值分开；写静态选择需当前完整 descriptor 和明确授权。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-05T16:39:52.058138+00:00",
+  "evidence_ids": [
+    "87968626ab8b4c4fa176649ab3e9186e"
+  ],
+  "exceptions": [
+    "动态选择不能调用 getSelectedInstances 后伪装成静态配置。",
+    "getSelectedFilters() 可能为 null；不能据 non-null 文档把它改为空筛选。",
+    "CSO key 只供当前加载的关联定位；不当成跨会话 object_id 或 GUI 路径。"
+  ],
+  "memory_id": "bean-selector-config-read",
+  "problem": "DynamicQuerySelectorInput 不是空集合，查询规则也不能被报告为最终命中对象。",
+  "revision": 5,
+  "schema_version": 2,
+  "tags": [
+    "selection",
+    "GeometryObjects",
+    "DynamicQuerySelectorInput",
+    "SurfaceCustomMeshControl",
+    "选择"
+  ],
+  "title": "区分静态选择和动态查询并读取选择配置",
+  "updated_at": "2026-11-11T12:23:07.289569+00:00"
+}

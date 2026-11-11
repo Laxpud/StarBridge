@@ -1,0 +1,46 @@
+{
+  "applicability": "STAR 2602 的 NamedObject 命名接口；运行依据限 PartSurface，不保证所有子类均可改名。",
+  "approach": "target 使用当前 {object_id}，由 Core 在用户步骤前核对并绑定为真实对象；读取 getPresentationName()，调用 setPresentationName(name)，再回读并比较目标值。recipe 接收当前 target/name，不携带历史绑定。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-05T18:25:19.144802+00:00",
+  "evidence_ids": [
+    "cb79fc7f52de4771af1d72b1452e0eb3"
+  ],
+  "exceptions": [
+    "对象引用只在当前会话中使用，不设历史 object_id 默认值。",
+    "setter 异常不证明没有变更；先看原凭据，不能盲目重试或保存。"
+  ],
+  "memory_id": "current-object-parameter-rename",
+  "problem": "复用重命名代码时不能把历史名称或底层 key 当成当前对象。",
+  "recipe": {
+    "code": "Object raw = parameters.get(\"target\");\nif (!(raw instanceof star.base.neo.NamedObject)) throw new IllegalArgumentException(\"A NamedObject parameter is required\");\nstar.base.neo.NamedObject target = (star.base.neo.NamedObject) raw;\nString before = target.getPresentationName();\nString requested = (String) parameters.get(\"name\");\ntarget.setPresentationName(requested);\nString after = target.getPresentationName();\nresult.put(\"before_name\", before);\nresult.put(\"after_name\", after);\nresult.put(\"java_class\", target.getClass().getName());\nresult.put(\"object_key\", target.getObjectKeyAsString());\nif (!requested.equals(after)) throw new IllegalStateException(\"Object name readback differs from the requested name\");",
+    "effect": "mutate",
+    "imports": [],
+    "parameters": {
+      "name": {
+        "description": "本次任务要求的新显示名称",
+        "maxLength": 256,
+        "minLength": 1,
+        "required": true,
+        "type": "string"
+      },
+      "target": {
+        "description": "当前会话的目标对象，传{object_id}；执行时成为实际STAR对象",
+        "required": true,
+        "type": "object_reference"
+      }
+    },
+    "scope": "Rename only the explicitly bound current NamedObject and read back its presentation name; no save"
+  },
+  "revision": 3,
+  "schema_version": 2,
+  "tags": [
+    "rename",
+    "NamedObject",
+    "PartSurface",
+    "object_reference",
+    "重命名"
+  ],
+  "title": "绑定当前对象参数后重命名并回读",
+  "updated_at": "2026-11-11T12:23:07.263331+00:00"
+}

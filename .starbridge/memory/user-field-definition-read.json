@@ -1,0 +1,39 @@
+{
+  "applicability": "已存在的 UserFieldFunction，name 是程序名而非显示名称；保护流程在 STAR 2510 有运行依据。",
+  "approach": "先用 FieldFunctionManager.hasFunction(name) 检查存在，缺失则拒绝；再 getFunction(name)，核对 UserFieldFunction 类型后读取 getDefinition()。recipe 只接收当前程序名。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-05T14:46:53.812013+00:00",
+  "evidence_ids": [
+    "76b13af4f76e49509fa3b92ccc9737ef"
+  ],
+  "exceptions": [
+    "不能依赖与 GUI 并发编辑的事务隔离；存在性检查后目标仍可能变化。"
+  ],
+  "memory_id": "user-field-definition-read",
+  "problem": "getFunction(name) 不是无条件只读查找，目标缺失时可能创建派生场函数。",
+  "recipe": {
+    "code": "String name = (String) parameters.get(\"name\"); if (!sim.getFieldFunctionManager().hasFunction(name)) throw new IllegalArgumentException(\"Field function not found\"); UserFieldFunction field = (UserFieldFunction) sim.getFieldFunctionManager().getFunction(name); result.put(\"name\", field.getPresentationName()); result.put(\"definition\", field.getDefinition());",
+    "imports": [
+      "star.common.*"
+    ],
+    "parameters": {
+      "name": {
+        "description": "当前用户场函数的程序名 getFunctionName()，不是显示名称；必须已经存在。",
+        "required": true,
+        "type": "string"
+      }
+    }
+  },
+  "revision": 4,
+  "schema_version": 2,
+  "tags": [
+    "FieldFunctionManager",
+    "hasFunction",
+    "getFunction",
+    "UserFieldFunction",
+    "场函数",
+    "定义"
+  ],
+  "title": "按程序名安全读取既有用户场函数定义",
+  "updated_at": "2026-11-11T12:23:07.274405+00:00"
+}

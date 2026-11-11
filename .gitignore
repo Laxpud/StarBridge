@@ -2,7 +2,13 @@
 *.sim
 *.sim~
 /outputs/
-.starbridge/
+# 仅纳入经审阅的知识与精简证据；迁移备份、锁及其他运行文件保持本地。
+**/.starbridge/**
+!/.starbridge/memory/
+!/.starbridge/memory/*.json
+!/.starbridge/memory/evidence/
+!/.starbridge/memory/evidence/*/
+!/.starbridge/memory/evidence/*/*.json
 __pycache__/
 *.pyc
 /.venv-mcp/

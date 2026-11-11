@@ -1,0 +1,12 @@
+{
+  "created_at": "2026-11-11T12:23:07.351246+00:00",
+  "evidence_id": "450ca004a0a84d20b8148a4e2dacb759",
+  "kind": "execution",
+  "limitations": "只观察配置修改和回读；未触发导出，参数化组合及其他版本未独立验证。",
+  "memory_id": "auto-export-directory-update",
+  "references": [
+    "~/.starbridge/sessions/2459b8ccac154463acc4bc12e3a77d5d/requests/macro-fa-correct-export-directories-01/result.json"
+  ],
+  "schema_version": 1,
+  "summary": "既有 STAR 2602 宏分别完成表和图的目录修改及配置回读；此处参数化组合未独立运行。"
+}

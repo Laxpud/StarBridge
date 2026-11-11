@@ -1,0 +1,24 @@
+{
+  "applicability": "STAR 2602 的 TableManager 和 TabularObject/Table 类型关系。",
+  "approach": "使用 for (TabularObject obj : sim.getTableManager().getObjects()) 遍历；读取通用名称和类型后，只有 obj instanceof Table 才转换并调用 getRowCount/getColumnCount/getValueAt。读取其他表派生类型特有配置时，按其实际类型分支，不把非 Table 对象报告为空表。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-11T12:23:07.356598+00:00",
+  "evidence_ids": [
+    "19fb6cd0daff427299fed00cfcca4a96"
+  ],
+  "exceptions": [],
+  "memory_id": "table-manager-tabular-object",
+  "problem": "直接用 Table 遍历 TableManager.getObjects() 会因集合元素类型不兼容而编译失败。",
+  "revision": 1,
+  "schema_version": 2,
+  "tags": [
+    "TableManager",
+    "TabularObject",
+    "Table",
+    "表",
+    "编译",
+    "类型"
+  ],
+  "title": "遍历 TableManager 时先处理 TabularObject",
+  "updated_at": "2026-11-11T12:23:07.356598+00:00"
+}

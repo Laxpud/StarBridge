@@ -1,0 +1,27 @@
+{
+  "applicability": "execute_macro 的完整宏步骤与普通步骤混用；STAR 2602 有运行依据，2510 的既有依据仅为编译。",
+  "approach": "steps 内使用 macro={entry_source,entry_class,sources,classpath}，只列明确依赖；保留原 package 和入口。resolvePath 仍使用原宏位置，普通 Java 相对路径由 working_directory 决定。先检查本次参数再设置、回读和按授权另存；同一算例复用会话。准备参数工况文件不等于已取得新工况的有效解。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-07T05:54:20.272571+00:00",
+  "evidence_ids": [
+    "16ae4bcd8e334df08fdd97fa87cbb4e1"
+  ],
+  "exceptions": [
+    "来源宏不自动取得包装器 parameters/shared/result，入口返回与业务结果分别判断。",
+    "源码/JAR 冻结不包含外部 CSV、原生库或用户代码自行读取的数据。"
+  ],
+  "memory_id": "full-source-inlet-study",
+  "problem": "接入宏执行器不应要求拆写已有宏的 package、私有方法和辅助类。",
+  "revision": 2,
+  "schema_version": 2,
+  "tags": [
+    "完整宏",
+    "辅助源码",
+    "working_directory",
+    "resolvePath",
+    "参数研究",
+    "复用"
+  ],
+  "title": "原样复用完整宏与显式辅助源码",
+  "updated_at": "2026-11-11T12:23:07.304786+00:00"
+}

@@ -1,0 +1,29 @@
+{
+  "applicability": "STAR 2602 的已存 monitor 与 plot dataset；需要先确定当前绑定、单位、横轴和变换。",
+  "approach": "按实际绑定定位 plot 和 monitor，读取相对于当前 IterationMonitor 的 getAllSamples，保留 as_returned 数组。检查迭代键唯一性及完整集合后按键配对，再逐值判断 plot 是否为其有序子集。MonitorData 本身不附单位，单位要来自对应轴配置和数据关联；不通过修改 plot 设置补造历史。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-09T08:59:54.781487+00:00",
+  "evidence_ids": [
+    "c40d0142692b4ad7a290d39b7acaa3bd"
+  ],
+  "exceptions": [
+    "当前 plotLimit 不足以证明历史抽稀机制。",
+    "相同横轴对象的 Java 分支不证明所有 native 内部插值行为。",
+    "需要新文件时声明 mutate；CREATE_NEW 不提供内容写入事务。"
+  ],
+  "memory_id": "stored-monitor-versus-plot-coverage-2602",
+  "problem": "plot 导出的 CSV 不一定包含 monitor 已存的全部样本，不能据图数据间隔推断求解步长。",
+  "revision": 2,
+  "schema_version": 2,
+  "tags": [
+    "monitor",
+    "plot",
+    "getAllSamples",
+    "MonitorData",
+    "采样",
+    "监视器",
+    "载荷"
+  ],
+  "title": "区分图导出数据与完整已存监视器样本",
+  "updated_at": "2026-11-11T12:23:07.335445+00:00"
+}

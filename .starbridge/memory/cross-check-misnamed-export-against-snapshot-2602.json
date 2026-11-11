@@ -1,0 +1,27 @@
+{
+  "applicability": "STAR 2602 的既有快照、存储表、监视器及外部 CSV；实际对象和单位由当前任务解析。",
+  "approach": "先识别当前快照及配置，再在表的分布位置逐值对照 CSV，并用 monitor 时间及物理量核对载荷。明确区分抽样一致和全序列谱系证明；保留原输入与历史产物，纠正面向用户的身份。若需要修正自动导出目录，另用 auto-export-directory-update 方法，不把两种任务混记。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-11T09:19:23.171985+00:00",
+  "evidence_ids": [
+    "3f3ed7cf291f4a85979cd5fef15cdf75"
+  ],
+  "exceptions": [
+    "部分帧或部分行匹配不证明全部文件的历史谱系。",
+    "已存表的表示和提取缓存不必等于当前视图，不擅自重新提取来覆盖原证据。"
+  ],
+  "memory_id": "cross-check-misnamed-export-against-snapshot-2602",
+  "problem": "目录名、残留对象名或时间接近不能单独证明导出数据属于哪个算例。",
+  "revision": 3,
+  "schema_version": 2,
+  "tags": [
+    "provenance",
+    "XyzInternalTable",
+    "monitor",
+    "来源",
+    "目录",
+    "身份"
+  ],
+  "title": "用数据关联核对误命名导出目录的来源",
+  "updated_at": "2026-11-11T12:23:07.343265+00:00"
+}

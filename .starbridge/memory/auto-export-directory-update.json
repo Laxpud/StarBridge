@@ -1,0 +1,58 @@
+{
+  "applicability": "STAR 2602 的 AutoUpdateTable/TableUpdate 与 UpdatePlot/PlotUpdate；传当前对象、预期旧路径和目标路径。",
+  "approach": "表用 getTableUpdate()，通过 getFilePathCso().getFilePath() 读路径，setFilePath(path) 改路径；图用 getPlotUpdate()，通过 getAnimationFilePath() 与 setAnimationFilePath(path) 操作目录。修改前比较当前旧路径，修改后回读；批量任务还应比较启用、文件名、格式、更新方式和频率。recipe 仅处理单个当前对象的路径，不保存、不提取、不求解或实际导出。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-11T12:23:07.351246+00:00",
+  "evidence_ids": [
+    "450ca004a0a84d20b8148a4e2dacb759"
+  ],
+  "exceptions": [
+    "参数化组合由已有调用链整理，未独立运行；复用时核对当前对象和任务范围。",
+    "仅设置目录字符串不证明非现存目录会在导出时自动创建。",
+    "表与图的路径可能涉及不同文件系统语义；不要将字符串改写当成实际导出验证。",
+    "setter 失败时查询原凭据，不假设未生效或自动重试。"
+  ],
+  "memory_id": "auto-export-directory-update",
+  "problem": "表和图的自动导出路径属于不同更新对象，不能假设共用同一个路径接口。",
+  "recipe": {
+    "code": "Object target = parameters.get(\"target\");\nString expected = (String) parameters.get(\"expected_path\");\nString requested = (String) parameters.get(\"new_path\");\nString before;\nString after;\nif (target instanceof AutoUpdateTable) {\n    TableUpdate update = ((AutoUpdateTable) target).getTableUpdate();\n    before = update.getFilePathCso().getFilePath();\n    if (!expected.equals(before)) throw new IllegalStateException(\"Export path changed before update\");\n    update.setFilePath(requested);\n    after = update.getFilePathCso().getFilePath();\n} else if (target instanceof UpdatePlot) {\n    PlotUpdate update = ((UpdatePlot) target).getPlotUpdate();\n    before = String.valueOf(update.getAnimationFilePath());\n    if (!expected.equals(before)) throw new IllegalStateException(\"Export path changed before update\");\n    update.setAnimationFilePath(requested);\n    after = String.valueOf(update.getAnimationFilePath());\n} else {\n    throw new IllegalArgumentException(\"An AutoUpdateTable or UpdatePlot is required\");\n}\nresult.put(\"before_path\", before);\nresult.put(\"after_path\", after);\nif (!requested.equals(after)) throw new IllegalStateException(\"Export directory readback mismatch\");",
+    "effect": "mutate",
+    "imports": [
+      "star.common.*"
+    ],
+    "parameters": {
+      "expected_path": {
+        "description": "本次读取的完整旧目录",
+        "required": true,
+        "type": "string"
+      },
+      "new_path": {
+        "description": "本次任务明确授权的新目录",
+        "required": true,
+        "type": "string"
+      },
+      "target": {
+        "description": "当前会话明确选择的表或图对象",
+        "required": true,
+        "type": "object_reference"
+      }
+    },
+    "scope": "Update only the directory of the explicitly bound current table or plot and read back; no save or export"
+  },
+  "revision": 2,
+  "schema_version": 2,
+  "tags": [
+    "自动",
+    "导出",
+    "目录",
+    "路径",
+    "文件",
+    "表",
+    "图",
+    "TableUpdate",
+    "WindowUpdate",
+    "PlotUpdate"
+  ],
+  "title": "读取和修改表与图的自动导出目录",
+  "updated_at": "2026-11-11T12:31:10.017401+00:00"
+}

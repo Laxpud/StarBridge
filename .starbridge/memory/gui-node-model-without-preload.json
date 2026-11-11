@@ -1,0 +1,27 @@
+{
+  "applicability": "STAR 2602 本客户端标准 Simulation 树；其他窗口布局和选中状态不在该方法的观察范围内。",
+  "approach": "已知 objects.gui_locations 方法时直接复用；targets 传当前对象引用，按需给 child_path/property_name。检查 presentation.read_status 和逐目标状态。实现用 SimulationProcessObject 绑定当前 Simulation 后构建 SimulationProcessNode，不依赖预加载视图；菜单文字来自不显示的节点弹出组件。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-05T22:17:20.030613+00:00",
+  "evidence_ids": [
+    "9f3d73d4533a46bd8e8d571f35ce505f"
+  ],
+  "exceptions": [
+    "只有真实父链到达官方根时才标为 resolved。",
+    "属性元数据不替代当前值，未读子菜单不表示为空；不执行菜单动作。"
+  ],
+  "memory_id": "gui-node-model-without-preload",
+  "problem": "拥有者链或 Action.NAME 不能替代真实的标准树位置与菜单文字。",
+  "revision": 3,
+  "schema_version": 2,
+  "tags": [
+    "GUI",
+    "headless",
+    "objects.gui_locations",
+    "SimulationProcessNode",
+    "界面",
+    "位置"
+  ],
+  "title": "后台取得当前对象的标准 GUI 位置",
+  "updated_at": "2026-11-11T12:23:07.297079+00:00"
+}

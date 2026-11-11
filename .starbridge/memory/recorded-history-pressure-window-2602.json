@@ -1,0 +1,29 @@
+{
+  "applicability": "STAR 2602 的既有 SolutionHistory/RecordedSolutionView；需要当前字段、部件、坐标系、采样和写入授权。",
+  "approach": "先读取已有 history/view 的索引、时间和表示；确有缺口且范围允许时才 rescanFile 并检查变化。XYZ 表绑定当前 RecordedView、目标面、字段及坐标系。按真实索引逐状态回读 SI 时间，选择窗口括界；extract/export 后核对状态和时间再记清单。恢复原 view 索引，离线检查 CSV 单位、有限值和覆盖。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-09T06:30:41.809866+00:00",
+  "evidence_ids": [
+    "0cf5403b98094b958b1c7721dd4d9000"
+  ],
+  "exceptions": [
+    "外部文件写入属于 mutate；宏返回不等于 CSV 内容已检查。",
+    "恢复索引不等于恢复提取缓存或卸载状态；窗口相位不自动等于运动相位。",
+    "样本等权统计不等于面积统计或压力积分，不假设历史状态等间隔。"
+  ],
+  "memory_id": "recorded-history-pressure-window-2602",
+  "problem": "历史状态计数不保证索引和时间可用；已有表可能指向 Latest 而不是 Recorded 表示。",
+  "revision": 2,
+  "schema_version": 2,
+  "tags": [
+    "SolutionHistory",
+    "RecordedSolutionView",
+    "XyzInternalTable",
+    "rescanFile",
+    "压力",
+    "历史",
+    "窗口"
+  ],
+  "title": "按真实历史索引导出指定时间窗口的表面压力",
+  "updated_at": "2026-11-11T12:23:07.327896+00:00"
+}

@@ -1,0 +1,27 @@
+{
+  "applicability": "STAR 2602 的 GlobalParameterManager、ScalarGlobalParameter 和 ImplicitUnsteadySolver；需要当前实例确有对应对象。",
+  "approach": "sim.get(GlobalParameterManager.class).getObjects() 返回当前全局参数；对 ScalarGlobalParameter 调用 getQuantity()，分别读取 getDefinition()/getSIValue()/getUnits().getPresentationName()，逐项保留错误。VectorGlobalParameter 可读取其 quantity 的定义，不假设它有标量 getter。非定常时间步取 sim.getSolverManager().getSolver(ImplicitUnsteadySolver.class).getTimeStep()，再分别读定义、SI 值和单位。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-11T12:23:07.366842+00:00",
+  "evidence_ids": [
+    "986f9b323d9443958a0db22792aa450a"
+  ],
+  "exceptions": [
+    "定义字符串不等于求值结果，读取失败不能解释为参数不存在。",
+    "确认求解器类型和当前对象后再访问；不调用 setter、求解或保存。"
+  ],
+  "memory_id": "global-parameter-and-time-step-read",
+  "problem": "读取运动或声学输入时，要区分表达式定义、当前 SI 值和单位，不能把邻近工况参数照搬。",
+  "revision": 1,
+  "schema_version": 2,
+  "tags": [
+    "GlobalParameterManager",
+    "ScalarGlobalParameter",
+    "ImplicitUnsteadySolver",
+    "全局参数",
+    "时间步",
+    "单位"
+  ],
+  "title": "读取全局参数定义、SI 值与非定常时间步",
+  "updated_at": "2026-11-11T12:23:07.366842+00:00"
+}

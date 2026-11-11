@@ -1,0 +1,13 @@
+{
+  "created_at": "2026-11-11T12:23:07.282074+00:00",
+  "evidence_id": "f71154660c39426d87171157341bb640",
+  "kind": "execution",
+  "limitations": "未扩展为其他版本或全部实例的验证。",
+  "memory_id": "mesh-batch-autosave-boundary",
+  "references": [
+    "outputs/requirements-first/reference-workflow/35-execute_recipe.json",
+    "outputs/requirements-first/runtime/sessions/8f12cc01fa5d4b8f826a4e22855701cf/requests/macro-channel-volume-mesh-1/star.log#L343-L350"
+  ],
+  "schema_version": 1,
+  "summary": "既有体网格工作观察到 batch 自动保存晚于宏凭据；增加保护后可在生成前拒绝有风险的请求。"
+}

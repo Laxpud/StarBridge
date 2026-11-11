@@ -1,0 +1,24 @@
+{
+  "applicability": "STAR 2602 的监视器归一化读取；PhysicalTimeMonitor 的属性缺失已有实际观察。",
+  "approach": "先读取当前 NormalizationType，按类型取得适用配置；getAutoNormalizeIndex 的继承签名不能替代实例判断。逐 getter 保留未知或错误，不让可选归一化诊断中断主要结果交付；对已与日志同口径的样本不要再除一次因子。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-11T12:23:07.361742+00:00",
+  "evidence_ids": [
+    "22c21532d46f49eeab1e443cbde1749e"
+  ],
+  "exceptions": [],
+  "memory_id": "monitor-normalization-instance-property",
+  "problem": "Javadoc 中存在且能编译的 getter，不保证每个 monitor 实例都具有对应运行时属性。",
+  "revision": 1,
+  "schema_version": 2,
+  "tags": [
+    "Monitor",
+    "PhysicalTimeMonitor",
+    "NormalizationType",
+    "归一化",
+    "残差",
+    "getter"
+  ],
+  "title": "监视器归一化按当前实例判断而非只看继承签名",
+  "updated_at": "2026-11-11T12:23:07.361742+00:00"
+}

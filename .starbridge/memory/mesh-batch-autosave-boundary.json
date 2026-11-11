@@ -1,0 +1,27 @@
+{
+  "applicability": "STAR 2602 的 parts-based 体网格任务；其他网格类型及自动保存组合未完全覆盖。",
+  "approach": "同时检查 AutoSaveBatch 和 AutoSaveMesh；可能越出任务写入范围时先拒绝，不擅自关闭用户设置。宏内 session_path 早于 batch 客户端退出，后续自动保存可能改变路径和引用身份；必要时重新定位当前对象。",
+  "certainty": "single_observation",
+  "created_at": "2026-11-05T16:39:52.055114+00:00",
+  "evidence_ids": [
+    "f71154660c39426d87171157341bb640"
+  ],
+  "exceptions": [
+    "缺少 MeshPipelineController 时的预检查失败，不证明自动保存保护已生效。",
+    "dirty 状态不能单独授权保存或丢弃；表面网格的保守保护不等于已有运行覆盖。"
+  ],
+  "memory_id": "mesh-batch-autosave-boundary",
+  "problem": "只检查 AutoSaveMesh 不能保证网格请求结束后不写算例文件。",
+  "revision": 3,
+  "schema_version": 2,
+  "tags": [
+    "mesh",
+    "autosave",
+    "AutoSaveBatch",
+    "AutoSaveMesh",
+    "网格",
+    "自动保存"
+  ],
+  "title": "网格生成同时检查 mesh 与 batch 自动保存",
+  "updated_at": "2026-11-11T12:23:07.282074+00:00"
+}

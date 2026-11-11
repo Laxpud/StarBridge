@@ -1,0 +1,13 @@
+{
+  "created_at": "2026-11-11T12:23:07.320352+00:00",
+  "evidence_id": "a7c593fb835d4870b658370478705a5f",
+  "kind": "documentation",
+  "limitations": "依据仅为资料读取，不是已运行的后处理流程。",
+  "memory_id": "installed-guide-postprocessing",
+  "references": [
+    "outputs/requirements-first/postprocessing-materials/native-mcp.json",
+    "outputs/requirements-first/postprocessing-materials/history-2602.json"
+  ],
+  "schema_version": 1,
+  "summary": "既有资料任务读取了两个安装版本的指南、宏片段及场景导出重载，未执行这些示例。"
+}

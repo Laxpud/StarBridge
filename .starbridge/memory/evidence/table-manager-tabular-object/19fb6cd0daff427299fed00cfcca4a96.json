@@ -1,0 +1,12 @@
+{
+  "created_at": "2026-11-11T12:23:07.356598+00:00",
+  "evidence_id": "19fb6cd0daff427299fed00cfcca4a96",
+  "kind": "execution",
+  "limitations": "未扩展为其他版本或全部实例的验证。",
+  "memory_id": "table-manager-tabular-object",
+  "references": [
+    "~/.starbridge/sessions/3062e2e98253480b9df79c6bf0759f2f/requests/macro-fa10-read-tables-and-monitors-02/result.json"
+  ],
+  "schema_version": 1,
+  "summary": "一次实际宏被预编译拒绝；改为 TabularObject 遍历及类型检查后，同一清点任务完成。"
+}
