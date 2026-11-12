@@ -20,6 +20,8 @@ from .coverage import coverage
 from .execution import prepare_find, prepare_modification_value, prepare_read_value
 from . import objects
 from .session_store import new_session_directory, session_directory, public_session
+from .memory_safety import (MEMORY_WRITE_METHODS, MemorySensitiveDataError, ensure_safe_memory_data,
+                            sensitive_data_rejection, memory_argument_rejection)
 
 
 METHODS = (
@@ -61,7 +63,11 @@ class Service:
         uncertain 以 Bridge 写入的状态为依据，不根据异常文本猜测 setter 是否执行。
         即使 MCP 客户端断开，管理会话仍存在；恢复时必须先查询状态，不能重发修改。
         """
+        memory_write = isinstance(method, str) and method in MEMORY_WRITE_METHODS
         try:
+            # 记忆原始参数先检查，再做可能包含未知键名的签名/结构诊断。
+            if memory_write:
+                ensure_safe_memory_data(arguments)
             if method not in METHODS or not isinstance(arguments, dict):
                 raise ValueError('Unknown service method or invalid arguments')
             operation = getattr(self, method)
@@ -75,12 +81,18 @@ class Service:
                       'rejected': 'rejected', 'running': 'busy'}.get(execution_status, 'ok')
             return {'status': status, 'result': result}
         except Exception as error:
+            if isinstance(error, MemorySensitiveDataError):
+                return sensitive_data_rejection(error)
+            if memory_write and isinstance(error, ValueError):
+                # 不将原始字段、枚举值或参数名拼入记忆写入的错误响应。
+                return memory_argument_rejection()
             status = 'rejected' if isinstance(error, (ModificationRejected, ValueError)) else 'error'
             from .memory import (MemoryStoreError, MemoryConflictError, MemoryBusyError,
                                  MemoryPersistenceError, MemoryMigrationRequiredError)
             if isinstance(error, MemoryMigrationRequiredError):
                 # 旧案例只能由调用者明确提炼后迁移；普通查询不返回旧正文或诱导读取证据。
-                return {'status': 'rejected', 'error': {'type': type(error).__name__, 'message': str(error)},
+                return {'status': 'rejected', 'error': {'type': type(error).__name__,
+                            'message': 'Legacy mixed memories require explicit knowledge migration.' if memory_write else str(error)},
                         'migration': {'records': error.records[:20], 'total': len(error.records)},
                         'recovery': {'automatic_retry': False, 'next_tool': 'starbridge.update_memory',
                                      'instruction': '审阅原存储文件并提炼知识后，按原修订提供四个知识必填字段；'
@@ -90,9 +102,16 @@ class Service:
                 status = ('rejected' if isinstance(error, MemoryConflictError) else
                           'busy' if isinstance(error, MemoryBusyError) else
                           'uncertain' if isinstance(error, MemoryPersistenceError) and error.may_have_committed else 'error')
-                return {'status': status, 'error': {'type': type(error).__name__, 'message': str(error)},
+                return {'status': status, 'error': {'type': type(error).__name__,
+                            'message': 'Memory storage operation failed; inspect the current revision before retrying.' if memory_write else str(error)},
                         'recovery': {'automatic_retry': False, 'next_tool': 'starbridge.get_memory',
                                      'instruction': '先读取相同范围的记忆核对修订；不得因此重做已完成的算例操作。'}}
+            if memory_write:
+                # 未预期异常也不能回显请求或底层解析文本，更不能建议重做算例。
+                return {'status': 'error', 'error': {'type': 'MemoryWriteError',
+                            'message': 'Memory write failed; input and underlying error content are omitted.'},
+                        'recovery': {'automatic_retry': False, 'next_tool': 'starbridge.get_memory',
+                                     'instruction': '核对相同范围的当前修订后人工处理，不自动重放或重做算例。'}}
             state = None
             # 错误封套仅查看本次显式目标，不扫描用户会话，也不修改恢复状态。
             directory = arguments.get('session_id') if isinstance(arguments, dict) else None

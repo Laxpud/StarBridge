@@ -6,14 +6,16 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from jsonschema import Draft202012Validator
 from mcp.server.mcpserver.exceptions import ToolError
 from starbridge.core import memory
-from starbridge.core.interface_contract import SERVER_INSTRUCTIONS, usage_contract
-from starbridge.core.interface_exposure import expand, method_entry
+from starbridge.core.interface_contract import SERVER_INSTRUCTIONS, USAGE_INSTRUCTIONS, usage_contract
+from starbridge.core.interface_exposure import CAPABILITIES, expand, method_entry
+from starbridge.core.memory_safety import MEMORY_WRITE_POLICY
 from starbridge.core.service import METHODS, Service
 from starbridge.interfaces import mcp_server
 
@@ -134,6 +136,123 @@ class MemoryInterfaceTests(unittest.IsolatedAsyncioTestCase):
                          {'problem', 'applicability', 'approach', 'certainty'})
         self.assertIn('get_memory_evidence', contract['methods'])
         self.assertNotIn('observed_effect', contract['required_entry_fields'])
+
+    async def test_memory_guard_runs_before_schema_or_sdk_and_does_not_echo(self):
+        token = 'sk-proj-' + 'C3d4' * 10
+        invalid = entry()
+        invalid['evidence']['references'] = ['https://service.invalid/?access_token=' + token]
+        invalid['unexpected_field'] = 'The structure is also invalid'
+        with patch.object(mcp_server.service, 'call', wraps=mcp_server.service.call) as business:
+            result = await mcp_server.invoke_method('execute', 'record_memory', {'entry': invalid})
+            business.assert_not_called()
+        value = decoded(result)
+        self.assertTrue(result.is_error)
+        self.assertEqual(value['error']['type'], 'MemorySensitiveDataError')
+        self.assertNotIn(token, json.dumps(value))
+        self.assertNotIn('entry', value['recovery'])
+        self.assertEqual(value['error']['field_path'][:2], ['entry', 'evidence'])
+        self.assertEqual(memory.search_memory('export')['total_matches'], 0)
+
+    async def test_unknown_method_and_outer_format_diagnostics_do_not_echo_credentials(self):
+        token = 'sk-proj-' + 'I9j0' * 10
+        result = await mcp_server.invoke_method('execute', token, {})
+        self.assertTrue(result.is_error)
+        self.assertNotIn(token, json.dumps(decoded(result)))
+        downstream = AsyncMock()
+        context = SimpleNamespace(method='tools/call', params={'name': 'starbridge.execute',
+            'arguments': json.dumps({'method': 'record_memory', 'arguments': {'entry': {'approach': token}}})})
+        result = await mcp_server.validate_arguments(context, downstream)
+        downstream.assert_not_awaited()
+        self.assertTrue(result.is_error)
+        self.assertNotIn(token, json.dumps(decoded(result)))
+
+    async def test_memory_format_errors_omit_unknown_names_and_invalid_values(self):
+        marker = 'private-project-marker-not-a-token'
+        invalid = entry()
+        invalid[marker] = marker
+        result = await mcp_server.invoke_method('execute', 'record_memory', {'entry': invalid})
+        self.assertTrue(result.is_error)
+        self.assertEqual(decoded(result)['error']['type'], 'ArgumentValidationError')
+        self.assertNotIn(marker, json.dumps(decoded(result)))
+        memory.record_memory(entry())
+        result = await mcp_server.invoke_method('execute', 'update_memory',
+            {'memory_id': 'interface-method', 'expected_revision': marker, 'changes': {'title': 'Safe'}})
+        self.assertTrue(result.is_error)
+        self.assertNotIn(marker, json.dumps(decoded(result)))
+        self.assertEqual(memory.get_memory('interface-method')['revision'], 1)
+
+    async def test_memory_strict_revision_errors_are_sanitized_before_sdk_dispatch(self):
+        with patch.object(mcp_server.server, 'call_tool', new_callable=AsyncMock) as sdk:
+            result = await mcp_server.invoke_method('execute', 'update_memory',
+                {'memory_id': 'interface-method', 'expected_revision': 1.0, 'changes': {'title': 'Safe'}})
+            sdk.assert_not_awaited()
+        self.assertTrue(result.is_error)
+        self.assertEqual(decoded(result)['error']['argument_path'], ['expected_revision'])
+
+    async def test_known_memory_call_checks_unexpected_argument_values(self):
+        token = 'ghp_' + 'C3d4' * 10
+        with patch.object(mcp_server.service, 'call', wraps=mcp_server.service.call) as business:
+            result = await mcp_server.invoke_method('execute', 'record_memory',
+                {'entry': entry(), 'unexpected_argument': token})
+            business.assert_not_called()
+        self.assertTrue(result.is_error)
+        self.assertEqual(decoded(result)['error']['type'], 'MemorySensitiveDataError')
+        self.assertNotIn(token, json.dumps(decoded(result)))
+
+    async def test_protocol_middleware_checks_stable_and_direct_memory_tools(self):
+        token = 'sk-proj-' + 'E5f6' * 10
+        value = entry()
+        value['approach'] = token
+        for operation, arguments in (
+                ('starbridge.execute', {'method': 'record_memory', 'arguments': {'entry': value}}),
+                ('starbridge.record_memory', {'entry': value})):
+            context = SimpleNamespace(method='tools/call', params={'name': operation, 'arguments': arguments})
+            downstream = AsyncMock()
+            result = await mcp_server.validate_arguments(context, downstream)
+            downstream.assert_not_awaited()
+            self.assertTrue(result.is_error)
+            self.assertEqual(decoded(result)['error']['type'], 'MemorySensitiveDataError')
+            self.assertNotIn(token, json.dumps(decoded(result)))
+
+    async def test_protocol_memory_format_error_does_not_echo_outer_keys(self):
+        marker = 'private-project-outer-key'
+        context = SimpleNamespace(method='tools/call', params={'name': 'starbridge.execute',
+            'arguments': {'method': 'record_memory', 'arguments': {'entry': entry()}, marker: marker}})
+        downstream = AsyncMock()
+        result = await mcp_server.validate_arguments(context, downstream)
+        downstream.assert_not_awaited()
+        self.assertTrue(result.is_error)
+        self.assertNotIn(marker, json.dumps(decoded(result)))
+
+    async def test_original_sdk_business_wrapper_reaches_shared_guard(self):
+        token = 'sk-proj-' + 'G7h8' * 10
+        value = entry()
+        value['approach'] = token
+        result = await mcp_server.server.call_tool('starbridge.record_memory', {'entry': value})
+        self.assertTrue(result.is_error)
+        self.assertEqual(decoded(result)['error']['type'], 'MemorySensitiveDataError')
+        self.assertNotIn(token, json.dumps(decoded(result)))
+        self.assertEqual(memory.search_memory('export')['total_matches'], 0)
+
+    async def test_memory_dispatch_failure_omits_underlying_sdk_error(self):
+        marker = 'private-underlying-error-marker'
+        with patch.object(mcp_server.server, 'call_tool', new_callable=AsyncMock, side_effect=ToolError(marker)):
+            result = await mcp_server.invoke_method('execute', 'record_memory', {'entry': entry()})
+        self.assertTrue(result.is_error)
+        self.assertEqual(decoded(result)['status'], 'error')
+        self.assertNotIn(marker, json.dumps(decoded(result)))
+        self.assertFalse(decoded(result)['recovery']['automatic_retry'])
+
+    async def test_sensitive_policy_is_consistent_in_published_guidance(self):
+        self.assertIn(MEMORY_WRITE_POLICY, SERVER_INSTRUCTIONS)
+        self.assertIn(MEMORY_WRITE_POLICY, USAGE_INSTRUCTIONS)
+        self.assertIn(MEMORY_WRITE_POLICY, CAPABILITIES['memory']['guidance'])
+        self.assertEqual(usage_contract()['working_memory']['safety']['policy'], MEMORY_WRITE_POLICY)
+        for method, field in (('record_memory', 'entry'), ('update_memory', 'changes')):
+            schema = self.catalog[method]['input_schema']['properties'][field]
+            self.assertIn(MEMORY_WRITE_POLICY, schema['description'])
+            self.assertIn('认证值', self.catalog[method]['description'])
+            self.assertNotIn('allow_sensitive', self.catalog[method]['input_schema']['properties'])
 
     async def test_guidance_allows_direct_macros_and_keeps_case_read_optional(self):
         self.assertIn('自身知识', SERVER_INSTRUCTIONS)

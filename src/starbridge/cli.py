@@ -9,6 +9,7 @@ import sys
 from starbridge import __version__
 from starbridge.core.catalog import read_json
 from starbridge.core.service import METHODS, Service, contract
+from starbridge.core.memory_safety import MEMORY_WRITE_METHODS, memory_argument_rejection
 
 
 def main():
@@ -28,7 +29,9 @@ def main():
         try:
             result = Service().call(args.method, read_json(args.arguments))
         except (OSError, ValueError) as error:
-            result = {'status': 'rejected', 'error': {'type': type(error).__name__, 'message': str(error)}}
+            # 记忆请求文件解析失败时也不回显原文、文件名或可能含认证值的底层错误。
+            result = (memory_argument_rejection() if args.method in MEMORY_WRITE_METHODS else
+                      {'status': 'rejected', 'error': {'type': type(error).__name__, 'message': str(error)}})
     print(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False))
     return 0 if result['status'] == 'ok' else 1
 

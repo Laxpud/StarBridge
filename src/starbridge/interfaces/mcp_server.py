@@ -10,12 +10,17 @@ from typing import Any
 
 from mcp import types
 from mcp.server import MCPServer
-from pydantic import StrictBool, StrictFloat, StrictInt, StrictStr
+from pydantic import StrictBool, StrictFloat, StrictInt, StrictStr, ValidationError
+from mcp.server.mcpserver.exceptions import ToolError
 from jsonschema import Draft202012Validator
 
 from starbridge import __version__
 from starbridge.core.service import METHODS, Service, contract
 from starbridge.core.interface_contract import SERVER_INSTRUCTIONS, tool_input_schema, recovery_guidance
+from starbridge.core.memory_safety import (
+    MEMORY_WRITE_METHODS, MemorySensitiveDataError, ensure_safe_memory_data,
+    sensitive_data_rejection, memory_argument_rejection, safe_field_path,
+)
 from starbridge.core.interface_exposure import (
     ENTRY_TOOLS, READ_METHODS, method_entry, validate_partition, expand as expand_contracts,
 )
@@ -43,21 +48,41 @@ def tool_result(result):
         is_error=result['status'] != 'ok')
 
 
+def _memory_write_call(operation, arguments):
+    """识别稳定转发和原业务注册的记忆写入，不将其他宏参数纳入此检查。"""
+    if isinstance(operation, str) and operation in MEMORY_WRITE_METHODS:
+        return True
+    method = arguments.get('method') if isinstance(arguments, dict) else None
+    return operation in ('execute', 'query') and isinstance(method, str) and method in MEMORY_WRITE_METHODS
+
+
 async def validate_arguments(context, call_next):
-    """先按公开 JSON Schema 检查原始参数，防止 SDK 丢弃未知字段或将字符串隐式转成对象。"""
+    """记忆调用先做无原文安全检查，再校验结构，避免 SDK 错误回显未知键和值。"""
     if context.method == 'tools/call' and isinstance(context.params, dict):
         params = context.params
+        operation = str(params.get('name', '')).removeprefix('starbridge.')
+        raw = params.get('arguments', {})
+        memory_write = _memory_write_call(operation, raw)
+        if memory_write:
+            try:
+                ensure_safe_memory_data(raw)
+            except MemorySensitiveDataError as error:
+                return tool_result(sensitive_data_rejection(error))
         for tool in await server.list_tools():
             if tool.name == params.get('name'):
                 schema = tool_input_schema(tool.name.removeprefix('starbridge.'), tool.input_schema)
                 error = next(Draft202012Validator(schema).iter_errors(params.get('arguments', {})), None)
                 if error is not None:
+                    if memory_write:
+                        return tool_result(memory_argument_rejection(error.absolute_path))
                     if tool.name.removeprefix('starbridge.') in ENTRY_TOOLS:
                         return entry_rejection(error.message, list(error.absolute_path))
                     return tool_result({'status': 'rejected', 'error': {
                         'type': 'ArgumentValidationError', 'message': error.message,
                         'argument_path': list(error.absolute_path)},
                         'recovery': recovery_guidance('rejected')})
+                if operation == 'update_memory' and type(raw.get('expected_revision')) is not int:
+                    return tool_result(memory_argument_rejection(['expected_revision']))
                 break
     result = await call_next(context)
     if context.method == 'tools/list' and isinstance(result, types.ListToolsResult):
@@ -127,7 +152,12 @@ async def expand_capabilities(capabilities: list[StrictStr] | None = None,
 
 
 def entry_rejection(message, path=None):
-    """入口输入错误在业务调用之前拒绝，不据此推断已有算例状态或重试写入。"""
+    """入口错误不代表算例失败；诊断本身若含认证格式，也不能向客户端回显。"""
+    try:
+        ensure_safe_memory_data({'message': message, 'path': path})
+    except MemorySensitiveDataError:
+        message = 'Tool arguments were rejected; validation content is omitted.'
+        path = safe_field_path(path or [])
     return tool_result({'status': 'rejected', 'error': {'type': 'ArgumentValidationError',
         'message': message, 'argument_path': path or []},
         'recovery': {'automatic_retry': False, 'next_tool': 'starbridge.expand_capabilities',
@@ -139,7 +169,14 @@ async def invoke_method(entry, method, arguments):
 
     不能仅用 Service.call 替代 SDK 校验：JSON Schema 的 integer 可能接受 1.0，原
     StrictInt 不接受。公开 call_tool 不递归进入 middleware；同步业务仍由 SDK 在线程执行。
+    记忆输入在 Schema/SDK 之前检查，不能让校验错误将检测到的认证值带回响应。
     """
+    memory_write = isinstance(method, str) and method in MEMORY_WRITE_METHODS
+    if memory_write:
+        try:
+            ensure_safe_memory_data(arguments)
+        except MemorySensitiveDataError as error:
+            return tool_result(sensitive_data_rejection(error))
     try:
         expected = method_entry(method)
     except ValueError as error:
@@ -150,10 +187,25 @@ async def invoke_method(entry, method, arguments):
     catalog = await method_catalog()
     error = next(Draft202012Validator(catalog[method]['input_schema']).iter_errors(arguments), None)
     if error is not None:
+        if memory_write:
+            return tool_result(memory_argument_rejection(error.absolute_path))
         return entry_rejection(error.message, ['arguments', *error.absolute_path])
+    if method == 'update_memory' and type(arguments.get('expected_revision')) is not int:
+        return tool_result(memory_argument_rejection(['expected_revision']))
     # 仅允许既有业务名称，不能转发回 query/execute/expand 形成递归。CallToolResult 原样返回，
     # 保留 Core partial/uncertain 与 is_error，不再次包一层 JSON 或复制 structuredContent。
-    return await server.call_tool('starbridge.' + method, arguments)
+    try:
+        return await server.call_tool('starbridge.' + method, arguments)
+    except ToolError as error:
+        if not memory_write:
+            raise
+        if isinstance(error.__cause__, ValidationError):
+            return tool_result(memory_argument_rejection())
+        # 非参数错误不能声称从未执行；省略底层异常，核对修订后人工处理。
+        return tool_result({'status': 'error', 'error': {'type': 'MemoryWriteError',
+                            'message': 'Memory write dispatch failed; underlying error content is omitted.'},
+                            'recovery': {'automatic_retry': False, 'next_tool': 'starbridge.get_memory',
+                                         'instruction': '先核对相同范围的当前修订，不自动重放或重做算例。'}})
 
 
 @server.tool(name='starbridge.query', annotations=READ)
@@ -389,6 +441,9 @@ def record_memory(entry: dict, project_dir: StrictStr | None = None) -> types.Ca
     优先保存调用顺序、参数化代码和实际踩坑，不把项目经过、路径和数值当方法主体。
     可选evidence仅需summary；可附kind、references和limitations，格式化后最多4 KiB。
     引用现成凭据即可，不复制完整数据，不为记录额外运行、验证或生成报告。
+    写前检查知识、代码、默认参数、证据和引用，不含认证值、隐私或未经授权的项目机密。
+    优先省略或参数化；确需项目敏感内容先确认保存/入库范围，允许记忆不等于允许公开。
+    入口只拦常见明显认证值，错误只给安全字段位置与类别，不自动脱敏、不打开引用或提供绕过标志。
     可指定memory_id，不覆盖已有条目；单次观察可以形成带条件方法，不代表普遍验证。
     """
     return call('record_memory', locals())
@@ -401,7 +456,9 @@ def update_memory(memory_id: StrictStr, expected_revision: StrictInt, changes: d
 
     changes为顶层替换；可选知识字段null删除，evidence是新案例而非替换旧证据。
     不为重复成功堆积案例。旧格式迁移须显式提供四个知识必填字段，原记录另存legacy备份。
-    冲突先重读知识修订；不要求查看案例，不为迁移重新运行STAR。
+    写前同样检查知识、代码、默认值、证据和引用的隐私及项目授权；只检查拟写内容。
+    新输入、沿用知识及将要复制的旧备份若含明显认证值则拒绝，不自动改写原材料或绕过检查。
+    错误只给安全字段位置和类别；冲突先重读修订，不要求看案例或为迁移重新运行STAR。
     """
     return call('update_memory', locals())
 

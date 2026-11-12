@@ -74,8 +74,8 @@ MCP 进程不热重载 Python。源码或插件升级后，应先处理执行中
 | `search_memory` | `query`，可选 `context/limit/offset/project_dir` | 默认五条知识摘要；空白关键词全部匹配知识，context只排序，不搜索或返回案例证据 |
 | `get_memory` | `memory_id`，可选 `project_dir` | 方法、代码、参数与限制，不打开或返回案例证据 |
 | `get_memory_evidence` | `memory_id`，可选 `project_dir/evidence_id/offset/limit` | 仅明确追溯时分页读取关联的精简证据，不是复用前置，不打开引用材料 |
-| `record_memory` | `entry`，可选 `project_dir` | 新建知识，可选精简evidence另存，只返回ID、修订和写入确认 |
-| `update_memory` | `memory_id/expected_revision/changes`，可选 `project_dir` | 按修订更新知识或追加必要证据；旧格式明确提炼后迁移并保留备份 |
+| `record_memory` | `entry`，可选 `project_dir` | 写前拒绝常见认证值，新建知识及可选精简证据；只返回确认，错误不回显原内容 |
+| `update_memory` | `memory_id/expected_revision/changes`，可选 `project_dir` | 按修订更新；新输入、沿用知识及迁移备份均检查，[敏感信息边界](<generic-execution.md#写前敏感信息约束>) |
 | `inspect_session` | 可选 `timeout` | Inspector 范围快照，不表示全算例导出 |
 | `open_session` | `input`、`port+project_dir` 或 `create=true+project_dir` | 优先连接匹配算例；显式 create 从零创建空算例 |
 | `session_status` | 无其他必填参数 | 状态、进程身份与未确认请求；不启动 Java 客户端 |

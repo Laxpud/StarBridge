@@ -19,6 +19,7 @@ import tempfile
 import uuid
 
 from .session_store import runtime_root
+from .memory_safety import MemorySensitiveDataError, ensure_safe_memory_data
 
 
 SCHEMA_VERSION = 2
@@ -506,7 +507,12 @@ def _archive_legacy(root, record):
 
 
 def _commit(root, record, evidence):
-    """先持久化证据，再提交引用；中途失败不改写原知识或伪称操作撤销。"""
+    """合并后的知识和新证据先过敏感信息检查，再按原顺序逐文件提交。
+
+    不扫描旧证据或打开引用材料；检查的是本次确实准备写入的内容。
+    """
+    ensure_safe_memory_data(record, ('stored_knowledge',))
+    ensure_safe_memory_data(evidence, ('evidence',))
     if evidence is not None:
         record['evidence_ids'].append(evidence['evidence_id'])
     _validate(record)
@@ -532,7 +538,11 @@ def get_memory(memory_id, project_dir=None):
 
 
 def record_memory(entry, project_dir=None):
-    """创建知识；可选 evidence 另存精简案例，不要求为记录额外收集或验证。"""
+    """先拒绝拟写内容中的明显认证值，再创建知识及可选精简证据。
+
+    不自动脱敏或读取引用；隐私、项目机密和入库授权仍由调用者检查。
+    """
+    ensure_safe_memory_data({'entry': entry, 'project_dir': project_dir})
     data = _json_copy(entry)
     if not isinstance(data, dict):
         raise ValueError('entry must be a JSON object')
@@ -562,7 +572,10 @@ def update_memory(memory_id, expected_revision, changes, project_dir=None):
 
     新格式的可选字段用 null 删除，evidence 是可选的新案例而非整库替换。
     迁移旧格式必须显式提供四个知识必填字段，不能自动把项目报告当成通用做法。
+    新输入、合并后的知识和将要备份的旧记录分别检查；不把旧凭据复制到新备份。
     """
+    ensure_safe_memory_data({'memory_id': memory_id, 'expected_revision': expected_revision,
+                             'changes': changes, 'project_dir': project_dir})
     memory_id = _identifier(memory_id)
     if type(expected_revision) is not int or expected_revision < 1:
         raise ValueError('expected_revision must be a positive integer')
@@ -595,8 +608,11 @@ def update_memory(memory_id, expected_revision, changes, project_dir=None):
                 updated[key] = value
         updated['revision'] += 1
         updated['updated_at'] = now
+        # 即使本次 changes 本身干净，也不能再次持久化旧知识中沿用的认证值。
+        ensure_safe_memory_data(updated, ('stored_knowledge',))
         _validate(updated)
         if legacy:
+            ensure_safe_memory_data(current, ('legacy_archive',))
             _archive_legacy(root, current)
         _commit(root, updated, evidence)
     return _ack(updated, roots[-1][0], evidence)
